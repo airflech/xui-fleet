@@ -30,7 +30,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "обновлённый внешний вид: понятные ошибки серверов, цветные аватары с типом устройства, аккуратные бэкапы"
+WHATS_NEW = "после обновления страница больше не зависает на «скачиваю версию…»"
 
 
 class Job:
@@ -44,6 +44,30 @@ class Job:
         self.running = False
         self.ok: Optional[bool] = None
         self.result: Dict[str, Any] = {}
+        self._load()
+
+    # The app restarts itself after an update: the finished operation must survive that, or the page
+    # waits forever for a job the new process has never heard of.
+    @staticmethod
+    def _path():
+        from .service import APP_DIR
+        return APP_DIR / "last-job.json"
+
+    def _load(self) -> None:
+        try:
+            d = json.loads(self._path().read_text(encoding="utf-8"))
+            self.id, self.title, self.lines = int(d["id"]), d.get("title", ""), list(d.get("lines") or [])
+            self.ok, self.result = d.get("ok"), d.get("result") or {}
+        except Exception:
+            pass
+
+    def _save(self) -> None:
+        try:
+            self._path().parent.mkdir(parents=True, exist_ok=True)
+            self._path().write_text(json.dumps({"id": self.id, "title": self.title, "lines": self.lines[-300:],
+                                                "ok": self.ok, "result": self.result}, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
 
     def start(self, title: str, fn: Callable[[Callable[[str], None]], Any]) -> bool:
         with self.lock:
@@ -78,6 +102,7 @@ class Job:
                 self.lines.append(f"Ошибка: {exc}")
                 self.ok = False
             finally:
+                self._save()
                 self.running = False
 
         threading.Thread(target=work, daemon=True).start()

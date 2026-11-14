@@ -1335,6 +1335,11 @@ async function pollJob() {
   clearTimeout(jobTimer);
   let job;
   try { job = await api('/api/job'); } catch (e) { jobTimer = setTimeout(pollJob, 2000); return; }
+  if (!job.id || job.id < curJob) {
+    // The app restarted (after an update) and does not know the operation this page was watching: start fresh.
+    try { sessionStorage.setItem('xf-updated', '1'); } catch (e) {}
+    location.reload(); return;
+  }
   renderJob(job);
   if (job.running) { jobTimer = setTimeout(pollJob, 1000); return; }
   if (job.id !== jobSeen) {

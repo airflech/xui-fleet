@@ -30,7 +30,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "новая версия предлагается кнопкой в шапке; изменения с разных компьютеров теперь объединяются, а не перезаписываются"
+WHATS_NEW = "подключение к синхронизации больше не путает серверы, если сначала был введён другой адрес"
 
 
 class Job:

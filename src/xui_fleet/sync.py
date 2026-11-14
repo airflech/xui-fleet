@@ -146,10 +146,17 @@ class Sync:
         password = password or s.get("ssh_password")
         cfg = SSHConfig(user=s.get("user") or "root", port=s.get("port") or 22, key=s.get("key") or None, password=password)
         keys = State(self.path.with_name("sync-hostkeys.json"))
+        # The key is remembered per address: a different server typed in by mistake must never be mistaken
+        # for this one (and a mistyped attempt must not block the right address afterwards).
+        pin = f"{s['host']}:{s.get('port') or 22}"
         try:
-            return SSH(s.get("name") or "sync", s["host"], cfg, keys).connect()
+            return SSH(pin, s["host"], cfg, keys).connect()
         except Exception as exc:
-            raise SyncError(f"сервер синхронизации {s['host']} недоступен: {exc}") from exc
+            msg = str(exc)
+            if "ключ хоста изменился" in msg:
+                msg = (f"сервер {s['host']} предъявил не тот SSH-ключ, что при первом подключении. Если сервер "
+                       f"переустанавливали — это нормально: удалите строку «{pin}» из файла {keys.path}. Иначе не вводите на нём пароль.")
+            raise SyncError(f"сервер синхронизации {s['host']} недоступен: {msg}") from exc
 
     @staticmethod
     def _remote_meta(ssh: SSH) -> Dict[str, Any]:

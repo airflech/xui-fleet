@@ -1177,3 +1177,21 @@ def test_by_default_a_new_version_is_offered_not_installed(tmp_path, monkeypatch
     upd.save_settings(auto=True)
     monkeypatch.setattr(upd, "install_from_github", lambda root, info: info["version"])
     assert "0.2.8" in upd.check_github(tmp_path)
+
+
+def test_sync_remembers_the_host_key_per_address(tmp_path, monkeypatch):
+    """A first attempt with a wrong address must not block the right one afterwards."""
+    from xui_fleet import sync as sy
+    seen = {}
+    class FakeSSH:
+        def __init__(self, name, host, cfg, state):
+            seen.setdefault("names", []).append(name)
+        def connect(self):
+            return self
+    monkeypatch.setattr(sy, "SSH", FakeSSH)
+    monkeypatch.setattr(sy, "_meta_path", lambda: tmp_path / "sync.json")
+    s = sy.Sync(tmp_path / "fleet.yaml")
+    for host in ("82.21.150.10", "77.105.146.10"):
+        s.meta = {"server": {"name": "sync", "host": host}, "password": "x" * 8}
+        s._ssh()
+    assert seen["names"] == ["82.21.150.10:22", "77.105.146.10:22"]

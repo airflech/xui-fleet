@@ -32,13 +32,22 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: The tag must match the version in the code
+        # v0.3.0 is a release, v0.3.0-beta.1 / -rc.1 a prerelease; pyproject holds the same in PEP 440 (0.3.0b1).
         run: |
-          code=$(sed -n 's/^__version__ = "\([^"]*\)".*/\1/p' src/xui_fleet/__init__.py)
-          proj=$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)
-          tag=${GITHUB_REF_NAME#v}
-          echo "tag=$tag code=$code pyproject=$proj"
-          test "$tag" = "$code" && test "$tag" = "$proj"
+          pip install -q packaging
+          python3 - <<'PY'
+          import os, re
+          from packaging.version import Version
+          tag = os.environ["GITHUB_REF_NAME"].lstrip("v")
+          code = re.search(r'^__version__ = "([^"]+)"', open("src/xui_fleet/__init__.py").read(), re.M).group(1)
+          proj = re.search(r'^version = "([^"]+)"', open("pyproject.toml").read(), re.M).group(1)
+          print(f"tag={tag} code={code} pyproject={proj}")
+          assert tag == code, "версия в коде не совпадает с тегом"
+          assert Version(tag) == Version(proj), "версия в pyproject.toml не совпадает с тегом"
+          PY
       - name: Build the installer archive
         run: |
           v=${GITHUB_REF_NAME#v}
@@ -52,6 +61,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           v=${GITHUB_REF_NAME#v}
+          pre=""
+          case "$v" in *-*) pre="--prerelease" ;; esac
           gh release create "$GITHUB_REF_NAME" "dist/xui-fleet-$v.zip" "dist/xui-fleet-$v.zip.sha256" \
-            --title "xui-fleet $v" \
-            --notes "Скачайте xui-fleet-$v.zip, распакуйте и запустите файл для своей системы (см. README). Установленные копии обновятся сами."
+            --title "xui-fleet $v" $pre --generate-notes \
+            --notes "Установка: скачайте xui-fleet-$v.zip, распакуйте и запустите файл для своей системы. Установленные копии обновятся сами."

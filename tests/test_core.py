@@ -1007,3 +1007,16 @@ def test_update_from_a_github_release_is_checked_and_touches_only_the_program(tm
     assert upd.install_from_github(root, {"version": "0.3.0", "url": "u", "sha256": good}) == "0.3.0"
     assert '"0.3.0"' in (root / "src" / "xui_fleet" / "__init__.py").read_text()
     assert (root / "fleet.yaml").read_text() == "my servers\n"
+
+
+def test_versions_channels_and_pinning(tmp_path, monkeypatch):
+    from xui_fleet import update as upd
+    monkeypatch.setattr(upd, "_settings_path", lambda: tmp_path / "update.json")
+    rels = [{"version": v, "prerelease": upd.is_prerelease(v)} for v in ("0.3.0-beta.2", "0.2.3", "0.2.2")]
+    assert upd.latest(rels, False)["version"] == "0.2.3" and upd.latest(rels, True)["version"] == "0.3.0-beta.2"
+    assert upd.allowed("0.2.4") and not upd.allowed("0.3.0-rc.1")  # stable channel by default
+    upd.save_settings(channel="prerelease")
+    assert upd.allowed("0.3.0-rc.1")
+    upd.save_settings(pinned="0.2.2")  # rolled back by hand: nothing moves it automatically
+    assert not upd.allowed("0.2.4") and upd.check_github(tmp_path) == ""
+    assert upd.branch("0.2.9") == upd.branch("0.2.0") < upd.branch("0.3.0-beta.1")

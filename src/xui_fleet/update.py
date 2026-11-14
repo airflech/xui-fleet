@@ -35,12 +35,62 @@ class UpdateError(RuntimeError):
     pass
 
 
+_PRE = {"a": 0, "alpha": 0, "b": 1, "beta": 1, "rc": 2}
+
+
 def parse(v: str) -> Tuple[int, ...]:
-    return tuple(int(x) for x in re.findall(r"\d+", v or "0"))
+    """Comparable key: 0.3.0-beta.1 < 0.3.0-rc.1 < 0.3.0 < 0.3.1 (also PEP 440 forms like 0.3.0b1)."""
+    m = re.match(r"v?(\d+)\.(\d+)(?:\.(\d+))?(?:[-.]?(alpha|beta|rc|a|b)\.?(\d*))?", (v or "").strip())
+    if not m:
+        return (0, 0, 0, 3, 0)
+    major, minor, patch, pre, num = m.groups()
+    return (int(major), int(minor), int(patch or 0), _PRE.get(pre, 3) if pre else 3, int(num or 0))
 
 
 def newer(a: str, b: str) -> bool:
     return parse(a) > parse(b)
+
+
+def is_prerelease(v: str) -> bool:
+    return parse(v)[3] < 3
+
+
+def branch(v: str) -> Tuple[int, int]:
+    """Versions of one branch (0.2.x) read each other's data; a new branch may change it."""
+    return parse(v)[:2]
+
+
+# ---- per-computer update settings ---------------------------------------
+def _settings_path() -> Path:
+    from .service import APP_DIR
+    return APP_DIR / "update.json"
+
+
+def settings() -> dict:
+    try:
+        import json
+        data = json.loads(_settings_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = {}
+    return {"channel": data.get("channel") if data.get("channel") in ("stable", "prerelease") else "stable",
+            "pinned": data.get("pinned") or ""}
+
+
+def save_settings(**changes) -> dict:
+    import json
+    data = dict(settings(), **changes)
+    path = _settings_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return data
+
+
+def allowed(version: str) -> bool:
+    """May this computer move to `version` by itself? Not while pinned; prereleases only on that channel."""
+    st = settings()
+    if st["pinned"]:
+        return False
+    return st["channel"] == "prerelease" or not is_prerelease(version)
 
 
 def project_root() -> Optional[Path]:
@@ -142,36 +192,81 @@ def _name(pyproject: bytes) -> str:
     return m.group(1) if m else ""
 
 
-def github_latest(repo: str = "") -> Optional[dict]:
-    """Newest release of the public repository: {"version", "url", "sha256"} or None."""
+_cache: dict = {}
+
+
+def releases(repo: str = "", fresh: bool = False) -> List[dict]:
+    """All published versions, newest first: version, prerelease, date, notes, page, zip/sha asset links."""
+    import time
     import httpx
     repo = repo or REPO
     if not repo:
-        return None
-    r = httpx.get(f"https://api.github.com/repos/{repo}/releases/latest", timeout=15,
+        return []
+    hit = _cache.get(repo)
+    if hit and not fresh and time.time() - hit[0] < 300:
+        return hit[1]
+    r = httpx.get(f"https://api.github.com/repos/{repo}/releases?per_page=50", timeout=15,
                   headers={"Accept": "application/vnd.github+json", "User-Agent": "xui-fleet-updater"})
     if r.status_code != 200:
-        return None
-    rel = r.json()
-    version = str(rel.get("tag_name", "")).lstrip("v")
-    assets = {a["name"]: a for a in rel.get("assets") or []}
-    name = f"xui-fleet-{version}.zip"
-    if name not in assets:
-        return None
-    sha = ""
-    if f"{name}.sha256" in assets:
-        t = httpx.get(assets[f"{name}.sha256"]["browser_download_url"], timeout=30, follow_redirects=True,
-                      headers={"User-Agent": "xui-fleet-updater"})
-        sha = t.text.split()[0] if t.status_code == 200 and t.text.strip() else ""
-    if not sha:  # GitHub also reports the digest of every asset itself
+        raise UpdateError(f"GitHub ответил {r.status_code}")
+    out = []
+    for rel in r.json():
+        if rel.get("draft"):
+            continue
+        version = str(rel.get("tag_name", "")).lstrip("v")
+        assets = {a["name"]: a for a in rel.get("assets") or []}
+        name = f"xui-fleet-{version}.zip"
+        if name not in assets:
+            continue
         d = str(assets[name].get("digest") or "")
-        sha = d[7:] if d.startswith("sha256:") else ""
-    return {"version": version, "url": assets[name]["browser_download_url"], "sha256": sha}
+        out.append({"version": version, "prerelease": bool(rel.get("prerelease")) or is_prerelease(version),
+                    "date": rel.get("published_at", ""), "notes": (rel.get("body") or "")[:4000], "page": rel.get("html_url", ""),
+                    "url": assets[name]["browser_download_url"],
+                    "sha_url": assets.get(name + ".sha256", {}).get("browser_download_url", ""),
+                    "sha256": d[7:] if d.startswith("sha256:") else ""})
+    out.sort(key=lambda r: parse(r["version"]), reverse=True)
+    _cache[repo] = (time.time(), out)
+    return out
+
+
+def latest(rels: List[dict], prerelease: bool) -> Optional[dict]:
+    return next((r for r in rels if prerelease or not r["prerelease"]), None)
+
+
+def github_latest(repo: str = "") -> Optional[dict]:
+    """Newest release allowed by this computer's channel."""
+    return latest(releases(repo), settings()["channel"] == "prerelease")
+
+
+def _with_sha(info: dict) -> dict:
+    """The .sha256 file published next to the archive (GitHub's own digest as a fallback)."""
+    import httpx
+    if info.get("sha_url"):
+        t = httpx.get(info["sha_url"], timeout=30, follow_redirects=True, headers={"User-Agent": "xui-fleet-updater"})
+        if t.status_code == 200 and t.text.strip():
+            return dict(info, sha256=t.text.split()[0])
+    return info
+
+
+def install_version(version: str, root: Optional[Path] = None) -> str:
+    """Install exactly this version (newer or older). Choosing an older one pins it: no automatic updates
+    until the user resumes them — otherwise the next check would bring the newest one back."""
+    root = root or project_root()
+    if root is None:
+        raise UpdateError("эта копия установлена не из папки xui-fleet — обновлять нечего")
+    info = next((r for r in releases(fresh=True) if r["version"] == version.lstrip("v")), None)
+    if info is None:
+        raise UpdateError(f"версии {version} нет среди релизов")
+    installed = install_from_github(root, info)
+    newest = latest(releases(), settings()["channel"] == "prerelease")
+    save_settings(pinned=installed if newest and newer(newest["version"], installed) else "")
+    return installed
 
 
 def install_from_github(root: Path, info: dict) -> str:
     """Download a release archive, check its SHA-256, install it."""
     import httpx
+    info = _with_sha(info)
     if not info.get("sha256"):
         raise UpdateError("у релиза нет контрольной суммы — не устанавливаю")
     r = httpx.get(info["url"], timeout=120, follow_redirects=True, headers={"User-Agent": "xui-fleet-updater"})
@@ -188,10 +283,10 @@ def install_from_github(root: Path, info: dict) -> str:
 def check_github(root: Optional[Path] = None) -> str:
     """Install a newer release from GitHub, if there is one. Returns a note (empty when nothing to do)."""
     root = root or project_root()
-    if root is None or not REPO:
+    if root is None or not REPO or settings()["pinned"]:
         return ""
     info = github_latest()
-    if not info or not newer(info["version"], __version__):
+    if not info or not newer(info["version"], __version__) or not allowed(info["version"]):
         return ""
     version = install_from_github(root, info)
     return f"приложение обновлено с GitHub: {__version__} → {version}"

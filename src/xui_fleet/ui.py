@@ -30,7 +30,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "номер версии приложения теперь виден в шапке рядом с названием"
+WHATS_NEW = "окно «Версии» (клик по номеру версии в шапке): список версий, пререлизы, переключение и откат"
 
 
 class Job:
@@ -323,6 +323,21 @@ def make_handler(app: App):
                     return self._send(200, app.overview())
                 if url.path == "/api/live":
                     return self._send(200, app.live())
+                if url.path == "/api/versions":
+                    from . import __version__
+                    from . import update as upd
+                    st = upd.settings()
+                    out = {"current": __version__, "channel": st["channel"], "pinned": st["pinned"], "repo": upd.REPO,
+                           "releases": [], "error": ""}
+                    try:
+                        rels = upd.releases(fresh=bool((parse_qs(url.query).get("fresh") or [""])[0]))
+                        out["releases"] = [{k: r[k] for k in ("version", "prerelease", "date", "notes", "page")} for r in rels]
+                        stable, pre = upd.latest(rels, False), upd.latest(rels, True)
+                        out["latest"] = stable["version"] if stable else ""
+                        out["latestPre"] = pre["version"] if pre and pre["prerelease"] else ""
+                    except Exception as exc:
+                        out["error"] = f"не удалось получить список версий с GitHub: {exc}"
+                    return self._send(200, out)
                 if url.path == "/api/sync":
                     from .sync import Sync
                     cfg_servers = []
@@ -484,6 +499,25 @@ def make_handler(app: App):
                 hide = [k for k in ("direct", "xhttp", "hy2", "warp") if body.get("show_" + k) is False]
                 set_master_role(app.path, bool(body.get("vpn")), bool(body.get("cascades")), body.get("label"), body.get("flag"), hide)
                 return run("Роль главного сервера", lambda log: app.fleet(log).apply())
+            if path == "/api/versions/settings":
+                from . import update as upd
+                changes = {}
+                if body.get("channel") in ("stable", "prerelease"):
+                    changes["channel"] = body["channel"]
+                if body.get("resume"):
+                    changes["pinned"] = ""
+                return {"ok": True, **upd.save_settings(**changes)}
+            if path == "/api/versions/install":
+                from . import update as upd
+                version = _req(body, "version")
+                def install(log: Callable[[str], None]) -> str:
+                    log(f"скачиваю версию {version} с GitHub и проверяю контрольную сумму…")
+                    v = upd.install_version(version)
+                    pinned = upd.settings()["pinned"]
+                    log(f"установлена версия {v}" + (" — автообновление на этом компьютере на паузе" if pinned else ""))
+                    log("приложение перезапустится само через несколько секунд")
+                    return f"Версия {v} установлена"
+                return run(f"Установка версии {version}", install)
             if path.startswith("/api/sync/"):
                 return self._sync_post(path, body, run)
             if path == "/api/apply":

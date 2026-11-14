@@ -139,9 +139,9 @@ class Sync:
         ssh = self._ssh()
         try:
             remote = self._remote_meta(ssh)
-            if upd.newer(remote.get("app", "0"), __version__):
+            if upd.branch(remote.get("app", "0")) > upd.branch(__version__):
                 raise SyncError(f"данные на сервере записаны версией {remote['app']}, а здесь {__version__} — "
-                                f"сначала обновится приложение, потом уйдут изменения")
+                                f"сначала обновите приложение, потом уйдут изменения")
             note = ""
             if remote.get("rev", 0) > self.meta.get("rev", 0) and remote.get("hash") != self.meta.get("hash"):
                 note = (f" (на сервере была версия {remote['rev']} с другого компьютера — она сохранена в истории)")
@@ -173,8 +173,8 @@ class Sync:
             remote = self._remote_meta(ssh)
             if not remote.get("rev"):
                 return ""
-            if upd.newer(remote.get("app", "0"), __version__):
-                # Written by a newer version: an older one might not understand it. Update first.
+            if upd.branch(remote.get("app", "0")) > upd.branch(__version__):
+                # Written by a newer branch: an older one might not understand it. Update first.
                 self.meta["error"] = f"данные записаны версией {remote['app']} — ждут обновления приложения (сейчас {__version__})"
                 self._save()
                 return ""
@@ -235,7 +235,7 @@ class Sync:
                 info = {}
             remote = info.get("version", "")
             self.meta["server_app"] = remote
-            if remote and upd.newer(remote, __version__):
+            if remote and upd.newer(remote, __version__) and upd.allowed(remote):
                 data = ssh.run(f"base64 < {REMOTE}/app/current.xfapp | tr -d '\\n'", check=False, timeout=300).out.strip()
                 blob = base64.b64decode(data)
                 if upd.digest(blob) != info.get("sha"):
@@ -245,7 +245,7 @@ class Sync:
                 self.meta.update(error="", updated_app_at=time.time())
                 self._save()
                 return f"приложение обновлено: {__version__} → {version}"
-            if not remote or upd.newer(__version__, remote):
+            if (not remote or upd.newer(__version__, remote)) and not upd.settings()["pinned"]:
                 blob = upd.package(root, self.meta["password"])
                 meta = {"version": __version__, "sha": upd.digest(blob), "size": len(blob), "published": int(time.time()),
                         "os": platform.system()}

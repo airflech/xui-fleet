@@ -1591,12 +1591,18 @@ showTab(['servers', 'users', 'panels', 'backups', 'help'].includes(store.get('xf
 refresh();
 
 // The service restarts itself after an update; the page notices and reloads, so it never needs closing.
-let codeVersion = null, dataMark = null;
+let codeVersion = null, dataMark = null, pageApp = null;
 async function watchVersion() {
   try {
     const r = await fetch('/api/version', { headers: { 'X-Fleet-Token': TOKEN }, cache: 'no-store' });
     const info = await r.json(), v = info.version;
     $('offline').classList.add('hidden');
+    // The program on this computer was replaced (update, rollback): this page is old — load the new one.
+    if (info.app && pageApp && info.app !== pageApp && !(overview && overview.job && overview.job.running)) {
+      try { sessionStorage.setItem('xf-updated', '1'); } catch (e) {}
+      location.reload(); return;
+    }
+    if (info.app) { pageApp = pageApp || info.app; $('appVer').textContent = info.app; $('appVer').classList.remove('hidden'); }
     if (dataMark !== null && info.data !== dataMark && !(overview && overview.job && overview.job.running)
         && !document.querySelector('dialog[open]')) { toast('Получены изменения с другого компьютера'); refresh(); }
     dataMark = info.data;

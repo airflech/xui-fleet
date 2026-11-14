@@ -30,7 +30,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "окно «Версии» (клик по номеру версии в шапке): список версий, пререлизы, переключение и откат"
+WHATS_NEW = "номер версии в шапке всегда совпадает с установленной версией"
 
 
 class Job:
@@ -350,7 +350,8 @@ def make_handler(app: App):
                     from .service import code_version
                     v = code_version()
                     return (self._send(200, v.encode(), "text/plain") if url.path == "/api/ping"
-                            else self._send(200, {"version": v, "whatsNew": WHATS_NEW, "data": app.data_mark()}))
+                            else self._send(200, {"version": v, "app": __import__("xui_fleet").__version__,
+                                                  "whatsNew": WHATS_NEW, "data": app.data_mark()}))
                 if url.path == "/api/panels":
                     if app.job.running:
                         return self._send(200, {"busy": True})

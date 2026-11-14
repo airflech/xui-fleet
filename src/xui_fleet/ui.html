@@ -43,6 +43,9 @@ svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none;
 .brand { display: flex; align-items: center; gap: 9px; font-weight: 650; font-size: 15px; letter-spacing: -.01em; white-space: nowrap; }
 .logo { width: 24px; height: 24px; border-radius: 7px; background: var(--ink); color: var(--bg); display: grid; place-items: center; }
 .logo svg { width: 14px; height: 14px; stroke-width: 2.2; }
+.ver { font-size: 11.5px; font-weight: 550; color: var(--muted); background: var(--sunken); border-radius: 999px; padding: 1px 8px;
+  margin-left: 2px; font-variant-numeric: tabular-nums; }
+.ver:hover { color: var(--ink); text-decoration: none; }
 .master { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--ink-2); font-size: 13px; }
 .master .where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spacer { flex: 1; }
@@ -277,7 +280,8 @@ details.more summary { cursor: pointer; color: var(--ink-2); font-size: 13px; fo
 
 <header class="top">
   <div class="top-in">
-    <div class="brand"><span class="logo"><svg class="i"><use href="#i-net"/></svg></span>xui-fleet</div>
+    <div class="brand"><span class="logo"><svg class="i"><use href="#i-net"/></svg></span>xui-fleet
+      <a class="ver hidden" id="appVer" href="#h-update" title="Версия приложения — обновляется само"></a></div>
     <div class="master hidden" id="masterBox">
       <span class="dot" id="masterDot"></span>
       <span class="where" id="masterline"></span>
@@ -1268,6 +1272,7 @@ async function refresh() {
   try { overview = await api('/api/overview'); }
   catch (e) { $('masterBox').classList.remove('hidden'); $('masterline').textContent = 'Нет связи с xui-fleet: ' + e.message; return; }
   const configured = overview.configured;
+  if (overview.app) { $('appVer').textContent = overview.app; $('appVer').classList.remove('hidden'); }
   const running = !!(overview.job && overview.job.running);
   $('setup').classList.toggle('hidden', configured || running);
   $('app').classList.toggle('hidden', !configured);
@@ -1338,6 +1343,11 @@ $('btnDomain').addEventListener('click', () => {
   $('dlgDomain').showModal();
 });
 $('btnRole').addEventListener('click', openRole);
+$('appVer').addEventListener('click', (e) => {
+  if (!overview || !overview.configured) return;
+  e.preventDefault(); showTab('help');
+  setTimeout(() => { const h = document.getElementById('h-update'); if (h) h.scrollIntoView({ behavior: 'smooth' }); }, 50);
+});
 $('roleForm').addEventListener('submit', (e) => {
   e.preventDefault();
   const d = formData(e.target);

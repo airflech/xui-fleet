@@ -30,7 +30,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "синхронизация между компьютерами и автообновление приложения через сервер синхронизации"
+WHATS_NEW = "номер версии приложения теперь виден в шапке рядом с названием"
 
 
 class Job:
@@ -112,8 +112,9 @@ class App:
 
     # ---- read -----------------------------------------------------------
     def overview(self) -> Dict[str, Any]:
+        from . import __version__
         if not self.path.exists():
-            return {"configured": False, "job": self.job.view()}
+            return {"configured": False, "job": self.job.view(), "app": __version__}
         fleet = self.fleet()
         cfg, state = fleet.cfg, fleet.state
         def access(server) -> Dict[str, Any]:
@@ -139,7 +140,7 @@ class App:
             ("XHTTP", st.xhttp), ("Hysteria2", st.hysteria2), ("напрямую (TCP)", cfg.defaults.direct.enabled),
             ("WARP", st.warp)) if on]
         extras = ["маскировка под соседний сайт", "свой WARP"] + (["сайт-витрина"] if cfg.defaults.hardening.cover_site else [])
-        return {"configured": True, "job": self.job.view(), "nodes": nodes, "template": template, "templateExtras": extras,
+        return {"configured": True, "job": self.job.view(), "app": __version__, "nodes": nodes, "template": template, "templateExtras": extras,
                 "countries": [[iso, geo.flag(iso), nm] for iso, nm in sorted(geo.COUNTRIES.items(), key=lambda x: x[1])], "version": cfg.panel.version,
                 "master": {"name": cfg.master.name, "host": cfg.master.host, "label": cfg.master.label,
                            "tls": tls.mode, "domain": tls.domain or "", "reserveDomains": list(tls.reserve_domains),

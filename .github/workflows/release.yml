@@ -11,16 +11,16 @@ permissions:
 
 jobs:
   test:
+    # Official Python images: 3.9 is what a Mac ships with, 3.12 is current.
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python: ["3.9", "3.12"]
+        image: ["python:3.9-slim", "python:3.12-slim"]
+    container: ${{ matrix.image }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - run: pip install -e ".[dev]"
+      - run: pip install --root-user-action=ignore -q -e ".[dev]"
       - run: python -m pytest -q
 
   release:

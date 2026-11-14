@@ -1394,7 +1394,8 @@ async function openVersions(fresh) {
     if (note) c.appendChild(el('div', 'note', note));
     if (action) { const b = el('button', 'btn sm', action[0]); b.style.marginTop = '6px'; b.addEventListener('click', action[1]); c.appendChild(b); }
     sum.appendChild(c); };
-  cell('У вас', d.current, d.pinned ? 'автообновление на паузе' : '', d.pinned ? ['Возобновить', async () => {
+  const ahead = d.latest && !d.releases.some((r) => r.version === d.current);
+  cell('У вас', d.current, d.pinned ? 'автообновление на паузе' : ahead ? 'новее опубликованной — релиз ещё собирается' : '', d.pinned ? ['Возобновить', async () => {
     await api('/api/versions/settings', { resume: true }); toast('Автообновление возобновлено'); openVersions(); }] : null);
   cell('Последняя стабильная', d.latest);
   cell('Последний пререлиз', d.latestPre, d.latestPre ? 'для проверки новых функций' : '');

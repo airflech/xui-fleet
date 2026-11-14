@@ -1059,3 +1059,21 @@ def test_a_beta_never_covers_the_stable_version_on_the_sync_server(tmp_path, mon
     upd.save_settings(channel="prerelease")
     old2, s2 = computer("tester", "0.2.4")
     assert "0.2.5-beta.1" in s2.update_app()  # prerelease channel takes the beta
+
+
+def test_release_list_is_refetched_when_it_does_not_know_the_installed_version(monkeypatch):
+    import httpx
+    from xui_fleet import update as upd
+    calls = []
+    def fake(url, **kw):
+        calls.append(url)
+        tags = ["v0.2.5"] if len(calls) == 1 else ["v0.2.6", "v0.2.5"]
+        data = [{"tag_name": t, "prerelease": False, "published_at": "", "body": "", "html_url": "",
+                 "assets": [{"name": f"xui-fleet-{t[1:]}.zip", "browser_download_url": "u"}]} for t in tags]
+        return type("R", (), {"status_code": 200, "json": lambda s: data})()
+    monkeypatch.setattr(httpx, "get", fake)
+    monkeypatch.setattr(upd, "__version__", "0.2.6")
+    upd._cache.clear()
+    assert [r["version"] for r in upd.releases()] == ["0.2.5"]  # GitHub had not published 0.2.6 yet
+    assert upd.releases()[0]["version"] == "0.2.6" and len(calls) == 2  # the next look does not trust that list
+    assert upd.releases()[0]["version"] == "0.2.6" and len(calls) == 2  # a list that knows it is cached

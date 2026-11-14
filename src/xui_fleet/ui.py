@@ -30,7 +30,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "номер версии в шапке всегда совпадает с установленной версией"
+WHATS_NEW = "окно «Версии» всегда показывает свежий список релизов"
 
 
 class Job:

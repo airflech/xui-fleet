@@ -203,7 +203,9 @@ def releases(repo: str = "", fresh: bool = False) -> List[dict]:
     if not repo:
         return []
     hit = _cache.get(repo)
-    if hit and not fresh and time.time() - hit[0] < 300:
+    # A list that does not know the installed version is out of date (e.g. read while that release was
+    # still being built): never serve it from the cache.
+    if hit and not fresh and time.time() - hit[0] < 60 and any(r["version"] == __version__ for r in hit[1]):
         return hit[1]
     r = httpx.get(f"https://api.github.com/repos/{repo}/releases?per_page=50", timeout=15,
                   headers={"Accept": "application/vnd.github+json", "User-Agent": "xui-fleet-updater"})

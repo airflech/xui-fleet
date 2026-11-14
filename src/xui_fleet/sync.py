@@ -221,22 +221,32 @@ class Sync:
             raise
         return msg or "данные уже совпадают"
 
+    # Stable versions and prereleases live apart, so a beta can never cover a stable version:
+    # app/ (stable, where copies before 0.2.4 also look) and app-pre/.
+    SLOTS = {"stable": "app", "pre": "app-pre"}
+
     def update_app(self) -> str:
-        """Install a newer program from the server, or publish this one if it is the newest. Returns a note."""
+        """Install a newer program from the server, or publish this one if it is the newest of its kind."""
         root = upd.project_root()
         if not self.enabled or root is None:
             return ""
         ssh = self._ssh()
         try:
-            out = ssh.run(f"cat {REMOTE}/app/meta.json 2>/dev/null || echo '{{}}'", check=False).out.strip() or "{}"
-            try:
-                info = json.loads(out)
-            except ValueError:
-                info = {}
-            remote = info.get("version", "")
-            self.meta["server_app"] = remote
-            if remote and upd.newer(remote, __version__) and upd.allowed(remote):
-                data = ssh.run(f"base64 < {REMOTE}/app/current.xfapp | tr -d '\\n'", check=False, timeout=300).out.strip()
+            def slot_meta(slot: str) -> dict:
+                out = ssh.run(f"cat {REMOTE}/{self.SLOTS[slot]}/meta.json 2>/dev/null || echo '{{}}'", check=False).out.strip() or "{}"
+                try:
+                    return json.loads(out)
+                except ValueError:
+                    return {}
+            metas = {slot: slot_meta(slot) for slot in self.SLOTS}
+            pre_channel = upd.settings()["channel"] == "prerelease"
+            candidates = [(slot, m) for slot, m in metas.items() if m.get("version") and (slot == "stable" or pre_channel)
+                          and (slot == "pre" or not upd.is_prerelease(m["version"]))]
+            best = max(candidates, key=lambda c: upd.parse(c[1]["version"]), default=None)
+            self.meta["server_app"] = best[1]["version"] if best else ""
+            if best and upd.newer(best[1]["version"], __version__) and upd.allowed(best[1]["version"]):
+                slot, info = best
+                data = ssh.run(f"base64 < {REMOTE}/{self.SLOTS[slot]}/current.xfapp | tr -d '\\n'", check=False, timeout=300).out.strip()
                 blob = base64.b64decode(data)
                 if upd.digest(blob) != info.get("sha"):
                     raise SyncError("обновление на сервере повреждено (контрольная сумма не совпала)")
@@ -245,18 +255,22 @@ class Sync:
                 self.meta.update(error="", updated_app_at=time.time())
                 self._save()
                 return f"приложение обновлено: {__version__} → {version}"
-            if (not remote or upd.newer(__version__, remote)) and not upd.settings()["pinned"]:
+            mine = "pre" if upd.is_prerelease(__version__) else "stable"
+            there = metas[mine].get("version", "")
+            wrong_kind = mine == "stable" and there and upd.is_prerelease(there)
+            if (not there or upd.newer(__version__, there) or wrong_kind) and not upd.settings()["pinned"]:
+                d = f"{REMOTE}/{self.SLOTS[mine]}"
                 blob = upd.package(root, self.meta["password"])
                 meta = {"version": __version__, "sha": upd.digest(blob), "size": len(blob), "published": int(time.time()),
                         "os": platform.system()}
-                ssh.run(f"set -e\nmkdir -p {REMOTE}/app && chmod 700 {REMOTE}/app\n"
-                        f"base64 -d > {REMOTE}/app/current.xfapp.tmp <<'XFSYNC'\n{base64.b64encode(blob).decode()}\nXFSYNC\n"
-                        f"mv {REMOTE}/app/current.xfapp.tmp {REMOTE}/app/current.xfapp\n"
-                        f"cat > {REMOTE}/app/meta.json <<'XFSYNC'\n{json.dumps(meta)}\nXFSYNC\n"
-                        f"chmod 600 {REMOTE}/app/current.xfapp {REMOTE}/app/meta.json\n", timeout=300)
-                self.meta["server_app"] = __version__
+                ssh.run(f"set -e\nmkdir -p {d} && chmod 700 {d}\n"
+                        f"base64 -d > {d}/current.xfapp.tmp <<'XFSYNC'\n{base64.b64encode(blob).decode()}\nXFSYNC\n"
+                        f"mv {d}/current.xfapp.tmp {d}/current.xfapp\n"
+                        f"cat > {d}/meta.json <<'XFSYNC'\n{json.dumps(meta)}\nXFSYNC\n"
+                        f"chmod 600 {d}/current.xfapp {d}/meta.json\n", timeout=300)
                 self._save()
-                return f"версия приложения {__version__} выложена для остальных компьютеров"
+                kind = "пререлиз" if mine == "pre" else "версия"
+                return f"{kind} приложения {__version__} выложен(а) для остальных компьютеров"
             self._save()
             return ""
         finally:

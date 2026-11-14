@@ -1020,3 +1020,42 @@ def test_versions_channels_and_pinning(tmp_path, monkeypatch):
     upd.save_settings(pinned="0.2.2")  # rolled back by hand: nothing moves it automatically
     assert not upd.allowed("0.2.4") and upd.check_github(tmp_path) == ""
     assert upd.branch("0.2.9") == upd.branch("0.2.0") < upd.branch("0.3.0-beta.1")
+
+
+def test_a_beta_never_covers_the_stable_version_on_the_sync_server(tmp_path, monkeypatch):
+    import subprocess
+    from xui_fleet import sync as sy, update as upd
+    remote = tmp_path / "server"
+    monkeypatch.setattr(sy, "REMOTE", str(remote))
+    monkeypatch.setattr(upd, "_settings_path", lambda: tmp_path / "update.json")
+
+    class FakeSSH:
+        def run(self, script, check=True, timeout=0, env=None):
+            r = subprocess.run(["bash", "-c", "set -o pipefail\n" + script], capture_output=True, text=True)
+            return type("R", (), {"out": r.stdout, "code": r.returncode})()
+        def close(self):
+            pass
+
+    def computer(name, version):
+        root = tmp_path / name
+        (root / "src" / "xui_fleet").mkdir(parents=True)
+        (root / "pyproject.toml").write_text('[project]\nname = "xui-fleet"\n')
+        (root / "src" / "xui_fleet" / "__init__.py").write_text(f'__version__ = "{version}"\n')
+        monkeypatch.setattr(sy, "__version__", version)
+        monkeypatch.setattr(upd, "__version__", version)
+        monkeypatch.setattr(upd, "project_root", lambda: root)
+        monkeypatch.setattr(sy, "_meta_path", lambda: root / "sync.json")
+        s = sy.Sync(root / "fleet.yaml")
+        s._ssh = lambda: FakeSSH()
+        s.configure({"name": "ru", "host": "9.9.9.9"}, "sync-password")
+        return root, s
+
+    computer("stable", "0.2.4")[1].update_app()
+    computer("beta", "0.2.5-beta.1")[1].update_app()
+    assert '"0.2.4"' in (remote / "app" / "meta.json").read_text()
+    assert '"0.2.5-beta.1"' in (remote / "app-pre" / "meta.json").read_text()
+    old, s = computer("old", "0.2.3")
+    assert "0.2.4" in s.update_app()  # stable channel: the stable version, not the beta
+    upd.save_settings(channel="prerelease")
+    old2, s2 = computer("tester", "0.2.4")
+    assert "0.2.5-beta.1" in s2.update_app()  # prerelease channel takes the beta

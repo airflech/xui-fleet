@@ -1021,6 +1021,7 @@ def test_update_from_a_github_release_is_checked_and_touches_only_the_program(tm
 def test_versions_channels_and_pinning(tmp_path, monkeypatch):
     from xui_fleet import update as upd
     rels = [{"version": v, "prerelease": upd.is_prerelease(v)} for v in ("0.3.0-beta.2", "0.2.3", "0.2.2")]
+    monkeypatch.setattr(upd, "releases", lambda repo="", fresh=False: rels)  # never the real GitHub in tests
     assert upd.latest(rels, False)["version"] == "0.2.3" and upd.latest(rels, True)["version"] == "0.3.0-beta.2"
     assert upd.allowed("0.2.4") and not upd.allowed("0.3.0-rc.1")  # stable channel by default
     upd.save_settings(channel="prerelease")

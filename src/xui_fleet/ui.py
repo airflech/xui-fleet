@@ -30,7 +30,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "подключение к синхронизации больше не путает серверы, если сначала был введён другой адрес"
+WHATS_NEW = "обновлённый внешний вид: понятные ошибки серверов, цветные аватары с типом устройства, аккуратные бэкапы"
 
 
 class Job:

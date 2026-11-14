@@ -66,6 +66,8 @@ svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none;
 /* ---------- layout ---------- */
 main { max-width: 1120px; margin: 0 auto; padding: 22px 20px 120px; }
 .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 22px; overflow-x: auto; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+@media (max-width: 640px) { .tabs { -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); } }
 .tab { font: inherit; background: none; border: 0; color: var(--muted); padding: 10px 12px 12px; cursor: pointer;
   border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
 .tab:hover { color: var(--ink); }
@@ -157,6 +159,14 @@ label.f { display: block; font-size: 12.5px; font-weight: 550; color: var(--ink-
 .meter > i { display: block; height: 100%; background: var(--ink-2); border-radius: 4px; }
 .meter > i.hi { background: var(--warn); }
 .card-f .mono { white-space: nowrap; }
+.card-f > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.card.down { border-color: color-mix(in srgb, var(--bad) 35%, var(--line)); }
+.card .problem { font-size: 12.5px; color: var(--ink-2); background: var(--bad-soft); border-radius: 8px; padding: 8px 10px; line-height: 1.45; }
+.card .problem b { color: var(--bad); font-weight: 600; display: block; }
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+@media (max-width: 640px) { .bar > .toolbar { width: 100%; } .bar > .toolbar .btn:not(.icon) { flex: 1; } .bar > .spacer { display: none; } }
+.section-t { font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin: 28px 2px 10px; }
+.sync-state { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
 .card-f { display: flex; align-items: center; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
 
 /* ---------- menus ---------- */
@@ -171,6 +181,10 @@ label.f { display: block; font-size: 12.5px; font-weight: 550; color: var(--ink-
 .menu hr { border: 0; border-top: 1px solid var(--line); margin: 5px 0; }
 
 /* ---------- users ---------- */
+.avatar { --h: 220; background: hsl(var(--h) 55% 92%) !important; color: hsl(var(--h) 45% 32%) !important; }
+@media (prefers-color-scheme: dark) { .avatar { background: hsl(var(--h) 28% 22%) !important; color: hsl(var(--h) 60% 80%) !important; } }
+.device { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--muted); background: var(--sunken);
+  border-radius: 5px; padding: 0 6px; height: 18px; margin-left: 6px; vertical-align: 1px; font-weight: 500; }
 .avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 12.5px; font-weight: 650;
   background: var(--sunken); color: var(--ink-2); flex: none; position: relative; }
 .avatar .dot { position: absolute; right: -1px; bottom: -1px; border: 2px solid var(--surface); width: 11px; height: 11px; box-shadow: none; }
@@ -281,6 +295,7 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
   <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>
@@ -378,12 +393,14 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
       <div class="bar">
         <h1>Серверы</h1>
         <div class="spacer"></div>
+        <div class="toolbar">
         <button class="btn ghost icon" id="btnRefresh" title="Обновить состояние" aria-label="Обновить состояние"><svg class="i"><use href="#i-refresh"/></svg></button>
         <div class="menu-wrap">
-          <button class="btn" id="btnFleetMenu" aria-haspopup="menu">Обслуживание <svg class="i" style="width:12px"><use href="#i-more"/></svg></button>
+          <button class="btn" id="btnFleetMenu" aria-haspopup="menu">Обслуживание <svg class="i" style="width:14px"><use href="#i-chevron"/></svg></button>
         </div>
         <button class="btn" id="btnApply" title="Проверить все серверы и привести их к настройкам"><svg class="i"><use href="#i-play"/></svg>Применить</button>
         <button class="btn primary" id="btnAddNode"><svg class="i"><use href="#i-plus"/></svg>Добавить сервер</button>
+        </div>
       </div>
       <div class="cards" id="nodeCards"></div>
       <div class="panel hidden" id="noNodes"><div class="empty"><b>Зарубежных серверов пока нет</b>
@@ -517,18 +534,27 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
     <!-- backups -->
     <section data-pane="backups" class="hidden">
       <div class="bar">
-        <h1>Бэкапы главного сервера</h1>
+        <h1>Бэкапы и перенос</h1>
         <div class="spacer"></div>
         <button class="btn ghost" id="btnBackupOpen"><svg class="i"><use href="#i-folder"/></svg>Открыть папку</button>
         <button class="btn primary" id="btnBackup">Сделать бэкап</button>
         <div class="lead">Хранятся последние 10: база 3x-ui целиком и сертификат домена. Бэкап делается сам перед каждым изменением.</div>
       </div>
+      <div class="section-t" style="margin-top:6px">Главный сервер</div>
       <div class="panel"><div class="list timeline" id="backupRows"></div></div>
-      <div class="hint" style="margin:10px 2px 0">Папка: <span class="mono" id="backupDir"></span></div>
-      <div class="panel" style="margin-top:22px">
+      <div class="hint" style="margin:10px 2px 0;overflow-wrap:anywhere">Папка: <span class="mono" id="backupDir"></span></div>
+      <div class="panel" style="margin-top:14px">
+        <div class="panel-b" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+          <div style="flex:1;min-width:240px"><h2>Перенос главного сервера</h2>
+            <div class="muted small">Если RU-сервер заблокирован: на новый сервер ставится 3x-ui и восстанавливается всё из бэкапа. Старый не трогается.</div></div>
+          <button class="btn danger" id="btnMigrate">Перенести…</button>
+        </div>
+      </div>
+      <div class="section-t">Это приложение</div>
+      <div class="panel" style="margin-top:0">
         <div class="panel-b" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
           <div style="flex:1;min-width:240px"><h2>Синхронизация между компьютерами</h2>
-            <div class="muted small" id="syncText">Загружаю…</div><div class="err" id="syncErr"></div></div>
+            <div id="syncState"></div><div class="muted small" id="syncText">Загружаю…</div><div class="err" id="syncErr"></div></div>
           <div id="syncBtns" style="display:flex;gap:8px;flex-wrap:wrap"></div>
         </div>
       </div>
@@ -538,13 +564,6 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
             <div class="muted small">Один файл под паролем: настройки, доступы к серверам и бэкапы главного сервера. Восстанавливается на любом компьютере — Windows, macOS или Linux.</div></div>
           <button class="btn" id="btnAppImport">Восстановить…</button>
           <button class="btn primary" id="btnAppExport">Сохранить копию…</button>
-        </div>
-      </div>
-      <div class="panel" style="margin-top:14px">
-        <div class="panel-b" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
-          <div style="flex:1;min-width:240px"><h2>Перенос главного сервера</h2>
-            <div class="muted small">Если RU-сервер заблокирован: на новый сервер ставится 3x-ui и восстанавливается всё из бэкапа. Старый не трогается.</div></div>
-          <button class="btn danger" id="btnMigrate">Перенести…</button>
         </div>
       </div>
     </section>
@@ -957,6 +976,22 @@ function openLabel(n) {
 
 // ---------- servers ----------
 function meter(pct) { const m = el('div', 'meter'), i = el('i', pct >= 85 ? 'hi' : ''); i.style.width = Math.min(100, pct || 0) + '%'; m.appendChild(i); return m; }
+function plural(n, one, few, many) {
+  const a = Math.abs(n) % 100, b = a % 10;
+  return n + ' ' + (a > 10 && a < 20 ? many : b === 1 ? one : b >= 2 && b <= 4 ? few : many);
+}
+// Errors from the panel come as raw Go messages with URLs (and the secret panel path): say what it means instead.
+function humanError(msg) {
+  const m = (msg || '').toLowerCase();
+  if (/deadline exceeded|timeout|timed out|i\/o timeout/.test(m)) return 'Панель сервера не отвечает — истекло время ожидания';
+  if (/connection refused/.test(m)) return 'Сервер отклонил подключение к панели';
+  if (/no route|unreachable|network is/.test(m)) return 'Сервер недоступен по сети';
+  if (/certificate|x509|tls/.test(m)) return 'Ошибка защищённого соединения с панелью';
+  if (/eof|reset by peer/.test(m)) return 'Соединение с панелью оборвалось';
+  if (/xray/.test(m)) return 'Xray на сервере не запущен';
+  return (msg || '').replace(/https?:\/\/\S+/g, '').replace(/\s+/g, ' ').trim().slice(0, 140) || 'Неизвестная ошибка';
+}
+function problem(title, hint) { const p = el('div', 'problem'); p.appendChild(el('b', null, title)); if (hint) p.appendChild(document.createTextNode(hint)); return p; }
 function stat(k, v, pct) { const s = el('div', 'stat'); s.appendChild(el('div', 'k', k)); s.appendChild(el('div', 'v', v)); if (pct != null) s.appendChild(meter(pct)); return s; }
 
 function renderServers() {
@@ -968,7 +1003,7 @@ function renderServers() {
   if (overview && overview.master) box.appendChild(masterCard(overview.master));
   for (const n of nodes) {
     const info = live && live.nodes ? live.nodes[n.name] : null;
-    const card = el('article', 'card');
+    const card = el('article', 'card' + (info && info.status !== 'online' ? ' down' : ''));
     const h = el('div', 'card-h');
     const [fl, text] = splitFlag(n.display || n.label || n.name);
     h.appendChild(el('div', 'flag', fl || '🖥'));
@@ -996,7 +1031,9 @@ function renderServers() {
       if (ok) st.appendChild(el('span', 'muted small num', info.latency + ' мс от RU'));
     }
     card.appendChild(st);
-    if (info && info.error) card.appendChild(el('div', 'err', info.error));
+    if (info && info.status !== 'online') card.appendChild(problem(humanError(info.error),
+      'Проверьте, что сервер включён, затем нажмите «Применить» — сервис перепроверит его. Подключения к другим серверам работают.'));
+    else if (info && info.error) card.appendChild(problem(humanError(info.error)));
 
     if (info && info.status === 'online') {
       const s = el('div', 'stats');
@@ -1006,11 +1043,9 @@ function renderServers() {
       card.appendChild(s);
     }
     const f = el('div', 'card-f');
-    const parts = [];
-    if (n.cascade) parts.push('каскад через RU');
-    if (n.direct) parts.push('прямое на :' + n.direct);
-    f.appendChild(el('span', null, parts.join(' · ') || 'подключений нет'));
-    if (info && info.panel) { f.appendChild(el('span', 'spacer')); f.lastChild.style.flex = '1'; f.appendChild(el('span', 'mono', '3x-ui ' + info.panel)); }
+    const way = n.cascade && n.direct ? 'через RU и напрямую' : n.cascade ? 'только через RU' : n.direct ? 'только напрямую' : 'подключений нет';
+    f.appendChild(el('span', null, way));
+    if (info && info.panel) { const sp = el('span'); sp.style.flex = '1'; f.appendChild(sp); const v = el('span', 'mono', 'v' + info.panel); v.title = 'Версия 3x-ui'; f.appendChild(v); }
     card.appendChild(f);
     box.appendChild(card);
   }
@@ -1041,9 +1076,9 @@ function masterCard(m) {
 
   const roles = el('div', 'chips');
   const chip = (t, on) => { const c = el('span', 'tag' + (on ? ' ok' : ''), t); roles.appendChild(c); };
-  chip('подписки и управление', true);
+  chip('подписки', true);
   if (m.vpn) chip('VPN-сервер', true);
-  if (m.cascades) chip('каскады на ' + ((overview.nodes || []).length || 0) + ' серв.', true);
+  if (m.cascades) chip('каскады → ' + plural((overview.nodes || []).length || 0, 'сервер', 'сервера', 'серверов'), true);
   card.appendChild(roles);
 
   const st = el('div'); st.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
@@ -1055,21 +1090,24 @@ function masterCard(m) {
     const ok = info.xray === 'running';
     const t = el('span', 'tag ' + (ok ? 'ok' : 'bad')); const d = el('span', 'dot ' + (ok ? 'ok' : 'bad')); d.style.boxShadow = 'none';
     t.appendChild(d); t.appendChild(document.createTextNode(ok ? 'Работает' : 'Xray остановлен')); st.appendChild(t);
-    if (info.uptime) st.appendChild(el('span', 'muted small', 'без перезагрузки ' + uptimeText(info.uptime)));
+    if (info.uptime) st.appendChild(el('span', 'muted small', 'включён ' + uptimeText(info.uptime)));
   }
   card.appendChild(st);
-  if (info && info.xrayError) card.appendChild(el('div', 'err', info.xrayError));
+  if (info && info.xrayError) card.appendChild(problem(humanError(info.xrayError), 'Нажмите «Применить» — сервис перезапустит Xray и проверит настройки.'));
   if (info && info.cpu != null) {
     const s = el('div', 'stats');
+    const online = live && live.online ? live.online.filter((n) => n in (live.users || {})).length : 0;
+    s.appendChild(stat('Онлайн', String(online)));
     s.appendChild(stat('CPU', info.cpu + '%', info.cpu));
-    s.appendChild(stat('Память', (info.mem ?? 0) + '%', info.mem));
-    s.appendChild(stat('Диск', (info.disk ?? 0) + '%', info.disk));
+    const mem = stat('Память', (info.mem ?? 0) + '%', info.mem); mem.title = 'Диск занят на ' + (info.disk ?? 0) + '%';
+    s.appendChild(mem);
     card.appendChild(s);
   }
   const f = el('div', 'card-f');
   const rsv = (m.reserveDomains || [])[0];
-  f.appendChild(el('span', null, m.domain ? 'домен ' + m.domain + (rsv ? ' · резерв ' + rsv : '') : 'без домена · ' + m.host));
-  if (info && info.panel) { const sp = el('span'); sp.style.flex = '1'; f.appendChild(sp); f.appendChild(el('span', 'mono', '3x-ui ' + info.panel)); }
+  const dom = el('span', null, m.domain ? m.domain + (rsv ? ' · резерв ' + rsv : '') : 'без домена · ' + m.host); dom.title = dom.textContent;
+  f.appendChild(dom);
+  if (info && info.panel) { const sp = el('span'); sp.style.flex = '1'; f.appendChild(sp); const v = el('span', 'mono', 'v' + info.panel); v.title = 'Версия 3x-ui'; f.appendChild(v); }
   card.appendChild(f);
   return card;
 }
@@ -1098,6 +1136,12 @@ function lastSeen(ts) {
   const h = Math.round(min / 60);
   if (h < 48) return 'был ' + h + ' ч назад';
   return 'был ' + new Date(ms).toLocaleDateString('ru-RU');
+}
+function deviceOf(name) {
+  const m = name.toLowerCase().match(/[-_ .](iphone|phone|android|ipad|tablet|pc|laptop|notebook|macbook|mac-?os|mac|windows|win|linux|tv)$/);
+  if (!m) return '';
+  return { iphone: 'телефон', phone: 'телефон', android: 'телефон', ipad: 'планшет', tablet: 'планшет', pc: 'компьютер', laptop: 'ноутбук',
+    notebook: 'ноутбук', macbook: 'Mac', 'mac-os': 'Mac', macos: 'Mac', mac: 'Mac', windows: 'Windows', win: 'Windows', linux: 'Linux', tv: 'ТВ' }[m[1]] || '';
 }
 function initials(name) {
   const parts = name.replace(/[_.@]/g, '-').split('-').filter((p) => p && !/^(main|phone|pc|ios|android|mac|win|windows|my)$/i.test(p));
@@ -1130,12 +1174,14 @@ function renderUsers() {
     const on = online.has(name);
     const r = el('div', 'item');
     const av = el('div', 'avatar', initials(name)); av.appendChild(el('span', 'dot ' + (on ? 'ok' : ''))); av.title = on ? 'сейчас подключён' : 'не подключён';
+    let hue = 0; for (const ch of name) hue = (hue * 31 + ch.codePointAt(0)) % 360; av.style.setProperty('--h', hue);
     r.appendChild(av);
     const g = el('div', 'grow');
-    g.appendChild(el('div', 'title', name));
+    const t = el('div', 'title', name);
+    const dev = deviceOf(name); if (dev) t.appendChild(el('span', 'device', dev));
+    g.appendChild(t);
     g.appendChild(el('div', 'meta', on ? 'онлайн сейчас' : lastSeen(seen[name])));
     r.appendChild(g);
-    r.appendChild(el('div', 'linkbox', url));
     const b = el('button', 'btn sm'); b.appendChild(icon('copy')); b.appendChild(document.createTextNode('Ссылка'));
     b.title = 'Скопировать ссылку-подписку';
     b.addEventListener('click', () => copy(url, 'Подписка ' + name));
@@ -1232,7 +1278,8 @@ async function loadBackups() {
     const why = (b.reason || 'причина не записана').replace(/^./, (c) => c.toUpperCase());
     const w = el('div', 'title', why); w.title = why; w.style.fontWeight = '550';
     g.appendChild(w);
-    g.appendChild(el('div', 'meta', `${b.clients} клиентов · ${b.inbounds} подключений · ${b.nodes} нод · ${b.domain || b.host}`));
+    g.appendChild(el('div', 'meta', [plural(b.clients, 'клиент', 'клиента', 'клиентов'), plural(b.inbounds, 'подключение', 'подключения', 'подключений'),
+      plural(b.nodes, 'сервер', 'сервера', 'серверов'), b.domain || b.host].join(' · ')));
     r.appendChild(g);
     r.appendChild(el('div', 'muted small num size', Math.round(b.size / 1024) + ' КБ'));
     box.appendChild(r);
@@ -1580,14 +1627,18 @@ async function loadSync() {
   let d; try { d = await api('/api/sync'); } catch (e) { $('syncText').textContent = e.message; return; }
   window.syncInfo = d;
   const btns = $('syncBtns'); btns.textContent = '';
-  $('syncErr').textContent = d.error ? 'Последняя ошибка: ' + d.error : '';
+  $('syncErr').textContent = d.error || '';
   if (!d.enabled) {
-    $('syncText').textContent = 'Выключена. Включите — и изменения с этого компьютера, а также обновления приложения, сами появятся на остальных.';
+    $('syncState').textContent = '';
+    $('syncText').textContent = 'Выключена. Включите — и изменения с этого компьютера сами появятся на остальных.';
     const b = el('button', 'btn primary', 'Включить…'); b.id = 'btnSyncOn'; b.addEventListener('click', openSync); btns.appendChild(b);
   } else {
-    const when = d.syncedAt ? new Date(d.syncedAt * 1000).toLocaleString('ru-RU') : 'ещё не было';
-    $('syncText').textContent = 'Данные хранятся на ' + d.host + ' · версия данных ' + d.rev + ' · последняя синхронизация: ' + when + (d.pending ? ' · есть неотправленные изменения' : '')
-      + ' · приложение ' + d.app + (d.serverApp && d.serverApp !== d.app ? ' (на сервере ' + d.serverApp + ')' : '');
+    const when = d.syncedAt ? new Date(d.syncedAt * 1000).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'ещё не было';
+    const stateBox = $('syncState'); stateBox.textContent = '';
+    const kind = d.error ? ['bad', 'Есть проблема'] : d.pending ? ['warn', 'Отправляю изменения…'] : ['ok', 'Всё синхронизировано'];
+    const line = el('div', 'sync-state'); const dot = el('span', 'dot ' + kind[0]); line.appendChild(dot); line.appendChild(document.createTextNode(kind[1]));
+    stateBox.appendChild(line);
+    $('syncText').textContent = 'Сервер ' + d.host + ' · версия данных ' + d.rev + ' · ' + when;
     const now = el('button', 'btn', 'Синхронизировать сейчас'); now.dataset.access = 'sync'; now.addEventListener('click', () => start('/api/sync/now'));
     const off = el('button', 'btn ghost danger', 'Отключить'); off.dataset.access = 'sync';
     off.addEventListener('click', () => confirmAction('Отключить синхронизацию на этом компьютере?', 'Данные на сервере и на других компьютерах останутся. Этот компьютер перестанет получать и отправлять изменения.',

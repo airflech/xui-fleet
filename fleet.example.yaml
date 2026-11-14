@@ -1,0 +1,32 @@
+# xui-fleet: желаемое состояние всей сети. После правки: `xui-fleet apply`.
+version: 1
+
+panel:
+  version: v3.11.0          # одна версия 3x-ui на всех серверах
+
+defaults:
+  ssh:
+    user: root
+    port: 22
+    key: ~/.ssh/id_ed25519  # или password_env: ИМЯ_ПЕРЕМЕННОЙ с паролем
+  hardening:
+    bbr: true
+    firewall: false         # true = ufw на нодах (панель ноды открыта только мастеру)
+
+# Главная панель (RU). Клиенты получают подписку отсюда.
+master:
+  name: ru-msk
+  host: 203.0.113.10        # IP или домен
+  label: "🇷🇺 RU"
+  tls:
+    mode: ip                # ip | domain | selfsigned | none (ip/domain: Let's Encrypt, нужен порт 80)
+    # domain: panel.example.com
+  cascade_ports: [8443, 8543]   # порты на RU под каскадные входы (по одному на ноду)
+
+# Зарубежные серверы. Добавить: `xui-fleet node add de-fra-1 198.51.100.20 --label "🇩🇪 Germany"`
+nodes: []
+
+# Необязательно: пользователи, которых нужно создать сразу.
+# Дальше ими можно управлять в панели: новые ноды подключаются всем автоматически.
+users:
+  - name: me

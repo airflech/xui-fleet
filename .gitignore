@@ -1,0 +1,21 @@
+# Your servers, passwords and tokens — never in git
+fleet.yaml
+fleet.yaml.*
+.xui-fleet/
+*.xfleet
+*.xfapp
+sync.json
+backups/
+
+# Generated on each computer
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+Открыть xui-fleet.*
+dist/
+
+# OS junk
+.DS_Store
+Thumbs.db

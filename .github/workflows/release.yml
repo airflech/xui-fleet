@@ -1,0 +1,57 @@
+name: tests and release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e ".[dev]"
+      - run: python -m pytest -q
+
+  release:
+    # A tag v1.2.3 publishes the installer for that version; the app updates itself from here.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag must match the version in the code
+        run: |
+          code=$(sed -n 's/^__version__ = "\([^"]*\)".*/\1/p' src/xui_fleet/__init__.py)
+          proj=$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)
+          tag=${GITHUB_REF_NAME#v}
+          echo "tag=$tag code=$code pyproject=$proj"
+          test "$tag" = "$code" && test "$tag" = "$proj"
+      - name: Build the installer archive
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          mkdir -p dist/xui-fleet
+          cp -r launcher.py pyproject.toml README.md fleet.example.yaml scripts src "Запустить xui-fleet.bat" "Запустить xui-fleet.command" "Запустить xui-fleet.sh" dist/xui-fleet/
+          find dist -name __pycache__ -prune -exec rm -rf {} +
+          chmod +x "dist/xui-fleet/Запустить xui-fleet.command" "dist/xui-fleet/Запустить xui-fleet.sh" dist/xui-fleet/scripts/start-unix.sh
+          (cd dist && zip -qr "xui-fleet-$v.zip" xui-fleet && sha256sum "xui-fleet-$v.zip" > "xui-fleet-$v.zip.sha256")
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          gh release create "$GITHUB_REF_NAME" "dist/xui-fleet-$v.zip" "dist/xui-fleet-$v.zip.sha256" \
+            --title "xui-fleet $v" \
+            --notes "Скачайте xui-fleet-$v.zip, распакуйте и запустите файл для своей системы (см. README). Установленные копии обновятся сами."

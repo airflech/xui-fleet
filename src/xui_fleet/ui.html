@@ -1,0 +1,1526 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>xui-fleet</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f6f6f4; --surface: #ffffff; --raised: #ffffff; --sunken: #efefec;
+  --ink: #1b1c1e; --ink-2: #4a4d52; --muted: #7c8087; --line: #e4e4e0; --line-2: #d6d6d1;
+  --accent: #1f6feb; --accent-soft: #e8f0fe; --accent-ink: #ffffff;
+  --ok: #1a7f4b; --ok-soft: #e3f4ea; --bad: #c4352b; --bad-soft: #fbe9e7; --warn: #a05a00; --warn-soft: #fdf1dc;
+  --shadow: 0 1px 2px rgba(20,20,20,.05), 0 4px 16px rgba(20,20,20,.06);
+  --shadow-lg: 0 12px 40px rgba(20,20,20,.18);
+  --r: 10px; --r-lg: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #111214; --surface: #18191c; --raised: #1f2024; --sunken: #141518;
+    --ink: #ececec; --ink-2: #b9bcc2; --muted: #868a92; --line: #26282c; --line-2: #33363b;
+    --accent: #4c8dff; --accent-soft: #1b2638; --accent-ink: #0b0d12;
+    --ok: #3fbf7f; --ok-soft: #15291e; --bad: #ff7a6b; --bad-soft: #351b18; --warn: #e6a640; --warn-soft: #33270f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4); --shadow-lg: 0 16px 48px rgba(0,0,0,.55);
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased; }
+.num, .mono { font-variant-numeric: tabular-nums; }
+.mono { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+.hidden { display: none !important; }
+svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- top bar ---------- */
+.top { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: saturate(1.4) blur(10px); -webkit-backdrop-filter: saturate(1.4) blur(10px); border-bottom: 1px solid var(--line); }
+.top-in { max-width: 1120px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 650; font-size: 15px; letter-spacing: -.01em; white-space: nowrap; }
+.logo { width: 24px; height: 24px; border-radius: 7px; background: var(--ink); color: var(--bg); display: grid; place-items: center; }
+.logo svg { width: 14px; height: 14px; stroke-width: 2.2; }
+.master { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--ink-2); font-size: 13px; }
+.master .where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spacer { flex: 1; }
+.jobchip { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; border-radius: 999px;
+  border: 1px solid var(--line-2); background: var(--surface); color: var(--ink-2); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.jobchip:hover { border-color: var(--muted); }
+.jobchip { max-width: min(340px, 52vw); min-width: 0; }
+.jobchip .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.top-in > * { flex-shrink: 0; } .top-in > .master, .top-in > .jobchip { flex-shrink: 1; }
+.jobchip.ok { color: var(--ok); } .jobchip.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }
+
+/* ---------- layout ---------- */
+main { max-width: 1120px; margin: 0 auto; padding: 22px 20px 120px; }
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 22px; overflow-x: auto; scrollbar-width: none; }
+.tab { font: inherit; background: none; border: 0; color: var(--muted); padding: 10px 12px 12px; cursor: pointer;
+  border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.tab:hover { color: var(--ink); }
+.tab[aria-selected=true] { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
+.count { font-size: 11.5px; font-weight: 600; color: var(--muted); background: var(--sunken); border-radius: 999px; padding: 0 7px; line-height: 18px; }
+.bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.bar h1 { font-size: 20px; font-weight: 650; letter-spacing: -.015em; margin: 0; }
+.bar .lead { color: var(--muted); font-size: 13px; width: 100%; margin-top: -6px; }
+h2 { font-size: 15px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+.muted { color: var(--muted); }
+.small { font-size: 12.5px; }
+
+/* ---------- controls ---------- */
+.btn { font: inherit; font-size: 13.5px; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink);
+  cursor: pointer; white-space: nowrap; transition: background .12s, border-color .12s, opacity .12s; }
+.btn:hover { background: var(--sunken); }
+.btn.primary { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.btn.primary:hover { opacity: .88; background: var(--ink); }
+.btn.accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--ink-2); }
+.btn.ghost:hover { background: var(--sunken); color: var(--ink); }
+.btn.danger { color: var(--bad); }
+.btn.sm { height: 28px; padding: 0 10px; font-size: 12.5px; border-radius: 7px; }
+.btn.icon { width: 34px; padding: 0; } .btn.sm.icon { width: 28px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input[type=file] { width: 100%; font: inherit; font-size: 13px; color: var(--ink-2); }
+input[type=text], input[type=password], input[type=number], input[type=search], select {
+  width: 100%; font: inherit; height: 36px; padding: 0 11px; border-radius: 8px; border: 1px solid var(--line-2);
+  background: var(--surface); color: var(--ink); transition: border-color .12s, box-shadow .12s; }
+input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+input::placeholder { color: var(--muted); }
+label.f { display: block; font-size: 12.5px; font-weight: 550; color: var(--ink-2); margin: 14px 0 6px; }
+.hint { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+@media (max-width: 600px) { .grid2 { grid-template-columns: 1fr; } }
+.check { display: flex; gap: 10px; align-items: center; padding: 7px 0; font-size: 13.5px; cursor: pointer; }
+.check input { width: 16px; height: 16px; accent-color: var(--accent); margin: 0; }
+
+/* ---------- status ---------- */
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); flex: none; display: inline-block; }
+.dot.ok { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
+.dot.bad { background: var(--bad); box-shadow: 0 0 0 3px var(--bad-soft); }
+.dot.warn { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+.tag { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 550;
+  background: var(--sunken); color: var(--ink-2); white-space: nowrap; }
+.tag.ok { background: var(--ok-soft); color: var(--ok); } .tag.bad { background: var(--bad-soft); color: var(--bad); }
+.tag.warn { background: var(--warn-soft); color: var(--warn); }
+.spin { width: 13px; height: 13px; border: 2px solid var(--line-2); border-top-color: var(--accent); border-radius: 50%;
+  display: inline-block; animation: spin .8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } * { transition: none !important; } }
+.skeleton { background: linear-gradient(90deg, var(--sunken), var(--line), var(--sunken)); background-size: 200% 100%;
+  animation: sk 1.4s ease-in-out infinite; border-radius: 6px; height: 12px; }
+@keyframes sk { to { background-position: -200% 0; } }
+
+/* ---------- panels / lists ---------- */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow); }
+.panel + .panel { margin-top: 14px; }
+.panel-h { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.panel-b { padding: 16px; }
+.list > .item { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-top: 1px solid var(--line); min-width: 0; }
+.list > .item:first-child { border-top: 0; }
+.item .grow { flex: 1; min-width: 0; }
+.item .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item .meta { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.empty { padding: 36px 16px; text-align: center; color: var(--muted); }
+.empty b { display: block; color: var(--ink); font-weight: 600; margin-bottom: 4px; }
+.err { color: var(--bad); font-size: 12.5px; overflow-wrap: anywhere; }
+.notice { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: var(--r); border: 1px solid var(--line);
+  background: var(--surface); margin-bottom: 16px; }
+.notice.bad { border-color: color-mix(in srgb, var(--bad) 35%, var(--line)); background: var(--bad-soft); }
+.notice .grow { flex: 1; }
+
+/* ---------- server cards ---------- */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow); padding: 16px;
+  display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.card-h { display: flex; align-items: flex-start; gap: 12px; }
+.flag { font-size: 26px; line-height: 1; width: 34px; text-align: center; flex: none; }
+.card-h .grow { flex: 1; min-width: 0; }
+.card-h .title { font-weight: 650; font-size: 15px; }
+.card-h .meta { color: var(--muted); font-size: 12.5px; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.stat .k { font-size: 11.5px; color: var(--muted); }
+.stat .v { font-weight: 600; font-variant-numeric: tabular-nums; }
+.meter { height: 4px; background: var(--sunken); border-radius: 4px; overflow: hidden; margin-top: 5px; }
+.meter > i { display: block; height: 100%; background: var(--ink-2); border-radius: 4px; }
+.meter > i.hi { background: var(--warn); }
+.card-f .mono { white-space: nowrap; }
+.card-f { display: flex; align-items: center; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
+
+/* ---------- menus ---------- */
+.menu-wrap { position: relative; }
+.menu { position: absolute; right: 0; top: calc(100% + 6px); min-width: 220px; background: var(--raised); border: 1px solid var(--line-2);
+  border-radius: 10px; box-shadow: var(--shadow-lg); padding: 5px; z-index: 30; }
+.menu button { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; font: inherit; font-size: 13.5px;
+  padding: 8px 10px; border: 0; border-radius: 6px; background: none; color: var(--ink); cursor: pointer; }
+.menu button:hover, .menu button:focus-visible { background: var(--sunken); outline: none; }
+.menu button.danger { color: var(--bad); }
+.menu button small { display: block; color: var(--muted); font-size: 12px; }
+.menu hr { border: 0; border-top: 1px solid var(--line); margin: 5px 0; }
+
+/* ---------- users ---------- */
+.avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 12.5px; font-weight: 650;
+  background: var(--sunken); color: var(--ink-2); flex: none; position: relative; }
+.avatar .dot { position: absolute; right: -1px; bottom: -1px; border: 2px solid var(--surface); width: 11px; height: 11px; box-shadow: none; }
+.search { position: relative; flex: 1; max-width: 320px; min-width: 180px; }
+.search svg { position: absolute; left: 10px; top: 10px; color: var(--muted); }
+.search input { padding-left: 32px; }
+.seg { display: inline-flex; background: var(--sunken); border-radius: 8px; padding: 3px; gap: 2px; }
+.seg button { font: inherit; font-size: 12.5px; border: 0; background: none; color: var(--muted); height: 28px; padding: 0 10px; border-radius: 6px; cursor: pointer; }
+.seg button[aria-pressed=true] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); font-weight: 550; }
+.linkbox { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; max-width: 360px; }
+@media (max-width: 760px) { .linkbox { display: none; } }
+
+/* ---------- credentials / backups ---------- */
+.kv { display: grid; grid-template-columns: 90px 1fr auto; gap: 8px 12px; align-items: center; font-size: 13px; }
+.kv .k { color: var(--muted); }
+.secret { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; overflow-wrap: anywhere; }
+.creds { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.timeline .item .when { width: 150px; flex: none; font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) { .timeline .item .when { width: auto; } .timeline .size { display: none; } }
+
+/* ---------- drawer (job log) ---------- */
+.drawer { position: fixed; right: 16px; bottom: 16px; width: min(560px, calc(100vw - 32px)); max-height: min(60vh, 520px);
+  background: var(--raised); border: 1px solid var(--line-2); border-radius: var(--r-lg); box-shadow: var(--shadow-lg);
+  display: flex; flex-direction: column; z-index: 40; overflow: hidden; }
+.drawer-h { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.drawer-h .grow { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log { margin: 0; padding: 12px 14px; overflow: auto; flex: 1; white-space: pre-wrap; overflow-wrap: anywhere;
+  font: 12px/1.6 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink-2); background: var(--sunken); }
+.log .w { color: var(--warn); } .log .e { color: var(--bad); } .log .k { color: var(--ok); }
+
+/* ---------- dialogs ---------- */
+dialog { border: 0; padding: 0; border-radius: 16px; background: var(--raised); color: var(--ink); box-shadow: var(--shadow-lg);
+  width: min(520px, calc(100vw - 24px)); max-height: calc(100vh - 40px); }
+dialog::backdrop { background: rgba(10,10,12,.45); backdrop-filter: blur(2px); }
+dialog form, dialog > .dlg { display: flex; flex-direction: column; max-height: calc(100vh - 40px); }
+.dlg-h { padding: 20px 22px 0; }
+.dlg-h h2 { font-size: 17px; }
+.dlg-h p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+.dlg-b { padding: 4px 22px 18px; overflow: auto; }
+.dlg-f { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 22px; border-top: 1px solid var(--line); background: var(--surface); }
+.formerr { color: var(--bad); font-size: 13px; margin-top: 12px; }
+.formerr:empty { display: none; }
+details.more { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 10px; }
+details.more summary { cursor: pointer; color: var(--ink-2); font-size: 13px; font-weight: 550; padding: 4px 0; }
+.tpl { margin-top: 16px; padding: 12px 14px; border-radius: 10px; background: var(--sunken); font-size: 12.5px; color: var(--ink-2); }
+.tpl b { display: block; color: var(--ink); font-size: 13px; margin-bottom: 8px; }
+.tpl .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tpl .chip { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; }
+.tpl .chip.x { background: none; border-style: dashed; color: var(--muted); }
+.roles { display: grid; gap: 8px; }
+.role { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--line-2); border-radius: 10px; cursor: pointer; font-size: 13px; color: var(--ink-2); }
+.role b { display: block; color: var(--ink); font-size: 14px; margin-bottom: 2px; }
+.role input { margin-top: 3px; accent-color: var(--accent); }
+.role:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.card.main-srv { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.help { display: grid; grid-template-columns: 220px 1fr; gap: 28px; align-items: start; }
+.help nav { position: sticky; top: 76px; display: grid; gap: 2px; }
+.help nav a { color: var(--ink-2); padding: 6px 10px; border-radius: 7px; font-size: 13.5px; }
+.help nav a:hover { background: var(--sunken); color: var(--ink); text-decoration: none; }
+.help article { max-width: 760px; }
+.help h2 { font-size: 18px; margin: 34px 0 10px; scroll-margin-top: 80px; }
+.help h2:first-child { margin-top: 0; }
+.help h3 { font-size: 14.5px; margin: 20px 0 6px; }
+.help p, .help li { color: var(--ink-2); line-height: 1.65; }
+.help ol, .help ul { padding-left: 20px; }
+.help code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; background: var(--sunken); padding: 1px 5px; border-radius: 5px; }
+.help .os { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 12px 0; }
+.help .os > div { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.help .os b { display: block; margin-bottom: 6px; }
+.help .os ol { margin: 0; padding-left: 18px; font-size: 13px; }
+.help table { border-collapse: collapse; width: 100%; font-size: 13px; margin: 8px 0; }
+.help td, .help th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.help th { color: var(--muted); font-weight: 600; font-size: 12px; }
+@media (max-width: 760px) { .help { grid-template-columns: 1fr; } .help nav { position: static; grid-auto-flow: column; overflow-x: auto; } }
+.group-title { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 16px 0 2px; }
+
+/* ---------- toast / offline ---------- */
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px;
+  border-radius: 10px; font-size: 13.5px; box-shadow: var(--shadow-lg); z-index: 60; max-width: calc(100vw - 32px); }
+.offline { position: fixed; top: 0; left: 0; right: 0; z-index: 70; background: var(--warn); color: #111; text-align: center; padding: 6px 16px; font-size: 13px; }
+
+@media (max-width: 640px) {
+  .top-in { padding: 0 14px; gap: 10px; } main { padding: 16px 14px 120px; }
+  .master .where { display: none; }
+  .stats { grid-template-columns: repeat(3, 1fr); }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></symbol>
+  <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-log" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></symbol>
+  <symbol id="i-net" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="19" r="2.2"/><circle cx="19" cy="19" r="2.2"/><path d="M12 7.2v4.3M12 11.5l-5.6 5.6M12 11.5l5.6 5.6"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></symbol>
+</svg>
+
+<div id="offline" class="offline hidden" role="status">Интерфейс перезапускается — страница обновится сама…</div>
+
+<header class="top">
+  <div class="top-in">
+    <div class="brand"><span class="logo"><svg class="i"><use href="#i-net"/></svg></span>xui-fleet</div>
+    <div class="master hidden" id="masterBox">
+      <span class="dot" id="masterDot"></span>
+      <span class="where" id="masterline"></span>
+    </div>
+    <div class="spacer"></div>
+    <button class="jobchip hidden" id="jobchip" type="button" aria-controls="drawer"></button>
+    <div class="hidden" id="masterMenuWrap"></div>
+  </div>
+</header>
+
+<main>
+  <!-- first run -->
+  <section class="hidden" id="setup">
+    <div class="bar"><h1>Настройка главного сервера</h1>
+      <div class="lead">На этот сервер ставится главная панель 3x-ui: с него пользователи получают подписку. Выберите, что он будет делать — это можно поменять позже.</div></div>
+    <div class="panel"><div class="panel-b">
+      <form id="setupForm">
+        <label class="f">Роль этого сервера</label>
+        <div class="roles" id="setupRoles">
+          <label class="role"><input type="radio" name="role" value="gateway" checked><span><b>Вход для зарубежных серверов</b>
+            Сервер в России: пользователи подключаются к нему, а трафик уходит через ваши зарубежные серверы (каскад).</span></label>
+          <label class="role"><input type="radio" name="role" value="vpn"><span><b>Сам VPN-сервер</b>
+            Один сервер — и есть ваш VPN: пользователи подключаются к нему напрямую. Зарубежные серверы можно добавить позже.</span></label>
+          <label class="role"><input type="radio" name="role" value="both"><span><b>И то и другое</b>
+            Свои подключения плюс каскады на зарубежные серверы.</span></label>
+        </div>
+        <div class="grid2">
+          <div><label class="f" for="s_host">IP-адрес или домен сервера</label><input type="text" id="s_host" name="host" required placeholder="203.0.113.10"></div>
+          <div><label class="f" for="s_name">Короткое имя</label><input type="text" id="s_name" name="name" required value="main" pattern="[a-z0-9][a-z0-9\-]*" title="Латиница в нижнем регистре, цифры и дефис"></div>
+        </div>
+        <div data-ssh></div>
+        <div id="s_label_box" class="hidden"><label class="f" for="s_label">Название в приложениях <span class="muted">— пусто: по стране сервера</span></label>
+          <input type="text" id="s_label" name="label" placeholder="например, Netherlands"></div>
+        <label class="f" for="s_tls">Сертификат для подписок</label>
+        <select id="s_tls" name="tls">
+          <option value="ip">Let's Encrypt на IP-адрес (нужен открытый порт 80)</option>
+          <option value="domain">Let's Encrypt на домен (нужен открытый порт 80)</option>
+          <option value="selfsigned">Самоподписанный (приложения могут не скачать подписку)</option>
+        </select>
+        <div id="s_domain_box" class="hidden"><label class="f" for="s_domain">Домен</label><input type="text" id="s_domain" name="domain" placeholder="panel.example.com"></div>
+        <label class="f" for="s_user">Первый пользователь <span class="muted">— необязательно</span></label>
+        <input type="text" id="s_user" name="user" placeholder="me">
+        <div class="formerr" role="alert"></div>
+        <div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <button class="btn primary" type="submit">Установить и настроить</button>
+          <span class="muted small">или</span>
+          <button class="btn ghost" type="button" id="btnJoin">Подключить к синхронизации…</button>
+          <button class="btn ghost" type="button" data-click="btnAppImport">Восстановить из копии…</button></div>
+      </form>
+    </div></div>
+  </section>
+
+  <div class="notice bad hidden" id="notready" role="alert">
+    <div class="grow"><b>Главный сервер ещё не подключён</b>
+      <div class="small" id="notreadyText">Не удалось войти на сервер или настройка не завершена. Проверьте адрес, логин и пароль.</div></div>
+    <button class="btn sm" id="btnRetry">Повторить</button>
+    <button class="btn sm primary" id="btnFixAccess">Изменить доступ</button>
+  </div>
+
+  <div id="app" class="hidden">
+    <nav class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="servers" aria-selected="true">Серверы <span class="count" id="cntServers">0</span></button>
+      <button class="tab" role="tab" data-tab="users">Пользователи <span class="count" id="cntUsers">0</span></button>
+      <button class="tab" role="tab" data-tab="panels">Панели 3x-ui</button>
+      <button class="tab" role="tab" data-tab="backups">Бэкапы</button>
+      <button class="tab" role="tab" data-tab="help">Помощь</button>
+    </nav>
+
+    <!-- servers -->
+    <section data-pane="servers">
+      <div class="bar">
+        <h1>Серверы</h1>
+        <div class="spacer"></div>
+        <button class="btn ghost icon" id="btnRefresh" title="Обновить состояние" aria-label="Обновить состояние"><svg class="i"><use href="#i-refresh"/></svg></button>
+        <div class="menu-wrap">
+          <button class="btn" id="btnFleetMenu" aria-haspopup="menu">Обслуживание <svg class="i" style="width:12px"><use href="#i-more"/></svg></button>
+        </div>
+        <button class="btn" id="btnApply" title="Проверить все серверы и привести их к настройкам"><svg class="i"><use href="#i-play"/></svg>Применить</button>
+        <button class="btn primary" id="btnAddNode"><svg class="i"><use href="#i-plus"/></svg>Добавить сервер</button>
+      </div>
+      <div class="cards" id="nodeCards"></div>
+      <div class="panel hidden" id="noNodes"><div class="empty"><b>Зарубежных серверов пока нет</b>
+        Добавьте первый — установка и подключение к главной панели пройдут сами.<br><br>
+        <button class="btn primary" data-click="btnAddNode"><svg class="i"><use href="#i-plus"/></svg>Добавить сервер</button></div></div>
+    </section>
+
+    <!-- users -->
+    <section data-pane="users" class="hidden">
+      <div class="bar">
+        <h1>Пользователи</h1>
+        <span class="tag ok hidden" id="onlineTag"><span class="dot ok" style="box-shadow:none"></span><span id="onlineText"></span></span>
+        <div class="spacer"></div>
+        <button class="btn primary" id="btnAddUser"><svg class="i"><use href="#i-plus"/></svg>Добавить пользователя</button>
+        <div class="lead">Одна ссылка-подписка содержит все подключения. Вставьте её в Happ, v2rayNG, Hiddify или Streisand.</div>
+      </div>
+      <div class="panel">
+        <div class="panel-h">
+          <label class="search"><svg class="i"><use href="#i-search"/></svg><input type="search" id="userSearch" placeholder="Поиск по имени" aria-label="Поиск по имени"></label>
+          <div class="seg" role="group" aria-label="Фильтр">
+            <button type="button" data-filter="all" aria-pressed="true">Все</button>
+            <button type="button" data-filter="online" aria-pressed="false">Онлайн</button>
+          </div>
+        </div>
+        <div class="list" id="userRows"></div>
+      </div>
+    </section>
+
+    <!-- panels -->
+    <section data-pane="panels" class="hidden">
+      <div class="bar">
+        <h1>Панели 3x-ui</h1>
+        <div class="spacer"></div>
+        <button class="btn" id="btnPanels"><svg class="i"><use href="#i-key"/></svg>Показать данные для входа</button>
+        <div class="lead">Ссылки, логины и пароли берутся с самих серверов и проверяются входом.</div>
+      </div>
+      <div id="panelRows"><div class="panel"><div class="empty"><b>Данные для входа скрыты</b>Нажмите «Показать данные для входа» — сервис подключится к серверам и проверит вход.</div></div></div>
+    </section>
+
+    <!-- help -->
+    <section data-pane="help" class="hidden">
+      <div class="help">
+        <nav aria-label="Разделы помощи">
+          <a href="#h-start">Запуск на компьютере</a><a href="#h-sync">Несколько компьютеров</a><a href="#h-update">Обновление приложения</a><a href="#h-move">Копия приложения</a>
+          <a href="#h-roles">Главный сервер</a><a href="#h-add">Добавить сервер</a><a href="#h-users">Пользователи</a>
+          <a href="#h-conn">Какое подключение выбрать</a><a href="#h-ru">Российские сайты</a>
+          <a href="#h-domain">Если заблокируют домен</a><a href="#h-backup">Бэкапы и перенос мастера</a><a href="#h-trouble">Если что-то не работает</a>
+        </nav>
+        <article>
+          <h2 id="h-start">Запуск на компьютере</h2>
+          <p>Папку xui-fleet можно положить куда угодно. Заранее ничего ставить не нужно: если на компьютере нет Python,
+            файл запуска предложит установить его — достаточно согласиться. Остальное ставится само.</p>
+          <div class="os">
+            <div><b>Windows</b><ol><li>Двойной клик по «Запустить xui-fleet.bat».</li><li>Если Windows предупредит — «Подробнее» → «Выполнить в любом случае».</li><li>На вопрос об установке Python нажмите Enter.</li></ol></div>
+            <div><b>macOS</b><ol><li>Двойной клик по «Запустить xui-fleet.command».</li><li>Если macOS не даёт открыть — правый клик → «Открыть».</li><li>Если попросит — «Установить» в окне Apple.</li></ol></div>
+            <div><b>Linux</b><ol><li>Запустите «Запустить xui-fleet.sh» (или <code>sh "Запустить xui-fleet.sh"</code>).</li><li>Согласитесь на установку Python и введите пароль.</li></ol></div>
+          </div>
+          <p>Первый запуск занимает 1–2 минуты, затем открывается браузер. Окно запуска можно закрыть — интерфейс работает в фоне.
+            Рядом с файлом запуска появится ярлык «Открыть xui-fleet»; после перезагрузки компьютера снова запустите файл запуска.</p>
+
+          <h2 id="h-sync">Несколько компьютеров</h2>
+          <p>Включите синхронизацию один раз: «Бэкапы» → «Синхронизация между компьютерами» → «Включить…», выберите сервер и придумайте пароль.
+            Данные приложения хранятся на этом сервере в зашифрованном виде; любое изменение уходит туда за несколько секунд,
+            а остальные компьютеры забирают его при запуске и раз в минуту, пока приложение открыто.</p>
+          <p>На новом компьютере запустите приложение и на первом экране нажмите «Подключить к синхронизации…»: адрес сервера,
+            SSH-пароль и пароль синхронизации. На сервере хранятся 10 последних версий — если два компьютера поменяли что-то одновременно,
+            останется последнее изменение, а предыдущее не потеряется.</p>
+
+          <h2 id="h-update">Обновление приложения</h2>
+          <p>При включённой синхронизации обновлять приложение вручную не нужно. Компьютер с самой новой версией сам выкладывает её на сервер
+            синхронизации (зашифрованной паролем синхронизации), остальные при запуске или в течение минуты ставят её и перезапускаются.
+            Пока компьютер не обновился, он не принимает и не отправляет данные, записанные более новой версией, — так их нельзя испортить.</p>
+          <p class="muted small" id="appVersion"></p>
+
+          <h2 id="h-move">Копия приложения</h2>
+          <ol><li>Здесь: «Бэкапы» → «Копия приложения» → «Сохранить копию…», придумайте пароль. Скачается файл <code>.xfleet</code>.</li>
+            <li>Скопируйте на новый компьютер папку xui-fleet и этот файл.</li>
+            <li>Запустите там приложение и на первом экране нажмите «Восстановить из копии приложения…».</li></ol>
+          <p>В копии — настройки, доступы к серверам и бэкапы главного сервера. Без пароля её не открыть, и восстановить пароль нельзя.</p>
+
+          <h2 id="h-roles">Главный сервер</h2>
+          <p>Через главный сервер всегда идут подписки и управление. Кроме этого, у него может быть одна или обе роли
+            (карточка «Главный сервер» → «⋯» → «Роль и подключения»):</p>
+          <table><tr><th>Роль</th><th>Когда выбирать</th></tr>
+            <tr><td><b>Каскады</b></td><td>Сервер в России. Пользователи подключаются к нему, а трафик уходит через ваши зарубежные серверы — так работает даже там, где зарубежные IP заблокированы.</td></tr>
+            <tr><td><b>Сам VPN-сервер</b></td><td>У вас один сервер (обычно за рубежом), и он — ваш VPN. Пользователи получают его собственный набор подключений.</td></tr></table>
+
+          <h2 id="h-add">Добавить сервер</h2>
+          <p>«Серверы» → «Добавить сервер»: адрес, короткое имя и пароль SSH. Остальное сервис делает сам: ставит 3x-ui, создаёт тот же набор
+            подключений, что у остальных серверов, подбирает маскировку под соседний сайт, регистрирует WARP и ставит сайт-витрину.
+            Ход работы виден в журнале справа снизу.</p>
+
+          <h2 id="h-users">Пользователи</h2>
+          <p>«Пользователи» → «Добавить пользователя». Каждый получает одну ссылку-подписку со всеми подключениями — кнопка «Ссылка».
+            Её вставляют в Happ, v2rayNG, Hiddify или Streisand как подписку. Кнопка «Резерв» — та же подписка на резервном домене.</p>
+
+          <h2 id="h-conn">Какое подключение выбрать</h2>
+          <p>Подписка сгруппирована по странам, внутри — сначала лучшие подключения. Обычно достаточно первого в списке.</p>
+          <table><tr><th>Подключение</th><th>Когда</th></tr>
+            <tr><td>через RU (XHTTP)</td><td>Основное. Работает почти везде, в том числе в мобильных сетях с «белыми списками».</td></tr>
+            <tr><td>XHTTP</td><td>Напрямую к зарубежному серверу, быстрее, если его IP не заблокирован.</td></tr>
+            <tr><td>Hysteria2</td><td>Быстрое подключение по UDP. Если не работает — ваша сеть режет UDP, берите XHTTP.</td></tr>
+            <tr><td>WARP</td><td>Выход в интернет с адреса Cloudflare — для сайтов, которые не пускают VPN.</td></tr></table>
+
+          <h2 id="h-ru">Российские сайты</h2>
+          <p>Банки, Госуслуги и маркетплейсы работают мимо VPN: в Happ это делает профиль «RU напрямую», который приходит вместе с подпиской,
+            а у подключений «через RU» российские сайты открываются прямо с главного сервера.</p>
+
+          <h2 id="h-domain">Если заблокируют домен</h2>
+          <ol><li>Заранее: карточка «Главный сервер» → «⋯» → «Резервный домен», и раздайте пользователям резервные ссылки (кнопка «Резерв»).</li>
+            <li>При блокировке: «⋯» → «Перейти на резервный домен». Пользователи открывают резервную ссылку. Подключения напрямую к зарубежным серверам блокировка домена не затрагивает.</li></ol>
+
+          <h2 id="h-backup">Бэкапы и перенос главного сервера</h2>
+          <p>Бэкап главной панели делается сам перед изменениями; хранятся последние 10 (вкладка «Бэкапы», с причиной создания).
+            Если главный сервер заблокируют: «Бэкапы» → «Перенести…» — на новый сервер ставится 3x-ui и восстанавливается всё; затем смените A-запись домена.</p>
+
+          <h2 id="h-trouble">Если что-то не работает</h2>
+          <ul><li><b>Подключение не открывает сайты</b> — обновите подписку в приложении и попробуйте следующее подключение той же страны.</li>
+            <li><b>Сервер «Недоступен»</b> — «Серверы» → «Применить»: сервис перепроверит всё и починит расхождения.</li>
+            <li><b>Проверить все подключения разом</b> — «Обслуживание» → «Проверить подключения».</li>
+            <li><b>Ошибка входа на сервер</b> — «⋯» у сервера → «Адрес и доступ по SSH».</li>
+            <li><b>Журнал работы приложения</b> — macOS: <code>~/Library/Logs/xui-fleet.log</code>, Windows: <code>%APPDATA%\xui-fleet\xui-fleet.log</code>, Linux: <code>~/.local/share/xui-fleet/xui-fleet.log</code>.</li></ul>
+        </article>
+      </div>
+    </section>
+
+    <!-- backups -->
+    <section data-pane="backups" class="hidden">
+      <div class="bar">
+        <h1>Бэкапы главного сервера</h1>
+        <div class="spacer"></div>
+        <button class="btn ghost" id="btnBackupOpen"><svg class="i"><use href="#i-folder"/></svg>Открыть папку</button>
+        <button class="btn primary" id="btnBackup">Сделать бэкап</button>
+        <div class="lead">Хранятся последние 10: база 3x-ui целиком и сертификат домена. Бэкап делается сам перед каждым изменением.</div>
+      </div>
+      <div class="panel"><div class="list timeline" id="backupRows"></div></div>
+      <div class="hint" style="margin:10px 2px 0">Папка: <span class="mono" id="backupDir"></span></div>
+      <div class="panel" style="margin-top:22px">
+        <div class="panel-b" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+          <div style="flex:1;min-width:240px"><h2>Синхронизация между компьютерами</h2>
+            <div class="muted small" id="syncText">Загружаю…</div><div class="err" id="syncErr"></div></div>
+          <div id="syncBtns" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:14px">
+        <div class="panel-b" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+          <div style="flex:1;min-width:240px"><h2>Копия приложения</h2>
+            <div class="muted small">Один файл под паролем: настройки, доступы к серверам и бэкапы главного сервера. Восстанавливается на любом компьютере — Windows, macOS или Linux.</div></div>
+          <button class="btn" id="btnAppImport">Восстановить…</button>
+          <button class="btn primary" id="btnAppExport">Сохранить копию…</button>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:14px">
+        <div class="panel-b" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+          <div style="flex:1;min-width:240px"><h2>Перенос главного сервера</h2>
+            <div class="muted small">Если RU-сервер заблокирован: на новый сервер ставится 3x-ui и восстанавливается всё из бэкапа. Старый не трогается.</div></div>
+          <button class="btn danger" id="btnMigrate">Перенести…</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- job drawer -->
+<aside class="drawer hidden" id="drawer" aria-live="polite">
+  <div class="drawer-h">
+    <span id="jobicon"></span><span class="grow" id="jobtitle">Журнал</span>
+    <button class="btn ghost sm icon" id="jobhide" aria-label="Свернуть журнал"><svg class="i"><use href="#i-x"/></svg></button>
+  </div>
+  <pre class="log" id="joblog"></pre>
+</aside>
+
+<!-- floating menus -->
+<div class="menu hidden" id="fleetMenu" role="menu">
+  <button role="menuitem" id="btnCheck"><svg class="i"><use href="#i-pulse"/></svg><span>Проверить подключения<small>Трафик через каждую ссылку подписки</small></span></button>
+  <button role="menuitem" id="btnUpgrade"><svg class="i"><use href="#i-up"/></svg><span>Обновить 3x-ui<small>Сначала ноды, затем главный сервер</small></span></button>
+</div>
+<div class="menu hidden" id="masterMenu" role="menu">
+  <button role="menuitem" id="btnRole"><svg class="i"><use href="#i-net"/></svg><span>Роль и подключения<small>VPN-сервер, каскады, название</small></span></button>
+  <hr>
+  <button role="menuitem" id="btnDomain"><svg class="i"><use href="#i-globe"/></svg><span>Домен подписки<small id="domainNow"></small></span></button>
+  <button role="menuitem" id="btnReserve"><svg class="i"><use href="#i-globe"/></svg><span>Резервный домен<small id="reserveNow"></small></span></button>
+  <button role="menuitem" id="btnSwitch" class="hidden"><svg class="i"><use href="#i-refresh"/></svg><span>Перейти на резервный домен<small>Если основной заблокирован</small></span></button>
+  <hr>
+  <button role="menuitem" id="btnMasterAccess"><svg class="i"><use href="#i-key"/></svg><span>Адрес и доступ по SSH</span></button>
+</div>
+<div class="menu hidden" id="nodeMenu" role="menu">
+  <button role="menuitem" data-act="label"><span>Название и подключения</span></button>
+  <button role="menuitem" data-act="access"><span>Адрес и доступ по SSH</span></button>
+  <hr>
+  <button role="menuitem" data-act="remove" class="danger"><span>Удалить сервер</span></button>
+</div>
+
+<dialog id="dlgNode"><form id="nodeForm">
+  <div class="dlg-h"><h2>Новый зарубежный сервер</h2><p>Установка 3x-ui, подключение к главной панели и каскад через RU — автоматически.</p></div>
+  <div class="dlg-b">
+    <div class="grid2">
+      <div><label class="f" for="n_host">IP-адрес или домен</label><input type="text" id="n_host" name="host" required placeholder="198.51.100.20"></div>
+      <div><label class="f" for="n_name">Короткое имя</label><input type="text" id="n_name" name="name" required placeholder="de-fra-1" pattern="[a-z0-9][a-z0-9\-]*" title="Латиница в нижнем регистре, цифры и дефис"></div>
+    </div>
+    <div class="grid2">
+      <div><label class="f" for="n_label">Название в приложении</label><input type="text" id="n_label" name="label" placeholder="по стране"></div>
+      <div><label class="f" for="n_flag">Флаг</label><select id="n_flag" name="flag" data-flags></select></div>
+    </div>
+    <div class="tpl" id="nodeTemplate"></div>
+    <div data-ssh></div>
+    <details class="more">
+      <summary>Дополнительно</summary>
+      <label class="f" for="n_port">Порт прямого подключения</label>
+      <input type="number" id="n_port" name="port" placeholder="443" min="1" max="65535">
+      <label class="check"><input type="checkbox" name="noCascade"> Без каскада через RU</label>
+      <label class="check"><input type="checkbox" name="noDirect"> Не выдавать прямое подключение</label>
+      <label class="f" for="n_paddr">Адрес панели для главного сервера, если отличается</label>
+      <input type="text" id="n_paddr" name="panelAddress">
+      <label class="check"><input type="checkbox" name="private"> Сервер в частной сети</label>
+    </details>
+    <div class="formerr" role="alert"></div>
+  </div>
+  <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Добавить и настроить</button></div>
+</form></dialog>
+
+<dialog id="dlgUser"><form id="userForm">
+  <div class="dlg-h"><h2>Новый пользователь</h2><p>Получит все подключения одной ссылкой.</p></div>
+  <div class="dlg-b">
+    <label class="f" for="u_name">Имя</label>
+    <input type="text" id="u_name" name="name" required pattern="[\p{L}\p{N}._@\-]+" placeholder="Например, Аня-phone">
+    <div class="hint">Буквы (можно кириллицей), цифры, точка, дефис — без пробелов.</div>
+    <div class="formerr" role="alert"></div>
+  </div>
+  <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Создать</button></div>
+</form></dialog>
+
+<dialog id="dlgAccess"><form id="accessForm">
+  <div class="dlg-h"><h2 id="accessTitle">Доступ к серверу</h2><p>После сохранения сервис сразу подключится к серверу и продолжит настройку.</p></div>
+  <div class="dlg-b">
+    <input type="hidden" name="name">
+    <label class="f" for="a_host">IP-адрес или домен</label>
+    <input type="text" id="a_host" name="host" required>
+    <div data-ssh></div>
+    <div class="hint hidden" id="accessKeep">Пароль уже сохранён — оставьте поле пустым, чтобы не менять его.</div>
+    <div class="formerr" role="alert"></div>
+  </div>
+  <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Сохранить и подключиться</button></div>
+</form></dialog>
+
+<dialog id="dlgDomain"><form id="domainForm">
+  <div class="dlg-h"><h2>Домен для подписок</h2><p>Сначала у регистратора направьте A-запись домена на <b id="domainIp"></b> — обновление расходится до часа.</p></div>
+  <div class="dlg-b">
+    <label class="f" for="d_domain">Домен</label>
+    <input type="text" id="d_domain" name="domain" required placeholder="sub.example.com">
+    <div class="formerr" role="alert"></div>
+  </div>
+  <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Проверить DNS и выпустить сертификат</button></div>
+</form></dialog>
+
+<dialog id="dlgReserve"><form id="reserveForm">
+  <div class="dlg-h"><h2>Резервный домен</h2><p>Подписки будут открываться и по нему — у каждого пользователя появится резервная ссылка.
+    Если основной домен заблокируют, переключитесь на резервный в этом же меню.</p></div>
+  <div class="dlg-b">
+    <label class="f" for="r_domain">Домен</label>
+    <input type="text" id="r_domain" name="domain" placeholder="reserve.example.com">
+    <div class="hint">Сначала у регистратора добавьте A-запись этого домена на <b id="reserveIp"></b>. Лучше другой регистратор и другая зона, чем у основного.</div>
+    <div class="formerr" role="alert"></div>
+  </div>
+  <div class="dlg-f"><button type="button" class="btn danger hidden" id="reserveRemove">Убрать</button><span style="flex:1"></span>
+    <button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Проверить DNS и подключить</button></div>
+</form></dialog>
+
+<dialog id="dlgAppExport"><form id="appExportForm">
+  <div class="dlg-h"><h2>Копия приложения</h2><p>В файл попадут настройки, SSH-пароли, ключи доступа к панелям и бэкапы главного сервера.
+    Файл шифруется паролем — без него его не открыть, восстановить пароль нельзя.</p></div>
+  <div class="dlg-b">
+    <label class="f" for="x_pass">Пароль копии</label><input type="password" id="x_pass" name="password" minlength="8" required autocomplete="new-password">
+    <label class="f" for="x_pass2">Ещё раз</label><input type="password" id="x_pass2" name="password2" minlength="8" required autocomplete="new-password">
+    <div class="hint">Не короче 8 символов. Храните файл и пароль раздельно.</div>
+    <div class="formerr" role="alert"></div>
+  </div>
+  <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Сохранить файл</button></div>
+</form></dialog>
+
+<dialog id="dlgAppImport"><form id="appImportForm">
+  <div class="dlg-h"><h2>Восстановить из копии</h2><p>Файл .xfleet, сохранённый в xui-fleet на этом или другом компьютере.</p></div>
+  <div class="dlg-b">
+    <label class="f" for="i_file">Файл копии</label><input type="file" id="i_file" accept=".xfleet" required>
+    <label class="f" for="i_pass">Пароль копии</label><input type="password" id="i_pass" name="password" required autocomplete="off">
+    <div class="tpl hidden" id="importInfo"></div>
+    <div class="formerr" role="alert"></div>
+  </div>
+  <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit" id="importGo">Проверить</button></div>
+</form></dialog>
+
+<dialog id="dlgRole"><form id="roleForm">
+  <div class="dlg-h"><h2>Главный сервер</h2><p>Что он делает для пользователей. Подписки и управление всегда идут через него.</p></div>
+  <div class="dlg-b">
+    <label class="check"><input type="checkbox" name="vpn"> <span><b>Сам VPN-сервер</b> — пользователи подключаются к нему, интернет выходит с него</span></label>
+    <label class="check"><input type="checkbox" name="cascades"> <span><b>Каскады</b> — подключения «через RU» ведут на зарубежные серверы</span></label>
+    <div id="roleOwn">
+      <div class="grid2">
+        <div><label class="f" for="o_label">Название в приложениях</label><input type="text" id="o_label" name="label" placeholder="по стране"></div>
+        <div><label class="f" for="o_flag">Флаг</label><select id="o_flag" name="flag" data-flags></select></div>
+      </div>
+      <div class="group-title" style="margin-top:16px">Свои подключения в подписке</div>
+      <label class="check"><input type="checkbox" name="show_xhttp"> XHTTP</label>
+      <label class="check"><input type="checkbox" name="show_hy2"> Hysteria2</label>
+      <label class="check"><input type="checkbox" name="show_direct"> TCP</label>
+      <label class="check"><input type="checkbox" name="show_warp"> WARP</label>
+    </div>
+    <div class="formerr" role="alert"></div>
+  </div>
+  <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Сохранить и применить</button></div>
+</form></dialog>
+
+<dialog id="dlgSync"><form id="syncForm">
+  <div class="dlg-h"><h2>Синхронизация между компьютерами</h2><p>Данные приложения (серверы, пользователи, доступы) будут храниться на выбранном сервере
+    в зашифрованном виде и сами обновляться на всех ваших компьютерах.</p></div>
+  <div class="dlg-b">
+    <label class="f" for="sy_server">Где хранить</label><select id="sy_server" name="server"></select>
+    <div class="hint">Главный сервер — проще всего. Зарубежный сервер надёжнее: если главный заблокируют, данные и его бэкапы останутся доступны.</div>
+    <label class="f" for="sy_pass">Пароль синхронизации</label><input type="password" id="sy_pass" name="password" minlength="8" required autocomplete="new-password">
+    <label class="f" for="sy_pass2">Ещё раз</label><input type="password" id="sy_pass2" name="password2" minlength="8" required autocomplete="new-password">
+    <div class="hint">Его нужно будет один раз ввести на каждом компьютере. Восстановить пароль нельзя.</div>
+    <div class="formerr" role="alert"></div>
+  </div>
+  <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Включить</button></div>
+</form></dialog>
+
+<dialog id="dlgJoin"><form id="joinForm">
+  <div class="dlg-h"><h2>Подключить этот компьютер</h2><p>Если синхронизация уже включена на другом компьютере — укажите сервер, где хранятся данные, и пароль синхронизации.</p></div>
+  <div class="dlg-b">
+    <label class="f" for="j_host">Адрес сервера</label><input type="text" id="j_host" name="host" required placeholder="IP главного сервера">
+    <div data-ssh></div>
+    <label class="f" for="j_pass">Пароль синхронизации</label><input type="password" id="j_pass" name="password" required autocomplete="off">
+    <div class="formerr" role="alert"></div>
+  </div>
+  <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Подключить</button></div>
+</form></dialog>
+
+<dialog id="dlgLabel"><form id="labelForm">
+  <div class="dlg-h"><h2 id="labelTitle">Название сервера</h2><p id="labelPreview"></p></div>
+  <div class="dlg-b">
+    <input type="hidden" name="name">
+    <div class="grid2">
+      <div><label class="f" for="l_label">Название</label><input type="text" id="l_label" name="label" placeholder="по стране"></div>
+      <div><label class="f" for="l_flag">Флаг</label><select id="l_flag" name="flag" data-flags></select></div>
+    </div>
+    <div class="group-title" style="margin-top:20px">Показывать в подписке</div>
+    <div class="hint" style="margin-top:2px">Снятая галочка убирает подключение у пользователей; на сервере оно продолжает работать.</div>
+    <div class="grid2" style="margin-top:6px">
+      <div>
+        <div class="group-title">Через RU</div>
+        <label class="check"><input type="checkbox" name="show_cascade_xhttp"> XHTTP</label>
+        <label class="check"><input type="checkbox" name="show_cascade_hy2"> Hysteria2</label>
+        <label class="check"><input type="checkbox" name="show_cascade"> TCP</label>
+        <label class="check"><input type="checkbox" name="show_cascade_warp"> → WARP</label>
+      </div>
+      <div>
+        <div class="group-title">Напрямую</div>
+        <label class="check"><input type="checkbox" name="show_xhttp"> XHTTP</label>
+        <label class="check"><input type="checkbox" name="show_hy2"> Hysteria2</label>
+        <label class="check"><input type="checkbox" name="show_direct"> TCP</label>
+        <label class="check"><input type="checkbox" name="show_warp"> WARP</label>
+      </div>
+    </div>
+    <div class="formerr" role="alert"></div>
+  </div>
+  <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Сохранить</button></div>
+</form></dialog>
+
+<dialog id="dlgMigrate"><form id="migrateForm">
+  <div class="dlg-h"><h2>Перенос главного сервера</h2><p>На новый сервер ставится 3x-ui и восстанавливается всё из бэкапа: клиенты с прежними ключами, подписки, ноды, каскады.</p></div>
+  <div class="dlg-b">
+    <label class="f" for="m_host">IP нового сервера</label>
+    <input type="text" id="m_host" name="host" required placeholder="203.0.113.50">
+    <div data-ssh></div>
+    <label class="f" for="m_backup">Из какого бэкапа</label>
+    <select id="m_backup" name="backup"></select>
+    <div class="hint">После переноса направьте домен подписки на новый IP — подсказка будет в журнале.</div>
+    <div class="formerr" role="alert"></div>
+  </div>
+  <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn danger" type="submit">Перенести</button></div>
+</form></dialog>
+
+<dialog id="dlgConfirm"><div class="dlg">
+  <div class="dlg-h"><h2 id="confirmTitle"></h2><p id="confirmText"></p></div>
+  <div class="dlg-b"></div>
+  <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button type="button" class="btn primary" id="confirmYes">Продолжить</button></div>
+</div></dialog>
+
+<template id="sshTpl">
+  <div class="grid2">
+    <div><label class="f">Пользователь SSH</label><input type="text" name="sshUser" value="root"></div>
+    <div><label class="f">Порт SSH</label><input type="number" name="sshPort" value="22" min="1" max="65535"></div>
+  </div>
+  <label class="f">Способ входа</label>
+  <div class="seg" role="group" data-auth>
+    <button type="button" data-v="password" aria-pressed="true">Пароль</button>
+    <button type="button" data-v="key" aria-pressed="false">SSH-ключ</button>
+  </div>
+  <input type="hidden" name="sshAuth" value="password">
+  <div data-key class="hidden"><label class="f">Путь к приватному ключу</label><input type="text" name="sshKey" value="~/.ssh/id_ed25519"></div>
+  <div data-password><label class="f">Пароль</label><input type="password" name="sshPassword" autocomplete="off">
+    <div class="hint">Хранится только на этом компьютере.</div></div>
+</template>
+
+<script>
+const TOKEN = new URLSearchParams(location.search).get('t') || '';
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const icon = (name, cls) => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('class', 'i' + (cls ? ' ' + cls : ''));
+  const u = document.createElementNS('http://www.w3.org/2000/svg', 'use'); u.setAttribute('href', '#i-' + name); s.appendChild(u); return s; };
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+
+async function api(path, body) {
+  const opt = { headers: { 'X-Fleet-Token': TOKEN } };
+  if (body !== undefined) { opt.method = 'POST'; opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+  const res = await fetch(path, opt);
+  const data = await res.json();
+  if (data && data.error) throw new Error(data.error);
+  return data;
+}
+
+let overview = null, live = null, jobSeen = 0, jobTimer = null, curJob = 0, jobClosed = 0, userFilter = 'all';
+
+// ---------- toast ----------
+let toastTimer;
+function toast(text) {
+  let t = $('toast');
+  if (!t) { t = el('div', 'toast'); t.id = 'toast'; t.setAttribute('role', 'status'); document.body.appendChild(t); }
+  t.textContent = text; t.classList.remove('hidden');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), 2600);
+}
+async function copy(text, what) {
+  try { await navigator.clipboard.writeText(text); toast('Скопировано: ' + (what || 'текст').toLowerCase()); }
+  catch (e) { toast('Не удалось скопировать'); }
+}
+
+// ---------- tabs ----------
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === name)));
+  document.querySelectorAll('[data-pane]').forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== name));
+  store.set('xf-tab', name);
+  if (name === 'backups') { loadBackups(); loadSync(); }
+  if (name === 'help') api('/api/sync').then((d) => { $('appVersion').textContent = 'Версия на этом компьютере: ' + d.app + (d.serverApp ? ' · на сервере синхронизации: ' + d.serverApp : ''); }).catch(() => {});
+}
+document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
+
+// ---------- menus ----------
+let openMenu = null;
+function toggleMenu(menu, anchor, onOpen) {
+  const wasOpen = openMenu === menu;
+  closeMenus();
+  if (wasOpen) return;
+  if (onOpen) onOpen();
+  const r = anchor.getBoundingClientRect();
+  menu.classList.remove('hidden');
+  menu.style.position = 'fixed';
+  const w = menu.offsetWidth;
+  menu.style.top = (r.bottom + 6) + 'px';
+  menu.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
+  menu.style.right = 'auto';
+  openMenu = menu;
+  const first = menu.querySelector('button:not(:disabled)'); if (first) first.focus();
+}
+function closeMenus() { document.querySelectorAll('.menu').forEach((m) => m.classList.add('hidden')); openMenu = null; }
+document.addEventListener('click', (e) => { if (openMenu && !openMenu.contains(e.target) && !e.target.closest('[aria-haspopup]')) closeMenus(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenus(); });
+window.addEventListener('resize', closeMenus); window.addEventListener('scroll', closeMenus, true);
+$('btnFleetMenu').addEventListener('click', (e) => toggleMenu($('fleetMenu'), e.currentTarget));
+
+let menuNode = null;
+$('nodeMenu').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-act]'); if (!b || !menuNode) return;
+  const n = menuNode; closeMenus();
+  if (b.dataset.act === 'label') openLabel(n);
+  else if (b.dataset.act === 'access') openAccess(n, 'Доступ к серверу ' + (n.display || n.name));
+  else confirmAction('Удалить сервер ' + (n.display || n.name) + '?', 'Подключения через этот сервер перестанут работать у пользователей. Сам сервер не изменится.',
+    () => start('/api/node/remove', { name: n.name }), 'Удалить', true);
+});
+
+// ---------- SSH block (shared by forms) ----------
+document.querySelectorAll('[data-ssh]').forEach((box) => {
+  box.appendChild($('sshTpl').content.cloneNode(true));
+  const hidden = box.querySelector('[name=sshAuth]');
+  const set = (v) => {
+    hidden.value = v;
+    box.querySelectorAll('[data-auth] button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
+    box.querySelector('[data-key]').classList.toggle('hidden', v !== 'key');
+    box.querySelector('[data-password]').classList.toggle('hidden', v !== 'password');
+  };
+  box.querySelectorAll('[data-auth] button').forEach((b) => b.addEventListener('click', () => set(b.dataset.v)));
+  box.setAuth = set;
+});
+
+function formData(form) {
+  const out = {};
+  for (const input of form.querySelectorAll('input, select')) {
+    if (!input.name) continue;
+    if (input.type === 'radio' && !input.checked) continue;
+    out[input.name] = input.type === 'checkbox' ? input.checked : input.value.trim();
+  }
+  if (out.sshAuth === 'key') out.sshPassword = ''; else out.sshKey = '';
+  delete out.sshAuth;
+  return out;
+}
+function resetForm(form) { form.reset(); const e = form.querySelector('.formerr'); if (e) e.textContent = '';
+  form.querySelectorAll('[data-ssh]').forEach((b) => b.setAuth && b.setAuth('password')); }
+
+function openAccess(server, title) {
+  const form = $('accessForm'), a = server.access || {};
+  resetForm(form);
+  form.querySelector('[name=name]').value = server.name;
+  form.querySelector('[name=host]').value = server.host;
+  form.querySelector('[name=sshUser]').value = a.sshUser || 'root';
+  form.querySelector('[name=sshPort]').value = a.sshPort || 22;
+  if (a.sshKey) form.querySelector('[name=sshKey]').value = a.sshKey;
+  const mode = a.auth === 'key' && a.sshKey && server.prepared ? 'key' : 'password';  // a key that never worked is not a default
+  form.querySelector('[data-ssh]').setAuth(mode);
+  $('accessKeep').classList.toggle('hidden', !(a.hasPassword && mode === 'password'));
+  $('accessTitle').textContent = title;
+  $('dlgAccess').showModal();
+}
+
+// ---------- flags / labels ----------
+function fillFlags(sel, detected) {
+  const keep = sel.value;
+  sel.textContent = '';
+  const auto = el('option', null, 'Автоматически' + (detected ? ' — ' + flagOf(detected) + ' ' + detected : ' — по IP сервера'));
+  auto.value = 'auto'; sel.appendChild(auto);
+  const none = el('option', null, 'Без флага'); none.value = 'none'; sel.appendChild(none);
+  for (const [iso, fl, nm] of (overview && overview.countries) || []) { const o = el('option', null, fl + ' ' + nm); o.value = iso; sel.appendChild(o); }
+  if (keep) sel.value = keep;
+}
+function flagOf(iso) { return [...(iso || '').toUpperCase()].map((c) => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65)).join(''); }
+function splitFlag(text) { const m = (text || '').match(/^([\u{1F1E6}-\u{1F1FF}]{2})\s*(.*)$/u); return m ? [m[1], m[2]] : ['', text || '']; }
+
+function openLabel(n) {
+  const form = $('labelForm');
+  resetForm(form);
+  form.querySelector('[name=name]').value = n.name;
+  form.querySelector('[name=label]').value = splitFlag(n.label)[1];
+  const sel = form.querySelector('[name=flag]'); fillFlags(sel, n.country); sel.value = n.flag || 'auto';
+  for (const k of ['cascade', 'cascade_xhttp', 'cascade_hy2', 'cascade_warp', 'direct', 'xhttp', 'hy2', 'warp'])
+    form.querySelector('[name=show_' + k + ']').checked = !(n.hide || []).includes(k);
+  $('labelTitle').textContent = 'Название и подключения';
+  $('labelPreview').textContent = 'Сейчас у пользователей: «' + (n.display || n.name) + '» · ' + n.name;
+  $('dlgLabel').showModal();
+}
+
+// ---------- servers ----------
+function meter(pct) { const m = el('div', 'meter'), i = el('i', pct >= 85 ? 'hi' : ''); i.style.width = Math.min(100, pct || 0) + '%'; m.appendChild(i); return m; }
+function stat(k, v, pct) { const s = el('div', 'stat'); s.appendChild(el('div', 'k', k)); s.appendChild(el('div', 'v', v)); if (pct != null) s.appendChild(meter(pct)); return s; }
+
+function renderServers() {
+  const box = $('nodeCards');
+  box.textContent = '';
+  const nodes = (overview && overview.nodes) || [];
+  $('cntServers').textContent = nodes.length + 1;
+  $('noNodes').classList.toggle('hidden', nodes.length > 0 || !!(overview && overview.master && overview.master.vpn));
+  if (overview && overview.master) box.appendChild(masterCard(overview.master));
+  for (const n of nodes) {
+    const info = live && live.nodes ? live.nodes[n.name] : null;
+    const card = el('article', 'card');
+    const h = el('div', 'card-h');
+    const [fl, text] = splitFlag(n.display || n.label || n.name);
+    h.appendChild(el('div', 'flag', fl || '🖥'));
+    const g = el('div', 'grow');
+    g.appendChild(el('div', 'title', text || n.name));
+    g.appendChild(el('div', 'meta mono', n.name + ' · ' + n.host));
+    h.appendChild(g);
+    const more = el('button', 'btn ghost sm icon'); more.setAttribute('aria-haspopup', 'menu'); more.setAttribute('aria-label', 'Действия с сервером');
+    more.dataset.access = n.name; more.appendChild(icon('more'));
+    more.addEventListener('click', (e) => toggleMenu($('nodeMenu'), e.currentTarget, () => { menuNode = n; }));
+    h.appendChild(more);
+    card.appendChild(h);
+
+    // status line
+    const st = el('div', 'row');
+    st.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+    if (!live) { const s = el('div', 'skeleton'); s.style.width = '140px'; st.appendChild(s); }
+    else if (live.busy) st.appendChild(el('span', 'tag', 'идёт операция'));
+    else if (live.failed) st.appendChild(el('span', 'tag', 'нет данных — повторяю…'));
+    else if (!info) st.appendChild(el('span', 'tag warn', n.prepared ? 'не подключён к главной панели' : 'не настроен'));
+    else {
+      const ok = info.status === 'online';
+      const t = el('span', 'tag ' + (ok ? 'ok' : 'bad')); t.appendChild(el('span', 'dot ' + (ok ? 'ok' : 'bad'))); t.lastChild.style.boxShadow = 'none';
+      t.appendChild(document.createTextNode(ok ? 'В сети' : 'Недоступен')); st.appendChild(t);
+      if (ok) st.appendChild(el('span', 'muted small num', info.latency + ' мс от RU'));
+    }
+    card.appendChild(st);
+    if (info && info.error) card.appendChild(el('div', 'err', info.error));
+
+    if (info && info.status === 'online') {
+      const s = el('div', 'stats');
+      s.appendChild(stat('Онлайн', String(info.online ?? 0)));
+      s.appendChild(stat('CPU', (info.cpu ?? 0) + '%', info.cpu));
+      s.appendChild(stat('Память', (info.mem ?? 0) + '%', info.mem));
+      card.appendChild(s);
+    }
+    const f = el('div', 'card-f');
+    const parts = [];
+    if (n.cascade) parts.push('каскад через RU');
+    if (n.direct) parts.push('прямое на :' + n.direct);
+    f.appendChild(el('span', null, parts.join(' · ') || 'подключений нет'));
+    if (info && info.panel) { f.appendChild(el('span', 'spacer')); f.lastChild.style.flex = '1'; f.appendChild(el('span', 'mono', '3x-ui ' + info.panel)); }
+    card.appendChild(f);
+    box.appendChild(card);
+  }
+}
+
+function uptimeText(sec) {
+  if (!sec) return '';
+  const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600);
+  return d ? d + ' д ' + h + ' ч' : h ? h + ' ч' : Math.max(1, Math.round(sec / 60)) + ' мин';
+}
+function masterCard(m) {
+  const info = live && live.master;
+  const card = el('article', 'card main-srv');
+  const h = el('div', 'card-h');
+  const [fl, text] = splitFlag(m.display || '');
+  const fb = el('div', 'flag', fl);
+  if (!fl) { fb.appendChild(icon('net')); fb.firstChild.style.cssText = 'width:24px;height:24px;color:var(--accent)'; }
+  h.appendChild(fb);
+  const g = el('div', 'grow');
+  g.appendChild(el('div', 'title', 'Главный сервер' + (m.vpn && text ? ' · ' + text : '')));
+  g.appendChild(el('div', 'meta mono', m.name + ' · ' + (m.domain || m.host)));
+  h.appendChild(g);
+  const more = el('button', 'btn ghost sm icon'); more.setAttribute('aria-haspopup', 'menu'); more.setAttribute('aria-label', 'Действия с главным сервером');
+  more.dataset.access = m.name; more.appendChild(icon('more'));
+  more.addEventListener('click', (e) => toggleMenu($('masterMenu'), e.currentTarget));
+  h.appendChild(more);
+  card.appendChild(h);
+
+  const roles = el('div', 'chips');
+  const chip = (t, on) => { const c = el('span', 'tag' + (on ? ' ok' : ''), t); roles.appendChild(c); };
+  chip('подписки и управление', true);
+  if (m.vpn) chip('VPN-сервер', true);
+  if (m.cascades) chip('каскады на ' + ((overview.nodes || []).length || 0) + ' серв.', true);
+  card.appendChild(roles);
+
+  const st = el('div'); st.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+  if (!m.prepared) st.appendChild(el('span', 'tag warn', 'не настроен'));
+  else if (!live) { const s = el('div', 'skeleton'); s.style.width = '140px'; st.appendChild(s); }
+  else if (live.busy) st.appendChild(el('span', 'tag', 'идёт операция'));
+  else if (!info || !info.xray) st.appendChild(el('span', 'tag', live.failed ? 'нет данных — повторяю…' : 'нет данных'));
+  else {
+    const ok = info.xray === 'running';
+    const t = el('span', 'tag ' + (ok ? 'ok' : 'bad')); const d = el('span', 'dot ' + (ok ? 'ok' : 'bad')); d.style.boxShadow = 'none';
+    t.appendChild(d); t.appendChild(document.createTextNode(ok ? 'Работает' : 'Xray остановлен')); st.appendChild(t);
+    if (info.uptime) st.appendChild(el('span', 'muted small', 'без перезагрузки ' + uptimeText(info.uptime)));
+  }
+  card.appendChild(st);
+  if (info && info.xrayError) card.appendChild(el('div', 'err', info.xrayError));
+  if (info && info.cpu != null) {
+    const s = el('div', 'stats');
+    s.appendChild(stat('CPU', info.cpu + '%', info.cpu));
+    s.appendChild(stat('Память', (info.mem ?? 0) + '%', info.mem));
+    s.appendChild(stat('Диск', (info.disk ?? 0) + '%', info.disk));
+    card.appendChild(s);
+  }
+  const f = el('div', 'card-f');
+  const rsv = (m.reserveDomains || [])[0];
+  f.appendChild(el('span', null, m.domain ? 'домен ' + m.domain + (rsv ? ' · резерв ' + rsv : '') : 'без домена · ' + m.host));
+  if (info && info.panel) { const sp = el('span'); sp.style.flex = '1'; f.appendChild(sp); f.appendChild(el('span', 'mono', '3x-ui ' + info.panel)); }
+  card.appendChild(f);
+  return card;
+}
+
+function openRole() {
+  closeMenus();
+  const m = overview.master, form = $('roleForm');
+  resetForm(form);
+  form.querySelector('[name=vpn]').checked = !!m.vpn;
+  form.querySelector('[name=cascades]').checked = !!m.cascades;
+  form.querySelector('[name=label]').value = splitFlag(m.labelText)[1];
+  const sel = form.querySelector('[name=flag]'); fillFlags(sel, m.country); sel.value = m.flag || 'auto';
+  for (const k of ['direct', 'xhttp', 'hy2', 'warp']) form.querySelector('[name=show_' + k + ']').checked = !(m.hide || []).includes(k);
+  const sync = () => $('roleOwn').classList.toggle('hidden', !form.querySelector('[name=vpn]').checked);
+  form.querySelector('[name=vpn]').onchange = sync; sync();
+  $('dlgRole').showModal();
+}
+
+// ---------- users ----------
+function lastSeen(ts) {
+  if (!ts) return 'ещё не подключался';
+  const ms = ts > 1e12 ? ts : ts * 1000;
+  const min = Math.round((Date.now() - ms) / 60000);
+  if (min < 1) return 'был только что';
+  if (min < 60) return 'был ' + min + ' мин назад';
+  const h = Math.round(min / 60);
+  if (h < 48) return 'был ' + h + ' ч назад';
+  return 'был ' + new Date(ms).toLocaleDateString('ru-RU');
+}
+function initials(name) {
+  const parts = name.replace(/[_.@]/g, '-').split('-').filter((p) => p && !/^(main|phone|pc|ios|android|mac|win|windows|my)$/i.test(p));
+  const w = parts.length ? parts : [name];
+  return (w[0][0] + (w[1] ? w[1][0] : (w[0][1] || ''))).toUpperCase();
+}
+function renderUsers() {
+  const box = $('userRows');
+  box.textContent = '';
+  const msg = (b, t) => { const e = el('div', 'empty'); if (b) e.appendChild(el('b', null, b)); if (t) e.appendChild(document.createTextNode(t)); box.appendChild(e); };
+  if (!live) {
+    for (let i = 0; i < 4; i++) { const r = el('div', 'item'); r.appendChild(el('div', 'avatar')); const s = el('div', 'skeleton'); s.style.width = (120 + i * 30) + 'px'; r.appendChild(s); box.appendChild(r); }
+    return;
+  }
+  if (live.busy) return msg('Идёт операция', 'Список обновится, когда она закончится.');
+  if (live.failed) { const e = el('div', 'empty err', 'Не удалось связаться с главным сервером: ' + live.failed); box.appendChild(e); return; }
+  if (live.ready === false) return msg('Главный сервер ещё не настроен', 'Нажмите «Применить» на вкладке «Серверы».');
+  const all = Object.entries(live.users || {}).sort((a, b) => a[0].localeCompare(b[0], 'ru'));
+  const online = new Set((live.online || []).filter((n) => n in (live.users || {})));
+  const seen = live.lastOnline || {};
+  $('cntUsers').textContent = all.length;
+  $('onlineTag').classList.toggle('hidden', !all.length);
+  $('onlineText').textContent = 'онлайн ' + online.size + ' из ' + all.length;
+  if (!all.length) return msg('Пользователей пока нет', 'Добавьте первого — он получит ссылку со всеми подключениями.');
+  const q = $('userSearch').value.trim().toLowerCase();
+  const users = all.filter(([n]) => (!q || n.toLowerCase().includes(q)) && (userFilter === 'all' || online.has(n)))
+    .sort((a, b) => (online.has(b[0]) - online.has(a[0])) || ((seen[b[0]] || 0) - (seen[a[0]] || 0)) || a[0].localeCompare(b[0], 'ru'));
+  if (!users.length) return msg('Никого не найдено', q ? 'Измените запрос.' : 'Сейчас никто не подключён.');
+  for (const [name, url] of users) {
+    const on = online.has(name);
+    const r = el('div', 'item');
+    const av = el('div', 'avatar', initials(name)); av.appendChild(el('span', 'dot ' + (on ? 'ok' : ''))); av.title = on ? 'сейчас подключён' : 'не подключён';
+    r.appendChild(av);
+    const g = el('div', 'grow');
+    g.appendChild(el('div', 'title', name));
+    g.appendChild(el('div', 'meta', on ? 'онлайн сейчас' : lastSeen(seen[name])));
+    r.appendChild(g);
+    r.appendChild(el('div', 'linkbox', url));
+    const b = el('button', 'btn sm'); b.appendChild(icon('copy')); b.appendChild(document.createTextNode('Ссылка'));
+    b.title = 'Скопировать ссылку-подписку';
+    b.addEventListener('click', () => copy(url, 'Подписка ' + name));
+    const reserve = ((overview && overview.master && overview.master.reserveDomains) || [])[0];
+    if (reserve) {
+      const alt = url.replace(/^(https?:\/\/)[^/:]+/, '$1' + reserve);
+      const rb = el('button', 'btn ghost sm', 'Резерв'); rb.title = 'Скопировать резервную ссылку (' + reserve + ')';
+      rb.addEventListener('click', () => copy(alt, 'Резервная подписка ' + name));
+      r.appendChild(rb);
+    }
+    r.appendChild(b);
+    box.appendChild(r);
+  }
+}
+$('userSearch').addEventListener('input', renderUsers);
+document.querySelectorAll('[data-filter]').forEach((b) => b.addEventListener('click', () => {
+  userFilter = b.dataset.filter;
+  document.querySelectorAll('[data-filter]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  renderUsers();
+}));
+
+// ---------- panels ----------
+let panelsAfterJob = false;
+async function loadPanels() {
+  const box = $('panelRows');
+  box.textContent = '';
+  const wait = el('div', 'panel'); const e = el('div', 'empty'); e.appendChild(el('span', 'spin')); e.appendChild(document.createTextNode('  Подключаюсь к серверам и проверяю вход…'));
+  wait.appendChild(e); box.appendChild(wait);
+  $('btnPanels').disabled = true;
+  let data;
+  try { data = await api('/api/panels'); }
+  catch (err) { box.textContent = ''; box.appendChild(el('div', 'notice bad', 'Не удалось получить данные: ' + err.message)); $('btnPanels').disabled = false; return; }
+  $('btnPanels').disabled = false;
+  $('btnPanels').lastChild.textContent = 'Обновить';
+  box.textContent = '';
+  if (data.busy) { box.appendChild(el('div', 'notice', 'Идёт операция — попробуйте после её завершения.')); return; }
+  const grid = el('div', 'creds');
+  for (const p of data.panels) {
+    const c = el('article', 'card');
+    const h = el('div', 'card-h');
+    const [fl, text] = splitFlag(p.title);
+    h.appendChild(el('div', 'flag', fl || '🖥'));
+    const g = el('div', 'grow'); g.appendChild(el('div', 'title', text || p.title)); g.appendChild(el('div', 'meta mono', p.name)); h.appendChild(g);
+    if (p.valid) h.appendChild(el('span', 'tag ok', 'вход проверен'));
+    c.appendChild(h);
+    const kv = el('div', 'kv');
+    const row = (k, valueNode, actions) => { kv.appendChild(el('div', 'k', k)); kv.appendChild(valueNode); const a = el('div'); a.style.cssText = 'display:flex;gap:4px'; (actions || []).forEach((x) => a.appendChild(x)); kv.appendChild(a); };
+    const iconBtn = (name, label, fn) => { const b = el('button', 'btn ghost sm icon'); b.appendChild(icon(name)); b.title = label; b.setAttribute('aria-label', label); b.addEventListener('click', fn); return b; };
+    if (p.url) {
+      const a = el('a', 'secret', p.url.replace(/^https?:\/\//, '')); a.href = p.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      row('Адрес', a, [iconBtn('ext', 'Открыть панель', () => window.open(p.url, '_blank', 'noopener')), iconBtn('copy', 'Скопировать адрес', () => copy(p.url, 'Адрес'))]);
+    }
+    if (p.username) row('Логин', el('span', 'secret', p.username), [iconBtn('copy', 'Скопировать логин', () => copy(p.username, 'Логин'))]);
+    if (p.password) {
+      const s = el('span', 'secret', '••••••••••••');
+      const eye = iconBtn('eye', 'Показать пароль', () => { const hid = s.textContent.startsWith('•'); s.textContent = hid ? p.password : '••••••••••••'; });
+      row('Пароль', s, [eye, iconBtn('copy', 'Скопировать пароль', () => copy(p.password, 'Пароль'))]);
+    }
+    c.appendChild(kv);
+    if (p.selfSigned) c.appendChild(el('div', 'hint', 'Сертификат самоподписанный: браузер предупредит — это ожидаемо.'));
+    if (p.error) c.appendChild(el('div', 'err', p.error));
+    if (p.url) {
+      const f = el('div', 'card-f');
+      const reset = el('button', 'btn ghost sm', 'Задать новый пароль'); reset.dataset.access = p.name;
+      reset.addEventListener('click', () => confirmAction('Новый пароль для ' + (text || p.name) + '?',
+        'Логин останется прежним, пароль станет случайным из 16 символов. Панель перезапустится на несколько секунд — VPN-подключения это не затронет.',
+        async () => { if (await start('/api/panel/password', { name: p.name })) panelsAfterJob = true; }));
+      f.appendChild(reset); c.appendChild(f);
+    }
+    grid.appendChild(c);
+  }
+  box.appendChild(grid);
+}
+
+// ---------- backups ----------
+let backupList = [];
+async function loadBackups() {
+  const box = $('backupRows');
+  if (!overview || !overview.master || !overview.master.prepared) { box.textContent = ''; box.appendChild(el('div', 'empty', 'Бэкапы появятся после настройки главного сервера.')); return; }
+  let data;
+  try { data = await api('/api/backups'); } catch (e) { box.textContent = ''; box.appendChild(el('div', 'empty err', e.message)); return; }
+  backupList = data.backups || [];
+  $('backupDir').textContent = data.dir || '';
+  box.textContent = '';
+  if (!backupList.length) { const e = el('div', 'empty'); e.appendChild(el('b', null, 'Бэкапов ещё нет')); e.appendChild(document.createTextNode('Нажмите «Сделать бэкап».')); box.appendChild(e); return; }
+  backupList.forEach((b, i) => {
+    const r = el('div', 'item');
+    const d = new Date(b.created * 1000);
+    const when = el('div', 'when');
+    when.appendChild(el('div', 'title', d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ', ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })));
+    when.appendChild(el('div', 'meta', i === 0 ? 'последний' : ''));
+    r.appendChild(when);
+    const g = el('div', 'grow');
+    const why = (b.reason || 'причина не записана').replace(/^./, (c) => c.toUpperCase());
+    const w = el('div', 'title', why); w.title = why; w.style.fontWeight = '550';
+    g.appendChild(w);
+    g.appendChild(el('div', 'meta', `${b.clients} клиентов · ${b.inbounds} подключений · ${b.nodes} нод · ${b.domain || b.host}`));
+    r.appendChild(g);
+    r.appendChild(el('div', 'muted small num size', Math.round(b.size / 1024) + ' КБ'));
+    box.appendChild(r);
+  });
+}
+function openMigrate() {
+  const form = $('migrateForm'); resetForm(form);
+  const sel = $('m_backup'); sel.textContent = '';
+  const fresh = el('option', null, 'Свежий со старого сервера, иначе последний'); fresh.value = ''; sel.appendChild(fresh);
+  for (const b of backupList) { const o = el('option', null, new Date(b.created * 1000).toLocaleString('ru-RU') + ' — клиентов ' + b.clients); o.value = b.file; sel.appendChild(o); }
+  $('dlgMigrate').showModal();
+}
+
+// ---------- job ----------
+const BUSY_IDS = ['btnRole', 'btnAppExport', 'btnAppImport', 'btnReserve', 'btnSwitch', 'btnApply', 'btnUpgrade', 'btnAddNode', 'btnAddUser', 'btnRefresh', 'btnMasterAccess', 'btnFixAccess', 'btnRetry', 'btnDomain', 'btnPanels', 'btnBackup', 'btnMigrate', 'btnCheck'];
+function setBusy(busy) {
+  for (const id of BUSY_IDS) if ($(id)) $(id).disabled = busy;
+  document.querySelectorAll('[data-access], [data-click]').forEach((b) => { b.disabled = busy; });
+}
+function paintLog(lines) {
+  const log = $('joblog');
+  const stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 30;
+  log.textContent = '';
+  if (!lines.length) { log.textContent = 'Подключаюсь к серверам…'; return; }
+  for (const line of lines) {
+    const cls = /^(\[ошибка\]|✗|❌)/.test(line) || /не удалось|ошибк/i.test(line) && /^!/.test(line) ? 'e'
+      : /^(⚠|!)/.test(line) ? 'w' : /^(✅|✓)|работает \(/.test(line) ? 'k' : '';
+    const s = el('span', cls, line + '\n'); log.appendChild(s);
+  }
+  if (stick) log.scrollTop = log.scrollHeight;
+}
+function renderJob(job) {
+  if (!job || !job.id) return;
+  curJob = job.id;
+  const chip = $('jobchip');
+  chip.classList.remove('hidden', 'ok', 'bad');
+  chip.textContent = '';
+  if (job.running) chip.appendChild(el('span', 'spin'));
+  else { chip.classList.add(job.ok ? 'ok' : 'bad'); chip.appendChild(icon(job.ok ? 'check' : 'x')); }
+  chip.appendChild(el('span', 'txt', job.running ? job.title + '…' : (job.ok ? 'Готово' : 'Ошибка') + ': ' + job.title));
+  chip.title = job.title;
+  const t = $('jobtitle'); t.textContent = job.title + (job.running ? '…' : job.ok ? ' — готово' : ' — ошибка');
+  const ic = $('jobicon'); ic.textContent = '';
+  if (job.running) ic.appendChild(el('span', 'spin')); else ic.appendChild(el('span', 'dot ' + (job.ok ? 'ok' : 'bad')));
+  paintLog(job.lines || []);
+  if (job.running && jobClosed !== job.id) $('drawer').classList.remove('hidden');
+  setBusy(job.running);
+}
+$('jobchip').addEventListener('click', () => { const d = $('drawer'); d.classList.toggle('hidden'); if (d.classList.contains('hidden')) jobClosed = curJob; else jobClosed = 0; });
+$('jobhide').addEventListener('click', () => { jobClosed = curJob; $('drawer').classList.add('hidden'); });
+
+async function pollJob() {
+  clearTimeout(jobTimer);
+  let job;
+  try { job = await api('/api/job'); } catch (e) { jobTimer = setTimeout(pollJob, 2000); return; }
+  renderJob(job);
+  if (job.running) { jobTimer = setTimeout(pollJob, 1000); return; }
+  if (job.id !== jobSeen) {
+    jobSeen = job.id;
+    toast(job.ok ? '«' + job.title + '» — готово' : '«' + job.title + '» завершилось с ошибкой — подробности в журнале');
+    await refresh();
+    if (panelsAfterJob) { panelsAfterJob = false; loadPanels(); }
+  }
+}
+
+// ---------- data ----------
+let liveRetry;
+async function loadLive() {
+  clearTimeout(liveRetry);
+  live = null;
+  renderServers(); renderUsers();
+  const btn = $('btnRefresh'); btn.disabled = true;
+  try { live = await api('/api/live'); }
+  catch (e) { live = { ready: true, nodes: {}, users: {}, failed: e.message }; }
+  btn.disabled = false;
+  renderServers(); renderUsers();
+  if (live.failed) { clearTimeout(liveRetry); liveRetry = setTimeout(loadLive, 5000); }
+}
+
+async function refresh() {
+  try { overview = await api('/api/overview'); }
+  catch (e) { $('masterBox').classList.remove('hidden'); $('masterline').textContent = 'Нет связи с xui-fleet: ' + e.message; return; }
+  const configured = overview.configured;
+  const running = !!(overview.job && overview.job.running);
+  $('setup').classList.toggle('hidden', configured || running);
+  $('app').classList.toggle('hidden', !configured);
+  $('masterBox').classList.toggle('hidden', !configured);
+  $('masterMenuWrap').classList.toggle('hidden', !configured);
+  if (configured) {
+    const m = overview.master;
+    $('masterline').textContent = (m.domain || m.host) + ' · 3x-ui ' + overview.version;
+    $('masterline').title = 'Главный сервер ' + m.name + ' · ' + m.host;
+    $('masterDot').className = 'dot ' + (m.prepared ? 'ok' : 'warn');
+    $('domainNow').textContent = m.domain || 'не задан';
+    const rsv = (m.reserveDomains || [])[0];
+    $('reserveNow').textContent = rsv || 'не задан';
+    $('btnReserve').disabled = !m.prepared || !m.domain;
+    $('btnSwitch').classList.toggle('hidden', !rsv);
+    if (rsv) $('btnSwitch').querySelector('span').firstChild.textContent = 'Перейти на ' + rsv;
+    $('btnDomain').disabled = !m.prepared;
+  }
+  $('notready').classList.toggle('hidden', !configured || overview.master.prepared || running);
+  renderJob(overview.job);
+  if (running) { live = { busy: true }; if (configured) { renderServers(); renderUsers(); } pollJob(); return; }
+  if (overview.job) jobSeen = overview.job.id;
+  if (configured) { if (!document.querySelector('[data-pane=backups]').classList.contains('hidden')) { loadBackups(); loadSync(); } await loadLive(); }
+}
+
+async function start(path, body, form) {
+  const err = form ? form.querySelector('.formerr') : null;
+  if (err) err.textContent = '';
+  closeMenus();
+  try { await api(path, body || {}); }
+  catch (e) { if (err) err.textContent = e.message; else toast(e.message); return false; }
+  jobClosed = 0;
+  document.querySelectorAll('dialog[open]').forEach((d) => d.close());
+  $('setup').classList.add('hidden');
+  $('notready').classList.add('hidden');
+  live = { busy: true };
+  try { overview = await api('/api/overview'); } catch (e) { /* the next poll retries */ }
+  if (overview && overview.configured) { $('app').classList.remove('hidden'); renderServers(); renderUsers(); }
+  pollJob();
+  return true;
+}
+
+function confirmAction(title, text, fn, yes, danger) {
+  $('confirmTitle').textContent = title;
+  $('confirmText').textContent = text;
+  const b = $('confirmYes'); b.textContent = yes || 'Продолжить'; b.className = 'btn ' + (danger ? 'danger' : 'primary');
+  b.onclick = () => { $('dlgConfirm').close(); fn(); };
+  $('dlgConfirm').showModal();
+}
+
+// ---------- wiring ----------
+document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => b.closest('dialog').close()));
+document.querySelectorAll('[data-click]').forEach((b) => b.addEventListener('click', () => $(b.dataset.click).click()));
+document.querySelectorAll('dialog').forEach((d) => d.addEventListener('click', (e) => { if (e.target === d) d.close(); }));
+$('s_tls').addEventListener('change', () => $('s_domain_box').classList.toggle('hidden', $('s_tls').value !== 'domain'));
+$('setupForm').addEventListener('submit', (e) => { e.preventDefault(); start('/api/setup', formData(e.target), e.target); });
+$('nodeForm').addEventListener('submit', async (e) => { e.preventDefault(); if (await start('/api/node', formData(e.target), e.target)) resetForm(e.target); });
+$('userForm').addEventListener('submit', async (e) => { e.preventDefault(); if (await start('/api/user', formData(e.target), e.target)) resetForm(e.target); });
+$('accessForm').addEventListener('submit', (e) => { e.preventDefault(); start('/api/access', formData(e.target), e.target); });
+$('btnMasterAccess').addEventListener('click', () => { closeMenus(); openAccess(overview.master, 'Доступ к главному серверу'); });
+$('btnFixAccess').addEventListener('click', () => openAccess(overview.master, 'Доступ к главному серверу'));
+$('btnRetry').addEventListener('click', () => start('/api/apply'));
+$('btnDomain').addEventListener('click', () => {
+  closeMenus();
+  $('domainIp').textContent = overview.master.host;
+  resetForm($('domainForm'));
+  $('d_domain').value = overview.master.domain || '';
+  $('dlgDomain').showModal();
+});
+$('btnRole').addEventListener('click', openRole);
+$('roleForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const d = formData(e.target);
+  if (!d.vpn && !d.cascades) { e.target.querySelector('.formerr').textContent = 'Выберите хотя бы одну роль'; return; }
+  start('/api/master/role', d, e.target);
+});
+document.querySelectorAll('#setupRoles input').forEach((r) => r.addEventListener('change', () => {
+  $('s_label_box').classList.toggle('hidden', document.querySelector('#setupRoles input:checked').value === 'gateway');
+}));
+$('btnReserve').addEventListener('click', () => {
+  closeMenus();
+  const form = $('reserveForm'); resetForm(form);
+  const cur = (overview.master.reserveDomains || [])[0] || '';
+  $('r_domain').value = cur; $('reserveIp').textContent = overview.master.host;
+  $('reserveRemove').classList.toggle('hidden', !cur);
+  $('dlgReserve').showModal();
+});
+$('reserveForm').addEventListener('submit', (e) => { e.preventDefault(); start('/api/domain/reserve', formData(e.target), e.target); });
+$('reserveRemove').addEventListener('click', () => start('/api/domain/reserve', { domain: '' }, $('reserveForm')));
+$('btnSwitch').addEventListener('click', () => {
+  closeMenus();
+  const rsv = overview.master.reserveDomains[0], cur = overview.master.domain;
+  confirmAction('Перейти на ' + rsv + '?',
+    'Подписка и подключения «через RU» переедут на ' + rsv + ', ' + cur + ' станет резервным. Пользователям нужно открыть резервную ссылку (или обновить подписку, если ' + cur + ' ещё доступен). Подключения напрямую к нодам это не затрагивает.',
+    () => start('/api/domain', { domain: rsv }), 'Перейти');
+});
+$('domainForm').addEventListener('submit', (e) => { e.preventDefault(); start('/api/domain', formData(e.target), e.target); });
+$('btnAddNode').addEventListener('click', () => {
+  resetForm($('nodeForm')); fillFlags($('n_flag')); $('n_flag').value = 'auto';
+  const box = $('nodeTemplate'); box.textContent = '';
+  box.appendChild(el('b', null, 'Сервер получит тот же набор, что и остальные'));
+  const chips = el('div', 'chips');
+  for (const t of (overview.template || [])) chips.appendChild(el('span', 'chip', t));
+  for (const t of (overview.templateExtras || [])) chips.appendChild(el('span', 'chip x', t));
+  box.appendChild(chips);
+  $('dlgNode').showModal();
+});
+$('labelForm').addEventListener('submit', (e) => { e.preventDefault(); start('/api/node/label', formData(e.target), e.target); });
+$('btnPanels').addEventListener('click', loadPanels);
+$('btnBackup').addEventListener('click', () => start('/api/backup'));
+$('btnBackupOpen').addEventListener('click', () => api('/api/backups/open', {}).catch((e) => toast(e.message)));
+$('btnCheck').addEventListener('click', () => start('/api/check'));
+$('btnMigrate').addEventListener('click', openMigrate);
+$('migrateForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const data = formData(e.target);
+  confirmAction('Перенести главный сервер на ' + data.host + '?',
+    'Новый сервер станет главным: на нём будут клиенты, подписки и каскады из бэкапа. Старый останется как есть. Затем смените A-запись домена.',
+    () => start('/api/migrate', data, e.target), 'Перенести', true);
+});
+$('btnAppExport').addEventListener('click', () => { resetForm($('appExportForm')); $('dlgAppExport').showModal(); });
+$('appExportForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target, err = f.querySelector('.formerr'), pw = $('x_pass').value;
+  if (pw !== $('x_pass2').value) { err.textContent = 'Пароли не совпадают'; return; }
+  const btn = f.querySelector('[type=submit]'); btn.disabled = true; err.textContent = '';
+  try {
+    const res = await fetch('/api/app/export', { method: 'POST', headers: { 'X-Fleet-Token': TOKEN, 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) });
+    if ((res.headers.get('Content-Type') || '').includes('json')) { const d = await res.json(); throw new Error(d.error || 'ошибка'); }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'xui-fleet-' + new Date().toISOString().slice(0, 10) + '.xfleet';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    $('dlgAppExport').close();
+    toast('Копия сохранена в «Загрузки» (' + Math.round(blob.size / 1024) + ' КБ)');
+  } catch (ex) { err.textContent = ex.message; }
+  btn.disabled = false;
+});
+let importData = null, importReady = false;
+$('btnAppImport').addEventListener('click', () => {
+  resetForm($('appImportForm')); importData = null; importReady = false;
+  $('importInfo').classList.add('hidden'); $('importGo').textContent = 'Проверить'; $('importGo').className = 'btn primary';
+  $('dlgAppImport').showModal();
+});
+$('i_file').addEventListener('change', () => { importReady = false; $('importGo').textContent = 'Проверить'; $('importInfo').classList.add('hidden'); });
+$('appImportForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target, err = f.querySelector('.formerr'), btn = $('importGo');
+  err.textContent = ''; btn.disabled = true;
+  try {
+    if (!importData || !importReady) {
+      const file = $('i_file').files[0]; if (!file) throw new Error('выберите файл');
+      const buf = new Uint8Array(await file.arrayBuffer());
+      let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+      importData = btoa(bin);
+      const r = await api('/api/app/inspect', { data: importData, password: $('i_pass').value });
+      const i = r.info, box = $('importInfo'); box.textContent = '';
+      box.appendChild(el('b', null, 'Копия от ' + new Date((i.created || 0) * 1000).toLocaleString('ru-RU') + (i.from ? ' · ' + i.from : '')));
+      box.appendChild(el('div', null, 'Главный сервер ' + i.master + ' · серверы: ' + (i.nodes.join(', ') || '—') + ' · бэкапов мастера: ' + i.masterBackups));
+      if (r.configured) box.appendChild(el('div', 'err', 'Текущие настройки этого компьютера будут заменены (их копия останется рядом с файлом fleet.yaml).'));
+      box.classList.remove('hidden');
+      importReady = true;
+      btn.textContent = r.configured ? 'Заменить и восстановить' : 'Восстановить';
+      btn.className = 'btn ' + (r.configured ? 'danger' : 'primary');
+      f.dataset.replace = r.configured ? '1' : '';
+    } else {
+      const r = await api('/api/app/import', { data: importData, password: $('i_pass').value, replace: !!f.dataset.replace });
+      $('dlgAppImport').close();
+      toast('Приложение восстановлено' + (r.backups ? ', бэкапов мастера: ' + r.backups : ''));
+      await refresh();
+    }
+  } catch (ex) { err.textContent = ex.message; importReady = false; btn.textContent = 'Проверить'; btn.className = 'btn primary'; }
+  btn.disabled = false;
+});
+async function loadSync() {
+  let d; try { d = await api('/api/sync'); } catch (e) { $('syncText').textContent = e.message; return; }
+  window.syncInfo = d;
+  const btns = $('syncBtns'); btns.textContent = '';
+  $('syncErr').textContent = d.error ? 'Последняя ошибка: ' + d.error : '';
+  if (!d.enabled) {
+    $('syncText').textContent = 'Выключена. Включите — и изменения с этого компьютера, а также обновления приложения, сами появятся на остальных.';
+    const b = el('button', 'btn primary', 'Включить…'); b.id = 'btnSyncOn'; b.addEventListener('click', openSync); btns.appendChild(b);
+  } else {
+    const when = d.syncedAt ? new Date(d.syncedAt * 1000).toLocaleString('ru-RU') : 'ещё не было';
+    $('syncText').textContent = 'Данные хранятся на ' + d.host + ' · версия данных ' + d.rev + ' · последняя синхронизация: ' + when + (d.pending ? ' · есть неотправленные изменения' : '')
+      + ' · приложение ' + d.app + (d.serverApp && d.serverApp !== d.app ? ' (на сервере ' + d.serverApp + ')' : '');
+    const now = el('button', 'btn', 'Синхронизировать сейчас'); now.dataset.access = 'sync'; now.addEventListener('click', () => start('/api/sync/now'));
+    const off = el('button', 'btn ghost danger', 'Отключить'); off.dataset.access = 'sync';
+    off.addEventListener('click', () => confirmAction('Отключить синхронизацию на этом компьютере?', 'Данные на сервере и на других компьютерах останутся. Этот компьютер перестанет получать и отправлять изменения.',
+      async () => { await api('/api/sync/disable', {}); loadSync(); }, 'Отключить', true));
+    btns.appendChild(now); btns.appendChild(off);
+  }
+}
+function openSync() {
+  const form = $('syncForm'); resetForm(form);
+  const sel = $('sy_server'); sel.textContent = '';
+  for (const s of (window.syncInfo && window.syncInfo.servers) || []) { const o = el('option', null, s.title + ' — ' + s.host); o.value = s.name; sel.appendChild(o); }
+  $('dlgSync').showModal();
+}
+$('syncForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  if ($('sy_pass').value !== $('sy_pass2').value) { e.target.querySelector('.formerr').textContent = 'Пароли не совпадают'; return; }
+  start('/api/sync/enable', { server: $('sy_server').value, password: $('sy_pass').value }, e.target);
+});
+$('btnJoin').addEventListener('click', () => { resetForm($('joinForm')); $('dlgJoin').showModal(); });
+$('joinForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target, err = f.querySelector('.formerr'), btn = f.querySelector('[type=submit]');
+  err.textContent = ''; btn.disabled = true; btn.textContent = 'Подключаюсь…';
+  try { const r = await api('/api/sync/join', formData(f)); $('dlgJoin').close(); toast('Компьютер подключён: ' + r.message); await refresh(); }
+  catch (ex) { err.textContent = ex.message; }
+  btn.disabled = false; btn.textContent = 'Подключить';
+});
+$('btnAddUser').addEventListener('click', () => { resetForm($('userForm')); $('dlgUser').showModal(); });
+$('btnRefresh').addEventListener('click', loadLive);
+$('btnApply').addEventListener('click', () => start('/api/apply'));
+$('btnUpgrade').addEventListener('click', () => { closeMenus(); confirmAction('Обновить 3x-ui на всех серверах?',
+  'Сначала обновятся зарубежные серверы, затем главный. Подключения кратко прервутся.', () => start('/api/upgrade'), 'Обновить'); });
+
+showTab(['servers', 'users', 'panels', 'backups', 'help'].includes(store.get('xf-tab')) ? store.get('xf-tab') : 'servers');
+refresh();
+
+// The service restarts itself after an update; the page notices and reloads, so it never needs closing.
+let codeVersion = null, dataMark = null;
+async function watchVersion() {
+  try {
+    const r = await fetch('/api/version', { headers: { 'X-Fleet-Token': TOKEN }, cache: 'no-store' });
+    const info = await r.json(), v = info.version;
+    $('offline').classList.add('hidden');
+    if (dataMark !== null && info.data !== dataMark && !(overview && overview.job && overview.job.running)
+        && !document.querySelector('dialog[open]')) { toast('Получены изменения с другого компьютера'); refresh(); }
+    dataMark = info.data;
+    if (codeVersion && v !== codeVersion && !(overview && overview.job && overview.job.running)) {
+      try { sessionStorage.setItem('xf-updated', '1'); } catch (e) {}
+      location.reload(); return;
+    }
+    codeVersion = codeVersion || v;
+  } catch (e) { $('offline').classList.remove('hidden'); }
+  setTimeout(watchVersion, 4000);
+}
+watchVersion();
+
+// Right after a self-reload: say what arrived, so an update is visible.
+(async () => {
+  let updated = false;
+  try { updated = sessionStorage.getItem('xf-updated') === '1'; sessionStorage.removeItem('xf-updated'); } catch (e) {}
+  if (!updated) return;
+  try {
+    const info = await (await fetch('/api/version', { headers: { 'X-Fleet-Token': TOKEN }, cache: 'no-store' })).json();
+    toast('Интерфейс обновился. Новое: ' + (info.whatsNew || 'улучшения'));
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').classList.add('hidden'), 8000);
+  } catch (e) {}
+})();
+</script>
+</body>
+</html>

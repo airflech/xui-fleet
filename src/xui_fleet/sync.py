@@ -1,0 +1,275 @@
+"""Keep the application's data (fleet.yaml + state) the same on every computer, through one server.
+
+The data lives on a server the user picks (the master by default) in /root/.xui-fleet-sync, encrypted with a
+sync password (the same format as a .xfleet copy) — it holds SSH passwords of every server, so a server
+that gets compromised must not leak the others. Every version is numbered:
+
+    meta.json            {"rev": 12, "hash": "...", "updated": 1794..., "os": "Windows"}  (plain, no secrets)
+    current.xfleet       the latest version
+    history/rev-N.xfleet the last 10 versions, so nothing is lost when two computers change things at once
+
+A change here is pushed a few seconds later; a newer version on the server is pulled on start and every
+minute. When both sides changed, the last change wins and the other one stays in the history.
+"""
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import os
+import platform
+import time
+from pathlib import Path
+from typing import Any, Callable, Dict, Optional
+
+from . import __version__
+from . import appbackup as ab
+from . import update as upd
+from .config import SSHConfig
+from .ssh import SSH
+from .state import State
+
+REMOTE = os.environ.get("XUI_FLEET_SYNC_REMOTE", "/root/.xui-fleet-sync")
+KEEP = 10
+MASTER_BACKUPS = 3  # sent along when the sync server is not the master itself
+
+
+class SyncError(RuntimeError):
+    pass
+
+
+def _meta_path() -> Path:
+    from .service import APP_DIR
+    return APP_DIR / "sync.json"
+
+
+def content_hash(config_path: Path) -> str:
+    """What is synced, as one fingerprint: the config and the portable part of the state."""
+    h = hashlib.sha256()
+    if config_path.exists():
+        h.update(config_path.read_bytes())
+    state = config_path.parent / ".xui-fleet" / "state.json"
+    if state.exists():
+        h.update(json.dumps(ab.portable_state(state), sort_keys=True, ensure_ascii=False).encode())
+    return h.hexdigest()[:16]
+
+
+class Sync:
+    def __init__(self, config_path: Path, log: Callable[[str], None] = lambda _m: None):
+        self.config_path, self.log = config_path, log
+        self.path = _meta_path()
+        self.meta: Dict[str, Any] = {}
+        if self.path.exists():
+            try:
+                self.meta = json.loads(self.path.read_text(encoding="utf-8"))
+            except ValueError:
+                self.meta = {}
+
+    # ---- local settings -------------------------------------------------
+    @property
+    def enabled(self) -> bool:
+        return bool(self.meta.get("server") and self.meta.get("password"))
+
+    def _save(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(str(self.path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(self.meta, fh, indent=2, ensure_ascii=False)
+
+    def status(self) -> Dict[str, Any]:
+        s = self.meta.get("server") or {}
+        return {"enabled": self.enabled, "server": s.get("name", ""), "host": s.get("host", ""),
+                "rev": self.meta.get("rev", 0), "syncedAt": self.meta.get("synced_at"),
+                "app": __version__, "serverApp": self.meta.get("server_app", ""),
+                "error": self.meta.get("error", ""), "pending": self.enabled and content_hash(self.config_path) != self.meta.get("hash")}
+
+    def configure(self, server: Dict[str, Any], password: str) -> None:
+        ab._check_password(password)
+        self.meta = {"server": server, "password": password, "rev": 0, "hash": "", "device": os.urandom(6).hex()}
+        self._save()
+
+    def disable(self) -> None:
+        self.meta = {}
+        self.path.unlink(missing_ok=True)
+
+    # ---- server ---------------------------------------------------------
+    def _ssh(self) -> SSH:
+        s = self.meta["server"]
+        password = None
+        if self.config_path.exists():  # the server is one of ours: its current saved access wins
+            st = State(self.config_path.parent / ".xui-fleet" / "state.json")
+            password = st.get(s.get("name", ""), "ssh_password")
+        password = password or s.get("ssh_password")
+        cfg = SSHConfig(user=s.get("user") or "root", port=s.get("port") or 22, key=s.get("key") or None, password=password)
+        keys = State(self.path.with_name("sync-hostkeys.json"))
+        try:
+            return SSH(s.get("name") or "sync", s["host"], cfg, keys).connect()
+        except Exception as exc:
+            raise SyncError(f"сервер синхронизации {s['host']} недоступен: {exc}") from exc
+
+    @staticmethod
+    def _remote_meta(ssh: SSH) -> Dict[str, Any]:
+        out = ssh.run(f"cat {REMOTE}/meta.json 2>/dev/null || echo '{{}}'", check=False).out.strip() or "{}"
+        try:
+            return json.loads(out)
+        except ValueError:
+            return {}
+
+    def _with_backups(self) -> Optional[int]:
+        """Master backups travel only when the data is kept somewhere else than the master."""
+        try:
+            from .config import load_config
+            master = load_config(self.config_path).master
+            return 0 if (self.meta["server"].get("host") == master.host) else MASTER_BACKUPS
+        except Exception:
+            return 0
+
+    # ---- operations -----------------------------------------------------
+    def push(self, force: bool = False) -> str:
+        """Send this computer's data if it changed. Returns what happened (for the log)."""
+        if not self.enabled:
+            return ""
+        if not self.config_path.exists():
+            return ""
+        h = content_hash(self.config_path)
+        if h == self.meta.get("hash") and not force:
+            return ""
+        from .service import backup_dir
+        blob = ab.export_bytes(self.config_path, backup_dir(), self.meta["password"], self._with_backups())
+        ssh = self._ssh()
+        try:
+            remote = self._remote_meta(ssh)
+            if upd.newer(remote.get("app", "0"), __version__):
+                raise SyncError(f"данные на сервере записаны версией {remote['app']}, а здесь {__version__} — "
+                                f"сначала обновится приложение, потом уйдут изменения")
+            note = ""
+            if remote.get("rev", 0) > self.meta.get("rev", 0) and remote.get("hash") != self.meta.get("hash"):
+                note = (f" (на сервере была версия {remote['rev']} с другого компьютера — она сохранена в истории)")
+            rev = max(remote.get("rev", 0), self.meta.get("rev", 0)) + 1
+            meta = {"rev": rev, "hash": h, "updated": int(time.time()), "os": platform.system(), "app": __version__}
+            script = (
+                f"set -e\nmkdir -p {REMOTE}/history && chmod 700 {REMOTE}\n"
+                f"base64 -d > {REMOTE}/history/rev-{rev}.xfleet <<'XFSYNC'\n{base64.b64encode(blob).decode()}\nXFSYNC\n"
+                f"cp {REMOTE}/history/rev-{rev}.xfleet {REMOTE}/current.xfleet.tmp && mv {REMOTE}/current.xfleet.tmp {REMOTE}/current.xfleet\n"
+                f"cat > {REMOTE}/meta.json.tmp <<'XFSYNC'\n{json.dumps(meta)}\nXFSYNC\nmv {REMOTE}/meta.json.tmp {REMOTE}/meta.json\n"
+                f"chmod 600 {REMOTE}/current.xfleet {REMOTE}/meta.json {REMOTE}/history/*\n"
+                f"ls -1t {REMOTE}/history/rev-*.xfleet | tail -n +{KEEP + 1} | xargs -r rm -f\n"
+            )
+            ssh.run(script, timeout=300)
+        finally:
+            ssh.close()
+        self.meta.update(rev=rev, hash=h, synced_at=int(time.time()), error="")
+        self._save()
+        return f"синхронизация: отправлена версия {rev}{note}"
+
+    def pull(self) -> str:
+        """Take a newer version from the server, if there is one. Returns what happened."""
+        if not self.enabled:
+            return ""
+        if self.meta.get("hash") and self.config_path.exists() and content_hash(self.config_path) != self.meta["hash"]:
+            return self.push()  # this computer has the newest change: send it (the server's one goes to history)
+        ssh = self._ssh()
+        try:
+            remote = self._remote_meta(ssh)
+            if not remote.get("rev"):
+                return ""
+            if upd.newer(remote.get("app", "0"), __version__):
+                # Written by a newer version: an older one might not understand it. Update first.
+                self.meta["error"] = f"данные записаны версией {remote['app']} — ждут обновления приложения (сейчас {__version__})"
+                self._save()
+                return ""
+            local_hash = content_hash(self.config_path)
+            if remote["rev"] <= self.meta.get("rev", 0) or remote.get("hash") == local_hash:
+                self.meta.update(rev=max(remote["rev"], self.meta.get("rev", 0)), synced_at=int(time.time()), error="")
+                if remote.get("hash") == local_hash:
+                    self.meta["hash"] = local_hash
+                self._save()
+                return ""
+            out = ssh.run(f"base64 < {REMOTE}/current.xfleet | tr -d '\\n'",
+                          check=False, timeout=300).out.strip()
+        finally:
+            ssh.close()
+        if not out:
+            raise SyncError("на сервере нет данных синхронизации")
+        from .service import backup_dir
+        try:
+            ab.import_bytes(base64.b64decode(out), self.meta["password"], self.config_path, backup_dir(),
+                            replace=True, keep_suffix="before-sync")
+        except ab.AppBackupError as exc:
+            raise SyncError(f"не удалось открыть данные с сервера: {exc}") from exc
+        self.meta.update(rev=remote["rev"], hash=content_hash(self.config_path), synced_at=int(time.time()), error="",
+                         pulled_at=time.time())
+        self._save()
+        return f"синхронизация: получена версия {remote['rev']} ({remote.get('os') or 'другой компьютер'})"
+
+    def join(self, server: Dict[str, Any], password: str) -> str:
+        """Connect this computer to an existing sync: take the data from the server."""
+        self.configure(server, password)
+        try:
+            ssh = self._ssh()
+            try:
+                remote = self._remote_meta(ssh)
+            finally:
+                ssh.close()
+            if not remote.get("rev"):
+                raise SyncError("на этом сервере ещё нет данных синхронизации — включите её на компьютере, где всё настроено")
+            if self.config_path.exists():
+                self.meta["rev"] = 0  # take the server's version even if this computer had its own
+            msg = self.pull()
+        except Exception:
+            self.disable()
+            raise
+        return msg or "данные уже совпадают"
+
+    def update_app(self) -> str:
+        """Install a newer program from the server, or publish this one if it is the newest. Returns a note."""
+        root = upd.project_root()
+        if not self.enabled or root is None:
+            return ""
+        ssh = self._ssh()
+        try:
+            out = ssh.run(f"cat {REMOTE}/app/meta.json 2>/dev/null || echo '{{}}'", check=False).out.strip() or "{}"
+            try:
+                info = json.loads(out)
+            except ValueError:
+                info = {}
+            remote = info.get("version", "")
+            self.meta["server_app"] = remote
+            if remote and upd.newer(remote, __version__):
+                data = ssh.run(f"base64 < {REMOTE}/app/current.xfapp | tr -d '\\n'", check=False, timeout=300).out.strip()
+                blob = base64.b64decode(data)
+                if upd.digest(blob) != info.get("sha"):
+                    raise SyncError("обновление на сервере повреждено (контрольная сумма не совпала)")
+                ssh.close()
+                version = upd.install(blob, self.meta["password"], root)
+                self.meta.update(error="", updated_app_at=time.time())
+                self._save()
+                return f"приложение обновлено: {__version__} → {version}"
+            if not remote or upd.newer(__version__, remote):
+                blob = upd.package(root, self.meta["password"])
+                meta = {"version": __version__, "sha": upd.digest(blob), "size": len(blob), "published": int(time.time()),
+                        "os": platform.system()}
+                ssh.run(f"set -e\nmkdir -p {REMOTE}/app && chmod 700 {REMOTE}/app\n"
+                        f"base64 -d > {REMOTE}/app/current.xfapp.tmp <<'XFSYNC'\n{base64.b64encode(blob).decode()}\nXFSYNC\n"
+                        f"mv {REMOTE}/app/current.xfapp.tmp {REMOTE}/app/current.xfapp\n"
+                        f"cat > {REMOTE}/app/meta.json <<'XFSYNC'\n{json.dumps(meta)}\nXFSYNC\n"
+                        f"chmod 600 {REMOTE}/app/current.xfapp {REMOTE}/app/meta.json\n", timeout=300)
+                self.meta["server_app"] = __version__
+                self._save()
+                return f"версия приложения {__version__} выложена для остальных компьютеров"
+            self._save()
+            return ""
+        finally:
+            ssh.close()
+
+    def history(self) -> list:
+        ssh = self._ssh()
+        try:
+            out = ssh.run(f"ls -1t {REMOTE}/history 2>/dev/null | head -{KEEP}", check=False).out.split()
+        finally:
+            ssh.close()
+        return out
+
+    def note_error(self, exc: Exception) -> None:
+        self.meta["error"] = str(exc)[:300]
+        self._save()

@@ -23,7 +23,7 @@ from . import appbackup as ab
 
 MAGIC = b"XFAPP01"
 # Public GitHub repository with the releases ("owner/name"); empty = updates only through the sync server.
-REPO = os.environ.get("XUI_FLEET_UPDATE_REPO", "")
+REPO = os.environ.get("XUI_FLEET_UPDATE_REPO", "airflech/xui-fleet")
 # What makes up the program (relative to the project folder). Never the user's data.
 FILES = ["launcher.py", "pyproject.toml", "README.md", "fleet.example.yaml",
          "Запустить xui-fleet.bat", "Запустить xui-fleet.command", "Запустить xui-fleet.sh"]

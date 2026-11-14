@@ -73,7 +73,10 @@ def settings() -> dict:
     except (OSError, ValueError):
         data = {}
     return {"channel": data.get("channel") if data.get("channel") in ("stable", "prerelease") else "stable",
-            "pinned": data.get("pinned") or ""}
+            "pinned": data.get("pinned") or "",
+            # Off: a new version is offered (a button), not installed by itself.
+            "auto": bool(data.get("auto", False)),
+            "available": data.get("available") or ""}
 
 
 def save_settings(**changes) -> dict:
@@ -85,12 +88,21 @@ def save_settings(**changes) -> dict:
     return data
 
 
+def channel_ok(version: str) -> bool:
+    return settings()["channel"] == "prerelease" or not is_prerelease(version)
+
+
 def allowed(version: str) -> bool:
-    """May this computer move to `version` by itself? Not while pinned; prereleases only on that channel."""
+    """May this computer move to `version` by itself? Only with automatic updates on, not while pinned,
+    prereleases only on that channel."""
     st = settings()
-    if st["pinned"]:
-        return False
-    return st["channel"] == "prerelease" or not is_prerelease(version)
+    return st["auto"] and not st["pinned"] and channel_ok(version)
+
+
+def offer(version: str) -> None:
+    """Remember a newer version to show the user (an "Update" button)."""
+    if settings()["available"] != version:
+        save_settings(available=version)
 
 
 def project_root() -> Optional[Path]:
@@ -261,7 +273,9 @@ def install_version(version: str, root: Optional[Path] = None) -> str:
         raise UpdateError(f"версии {version} нет среди релизов")
     installed = install_from_github(root, info)
     newest = latest(releases(), settings()["channel"] == "prerelease")
-    save_settings(pinned=installed if newest and newer(newest["version"], installed) else "")
+    behind = bool(newest and newer(newest["version"], installed))
+    save_settings(pinned=installed if behind and newer(__version__, installed) else "",
+                  available=newest["version"] if behind else "")
     return installed
 
 
@@ -285,10 +299,14 @@ def install_from_github(root: Path, info: dict) -> str:
 def check_github(root: Optional[Path] = None) -> str:
     """Install a newer release from GitHub, if there is one. Returns a note (empty when nothing to do)."""
     root = root or project_root()
-    if root is None or not REPO or settings()["pinned"]:
+    if root is None or not REPO:
         return ""
     info = github_latest()
-    if not info or not newer(info["version"], __version__) or not allowed(info["version"]):
+    if not info or not newer(info["version"], __version__) or not channel_ok(info["version"]):
+        offer("")
+        return ""
+    if not allowed(info["version"]):
+        offer(info["version"])
         return ""
     version = install_from_github(root, info)
     return f"приложение обновлено с GitHub: {__version__} → {version}"

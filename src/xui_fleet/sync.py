@@ -54,6 +54,50 @@ def content_hash(config_path: Path) -> str:
     return h.hexdigest()[:16]
 
 
+_MISSING = object()
+
+
+def _named(items: Any) -> bool:
+    return isinstance(items, list) and all(isinstance(i, dict) and "name" in i for i in items)
+
+
+def merge3(base: Any, local: Any, remote: Any, path: str = "", conflicts: Optional[list] = None) -> Any:
+    """Three-way merge of the app data, like git: each side's change against the version both last saw.
+
+    Servers and users are matched by name, settings field by field. What only one side changed wins; something
+    removed on one side and left untouched on the other is removed; a field changed on both sides keeps this
+    computer's value and is reported in `conflicts`."""
+    conflicts = conflicts if conflicts is not None else []
+    if local == remote:
+        return local
+    if local == base:
+        return remote
+    if remote == base:
+        return local
+    if _named(local) and _named(remote) and (base is _MISSING or _named(base)):
+        to_map = lambda items: {i["name"]: i for i in items}
+        merged = merge3(to_map(base) if base is not _MISSING else _MISSING, to_map(local), to_map(remote), path, conflicts)
+        return list(merged.values())
+    if isinstance(local, dict) and isinstance(remote, dict):
+        b = base if isinstance(base, dict) else {}
+        out = {}
+        for k in list(remote) + [k for k in local if k not in remote]:
+            here = f"{path}.{k}" if path else str(k)
+            if k in local and k in remote:
+                out[k] = merge3(b.get(k, _MISSING), local[k], remote[k], here, conflicts)
+            elif k in local:  # gone on the other side
+                if k in b and local[k] == b[k]:
+                    continue  # removed there, untouched here: remove
+                out[k] = local[k]  # added here (or changed here while removed there: keep)
+            else:
+                if k in b and remote[k] == b[k]:
+                    continue  # removed here, untouched there
+                out[k] = remote[k]
+        return out
+    conflicts.append(path or "данные")
+    return local
+
+
 class Sync:
     def __init__(self, config_path: Path, log: Callable[[str], None] = lambda _m: None):
         self.config_path, self.log = config_path, log
@@ -124,6 +168,56 @@ class Sync:
         except Exception:
             return 0
 
+    # ---- merging --------------------------------------------------------
+    def _state_path(self) -> Path:
+        return self.config_path.parent / ".xui-fleet" / "state.json"
+
+    def _snapshot(self) -> Dict[str, Any]:
+        import yaml
+        cfg = yaml.safe_load(self.config_path.read_text(encoding="utf-8")) if self.config_path.exists() else {}
+        st = ab.portable_state(self._state_path()) if self._state_path().exists() else {}
+        return {"config": cfg or {}, "state": st or {}}
+
+    def _base_path(self) -> Path:
+        return self.path.with_name("sync-base.json")
+
+    def _save_base(self) -> None:
+        fd = os.open(str(self._base_path()), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(self._snapshot(), fh, ensure_ascii=False)
+
+    def _load_base(self) -> Any:
+        try:
+            return json.loads(self._base_path().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return _MISSING
+
+    def _merge_with(self, blob: bytes) -> str:
+        """Combine the server's version (newer than the one we last saw) with this computer's changes."""
+        import yaml
+        from .config import FleetConfig
+        z = ab.read(blob, self.meta["password"])
+        remote = {"config": yaml.safe_load(z.read("fleet.yaml")) or {},
+                  "state": json.loads(z.read("state.json")) if "state.json" in z.namelist() else {}}
+        base, local = self._load_base(), self._snapshot()
+        conflicts: list = []
+        merged = merge3(base, local, remote, "", conflicts)
+        FleetConfig.model_validate(merged["config"])  # never write something the app cannot load
+        raw_state = json.loads(self._state_path().read_text(encoding="utf-8")) if self._state_path().exists() else {}
+        for name, server in (merged["state"].get("servers") or {}).items():  # this computer's own network facts
+            for k in ab.MACHINE_KEYS:
+                if k in ((raw_state.get("servers") or {}).get(name) or {}):
+                    server[k] = raw_state["servers"][name][k]
+        self.config_path.write_text(yaml.safe_dump(merged["config"], allow_unicode=True, sort_keys=False), encoding="utf-8")
+        self._state_path().parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(str(self._state_path()), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(merged["state"], fh, indent=2, ensure_ascii=False)
+        self.meta["pulled_at"] = time.time()
+        names = sorted({c.split(".")[0] if not c.startswith("config.nodes") else c for c in conflicts})
+        return (" — объединено с изменениями другого компьютера" +
+                (f"; в обеих версиях менялось одно и то же ({', '.join(names[:5])}) — оставлено как здесь" if conflicts else ""))
+
     # ---- operations -----------------------------------------------------
     def push(self, force: bool = False) -> str:
         """Send this computer's data if it changed. Returns what happened (for the log)."""
@@ -135,16 +229,20 @@ class Sync:
         if h == self.meta.get("hash") and not force:
             return ""
         from .service import backup_dir
-        blob = ab.export_bytes(self.config_path, backup_dir(), self.meta["password"], self._with_backups())
         ssh = self._ssh()
         try:
             remote = self._remote_meta(ssh)
             if upd.branch(remote.get("app", "0")) > upd.branch(__version__):
+                # This program may not understand that data: keep the change here until it is updated.
                 raise SyncError(f"данные на сервере записаны версией {remote['app']}, а здесь {__version__} — "
-                                f"сначала обновите приложение, потом уйдут изменения")
+                                f"изменения этого компьютера сохранены и уйдут после обновления приложения")
             note = ""
-            if remote.get("rev", 0) > self.meta.get("rev", 0) and remote.get("hash") != self.meta.get("hash"):
-                note = (f" (на сервере была версия {remote['rev']} с другого компьютера — она сохранена в истории)")
+            if remote.get("rev", 0) > self.meta.get("rev", 0) and remote.get("hash") not in (self.meta.get("hash"), h):
+                # Somebody changed things since we last synced: merge, never overwrite.
+                data = ssh.run(f"base64 < {REMOTE}/current.xfleet | tr -d '\\n'", check=False, timeout=300).out.strip()
+                note = self._merge_with(base64.b64decode(data))
+                h = content_hash(self.config_path)
+            blob = ab.export_bytes(self.config_path, backup_dir(), self.meta["password"], self._with_backups())
             rev = max(remote.get("rev", 0), self.meta.get("rev", 0)) + 1
             meta = {"rev": rev, "hash": h, "updated": int(time.time()), "os": platform.system(), "app": __version__}
             script = (
@@ -160,6 +258,7 @@ class Sync:
             ssh.close()
         self.meta.update(rev=rev, hash=h, synced_at=int(time.time()), error="")
         self._save()
+        self._save_base()
         return f"синхронизация: отправлена версия {rev}{note}"
 
     def pull(self) -> str:
@@ -167,7 +266,7 @@ class Sync:
         if not self.enabled:
             return ""
         if self.meta.get("hash") and self.config_path.exists() and content_hash(self.config_path) != self.meta["hash"]:
-            return self.push()  # this computer has the newest change: send it (the server's one goes to history)
+            return self.push()  # this computer has changes too: push merges them with the server's version
         ssh = self._ssh()
         try:
             remote = self._remote_meta(ssh)
@@ -183,6 +282,8 @@ class Sync:
                 self.meta.update(rev=max(remote["rev"], self.meta.get("rev", 0)), synced_at=int(time.time()), error="")
                 if remote.get("hash") == local_hash:
                     self.meta["hash"] = local_hash
+                    if not self._base_path().exists():
+                        self._save_base()
                 self._save()
                 return ""
             out = ssh.run(f"base64 < {REMOTE}/current.xfleet | tr -d '\\n'",
@@ -200,6 +301,7 @@ class Sync:
         self.meta.update(rev=remote["rev"], hash=content_hash(self.config_path), synced_at=int(time.time()), error="",
                          pulled_at=time.time())
         self._save()
+        self._save_base()
         return f"синхронизация: получена версия {remote['rev']} ({remote.get('os') or 'другой компьютер'})"
 
     def join(self, server: Dict[str, Any], password: str) -> str:
@@ -244,6 +346,9 @@ class Sync:
                           and (slot == "pre" or not upd.is_prerelease(m["version"]))]
             best = max(candidates, key=lambda c: upd.parse(c[1]["version"]), default=None)
             self.meta["server_app"] = best[1]["version"] if best else ""
+            if best and upd.newer(best[1]["version"], __version__) and not upd.allowed(best[1]["version"]):
+                if upd.channel_ok(best[1]["version"]) and not upd.newer(upd.settings()["available"] or "0", best[1]["version"]):
+                    upd.offer(best[1]["version"])  # offered, installed only when the user agrees
             if best and upd.newer(best[1]["version"], __version__) and upd.allowed(best[1]["version"]):
                 slot, info = best
                 data = ssh.run(f"base64 < {REMOTE}/{self.SLOTS[slot]}/current.xfapp | tr -d '\\n'", check=False, timeout=300).out.strip()

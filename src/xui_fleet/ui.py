@@ -30,7 +30,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "окно «Версии» всегда показывает свежий список релизов"
+WHATS_NEW = "новая версия предлагается кнопкой в шапке; изменения с разных компьютеров теперь объединяются, а не перезаписываются"
 
 
 class Job:
@@ -96,6 +96,16 @@ class App:
         self.token = service.token()  # stable, so a bookmark keeps working across restarts
 
     # ---- helpers --------------------------------------------------------
+    def update_note(self) -> Dict[str, Any]:
+        """A newer version to offer, and whether sync waits for it."""
+        from . import __version__
+        from . import update as upd
+        from .sync import Sync
+        st = upd.settings()
+        avail = st["available"] if st["available"] and upd.newer(st["available"], __version__) else ""
+        err = Sync(self.path).meta.get("error", "") if self.path.exists() else ""
+        return {"available": avail, "autoUpdate": st["auto"], "syncWaits": "обновлени" in err and "версией" in err}
+
     def data_mark(self) -> str:
         """Changes when a newer version of the data arrived from another computer."""
         from .sync import Sync
@@ -328,6 +338,7 @@ def make_handler(app: App):
                     from . import update as upd
                     st = upd.settings()
                     out = {"current": __version__, "channel": st["channel"], "pinned": st["pinned"], "repo": upd.REPO,
+                           "auto": st["auto"],
                            "releases": [], "error": ""}
                     try:
                         rels = upd.releases(fresh=bool((parse_qs(url.query).get("fresh") or [""])[0]))
@@ -351,7 +362,7 @@ def make_handler(app: App):
                     v = code_version()
                     return (self._send(200, v.encode(), "text/plain") if url.path == "/api/ping"
                             else self._send(200, {"version": v, "app": __import__("xui_fleet").__version__,
-                                                  "whatsNew": WHATS_NEW, "data": app.data_mark()}))
+                                                  "whatsNew": WHATS_NEW, "data": app.data_mark(), **app.update_note()}))
                 if url.path == "/api/panels":
                     if app.job.running:
                         return self._send(200, {"busy": True})
@@ -507,6 +518,8 @@ def make_handler(app: App):
                     changes["channel"] = body["channel"]
                 if body.get("resume"):
                     changes["pinned"] = ""
+                if "auto" in body:
+                    changes["auto"] = bool(body["auto"])
                 return {"ok": True, **upd.save_settings(**changes)}
             if path == "/api/versions/install":
                 from . import update as upd

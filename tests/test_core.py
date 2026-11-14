@@ -10,6 +10,15 @@ from xui_fleet.config import FleetConfig, append_node, load_config
 from xui_fleet.reconcile import Reconciler, Report, _free_port
 
 @pytest.fixture(autouse=True)
+def _update_settings(tmp_path, monkeypatch):
+    """Never touch this computer's real update settings; tests that install expect automatic updates on."""
+    from xui_fleet import update as upd
+    path = tmp_path / "update-settings.json"
+    path.write_text('{"auto": true}')
+    monkeypatch.setattr(upd, "_settings_path", lambda: path)
+
+
+@pytest.fixture(autouse=True)
 def _no_waiting(monkeypatch):
     """The fake panel restarts instantly."""
     import time as real
@@ -1011,7 +1020,6 @@ def test_update_from_a_github_release_is_checked_and_touches_only_the_program(tm
 
 def test_versions_channels_and_pinning(tmp_path, monkeypatch):
     from xui_fleet import update as upd
-    monkeypatch.setattr(upd, "_settings_path", lambda: tmp_path / "update.json")
     rels = [{"version": v, "prerelease": upd.is_prerelease(v)} for v in ("0.3.0-beta.2", "0.2.3", "0.2.2")]
     assert upd.latest(rels, False)["version"] == "0.2.3" and upd.latest(rels, True)["version"] == "0.3.0-beta.2"
     assert upd.allowed("0.2.4") and not upd.allowed("0.3.0-rc.1")  # stable channel by default
@@ -1027,7 +1035,6 @@ def test_a_beta_never_covers_the_stable_version_on_the_sync_server(tmp_path, mon
     from xui_fleet import sync as sy, update as upd
     remote = tmp_path / "server"
     monkeypatch.setattr(sy, "REMOTE", str(remote))
-    monkeypatch.setattr(upd, "_settings_path", lambda: tmp_path / "update.json")
 
     class FakeSSH:
         def run(self, script, check=True, timeout=0, env=None):
@@ -1077,3 +1084,96 @@ def test_release_list_is_refetched_when_it_does_not_know_the_installed_version(m
     assert [r["version"] for r in upd.releases()] == ["0.2.5"]  # GitHub had not published 0.2.6 yet
     assert upd.releases()[0]["version"] == "0.2.6" and len(calls) == 2  # the next look does not trust that list
     assert upd.releases()[0]["version"] == "0.2.6" and len(calls) == 2  # a list that knows it is cached
+
+
+def test_merge3_keeps_both_sides_changes():
+    from xui_fleet.sync import merge3
+    base = {"nodes": [{"name": "a", "host": "1"}, {"name": "b", "host": "2"}], "users": [{"name": "u1"}], "master": {"label": "RU"}}
+    local = {"nodes": [{"name": "a", "host": "1"}, {"name": "b", "host": "2"}, {"name": "new-here", "host": "3"}],
+             "users": [{"name": "u1"}], "master": {"label": "RU"}}
+    remote = {"nodes": [{"name": "a", "host": "1", "label": "UK"}], "users": [{"name": "u1"}, {"name": "u2"}], "master": {"label": "RU"}}
+    c = []
+    m = merge3(base, local, remote, "", c)
+    assert [n["name"] for n in m["nodes"]] == ["a", "new-here"]  # b removed there, new-here added here
+    assert m["nodes"][0]["label"] == "UK" and [u["name"] for u in m["users"]] == ["u1", "u2"] and c == []
+    c = []
+    m = merge3(base, dict(base, master={"label": "Here"}), dict(base, master={"label": "There"}), "", c)
+    assert m["master"]["label"] == "Here" and c == ["master.label"]  # same field on both sides: this computer wins
+
+
+def test_a_server_added_on_an_old_version_survives_the_new_version(tmp_path, monkeypatch):
+    """Old computer adds a server while the newer branch already wrote its data: nothing is lost."""
+    import json as _json, subprocess
+    from xui_fleet import sync as sy
+    remote = tmp_path / "server"
+    monkeypatch.setattr(sy, "REMOTE", str(remote))
+    monkeypatch.setenv("XUI_FLEET_BACKUP_DIR", str(tmp_path / "bk"))
+
+    class FakeSSH:
+        def run(self, script, check=True, timeout=0, env=None):
+            r = subprocess.run(["bash", "-c", "set -o pipefail\n" + script], capture_output=True, text=True)
+            if check and r.returncode:
+                raise RuntimeError(r.stderr)
+            return type("R", (), {"out": r.stdout, "code": r.returncode})()
+        def close(self):
+            pass
+
+    def computer(name, version):
+        d = tmp_path / name
+        (d / ".xui-fleet").mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(sy, "__version__", version)
+        monkeypatch.setattr(sy, "_meta_path", lambda d=d: d / "sync.json")
+        s = sy.Sync(d / "fleet.yaml")
+        s._ssh = lambda: FakeSSH()
+        return d, s
+
+    start = "master: {name: ru, host: 9.9.9.9}\nnodes:\n- {name: uk, host: uk.example}\nusers:\n- {name: alice}\n"
+    new, sn = computer("new", "0.3.0")
+    (new / "fleet.yaml").write_text(start)
+    (new / ".xui-fleet" / "state.json").write_text(_json.dumps({"servers": {"uk": {"api_token": "T1"}}}))
+    sn.configure({"name": "ru", "host": "9.9.9.9"}, "sync-password")
+    sn.push(force=True)
+
+    old, so = computer("old", "0.2.7")
+    so.join({"name": "ru", "host": "9.9.9.9"}, "sync-password")  # both saw rev 1
+    # The newer version changes things (rev 2) ...
+    monkeypatch.setattr(sy, "__version__", "0.3.0")
+    monkeypatch.setattr(sy, "_meta_path", lambda: new / "sync.json")
+    sn = sy.Sync(new / "fleet.yaml"); sn._ssh = lambda: FakeSSH()
+    (new / "fleet.yaml").write_text(start.replace("users:\n- {name: alice}\n", "users:\n- {name: alice}\n- {name: bob}\n"))
+    assert "версия 2" in sn.push()
+    # ... while the old one adds a server: it cannot send it over newer data, but keeps it.
+    monkeypatch.setattr(sy, "__version__", "0.2.7")
+    monkeypatch.setattr(sy, "_meta_path", lambda: old / "sync.json")
+    so = sy.Sync(old / "fleet.yaml"); so._ssh = lambda: FakeSSH()
+    (old / "fleet.yaml").write_text(start.replace("nodes:\n- {name: uk, host: uk.example}\n",
+                                                  "nodes:\n- {name: uk, host: uk.example}\n- {name: de, host: de.example}\n"))
+    with pytest.raises(sy.SyncError):
+        so.push()
+    assert "de.example" in (old / "fleet.yaml").read_text()  # still here
+    # After the old computer is updated, the change is merged with the newer data instead of overwriting it.
+    monkeypatch.setattr(sy, "__version__", "0.3.0")
+    so = sy.Sync(old / "fleet.yaml"); so._ssh = lambda: FakeSSH()
+    msg = so.push()
+    assert "объединено" in msg
+    text = (old / "fleet.yaml").read_text()
+    assert "de.example" in text and "bob" in text and "uk.example" in text
+    monkeypatch.setattr(sy, "_meta_path", lambda: new / "sync.json")
+    sn = sy.Sync(new / "fleet.yaml"); sn._ssh = lambda: FakeSSH()
+    assert "версия 3" in sn.pull() and "de.example" in (new / "fleet.yaml").read_text()
+    assert _json.loads((new / ".xui-fleet" / "state.json").read_text())["servers"]["uk"]["api_token"] == "T1"
+
+
+
+def test_by_default_a_new_version_is_offered_not_installed(tmp_path, monkeypatch):
+    import httpx
+    from xui_fleet import update as upd
+    upd.save_settings(auto=False)
+    monkeypatch.setattr(upd, "__version__", "0.2.7")
+    monkeypatch.setattr(upd, "releases", lambda repo="", fresh=False: [{"version": "0.2.8", "prerelease": False},
+                                                                      {"version": "0.3.0-beta.1", "prerelease": True}])
+    monkeypatch.setattr(upd, "install_from_github", lambda root, info: pytest.fail("installed without asking"))
+    assert upd.check_github(tmp_path) == "" and upd.settings()["available"] == "0.2.8"  # offered, beta not
+    upd.save_settings(auto=True)
+    monkeypatch.setattr(upd, "install_from_github", lambda root, info: info["version"])
+    assert "0.2.8" in upd.check_github(tmp_path)

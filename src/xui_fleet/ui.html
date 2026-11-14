@@ -46,6 +46,12 @@ svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none;
 .ver { font-size: 11.5px; font-weight: 550; color: var(--muted); background: var(--sunken); border-radius: 999px; padding: 1px 8px;
   margin-left: 2px; font-variant-numeric: tabular-nums; }
 .ver:hover { color: var(--ink); text-decoration: none; }
+.upd { font: inherit; font-size: 12px; font-weight: 600; border: 0; border-radius: 999px; padding: 3px 10px; cursor: pointer;
+  background: var(--accent); color: #fff; display: inline-flex; align-items: center; gap: 6px; }
+.upd.warn { background: var(--warn); color: #111; }
+.vbanner { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 10px; background: var(--accent-soft); margin-top: 14px; }
+.vbanner.warn { background: var(--warn-soft); }
+.vbanner .grow { flex: 1; font-size: 13px; color: var(--ink-2); } .vbanner b { color: var(--ink); }
 .master { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--ink-2); font-size: 13px; }
 .master .where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spacer { flex: 1; }
@@ -297,7 +303,8 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
 <header class="top">
   <div class="top-in">
     <div class="brand"><span class="logo"><svg class="i"><use href="#i-net"/></svg></span>xui-fleet
-      <a class="ver hidden" id="appVer" href="#h-update" title="Версия приложения — обновляется само"></a></div>
+      <a class="ver hidden" id="appVer" href="#h-update" title="Версия приложения — обновляется само"></a>
+      <button class="upd hidden" id="updPill" type="button"></button></div>
     <div class="master hidden" id="masterBox">
       <span class="dot" id="masterDot"></span>
       <span class="where" id="masterline"></span>
@@ -443,14 +450,16 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
             Данные приложения хранятся на этом сервере в зашифрованном виде; любое изменение уходит туда за несколько секунд,
             а остальные компьютеры забирают его при запуске и раз в минуту, пока приложение открыто.</p>
           <p>На новом компьютере запустите приложение и на первом экране нажмите «Подключить к синхронизации…»: адрес сервера,
-            SSH-пароль и пароль синхронизации. На сервере хранятся 10 последних версий — если два компьютера поменяли что-то одновременно,
-            останется последнее изменение, а предыдущее не потеряется.</p>
+            SSH-пароль и пароль синхронизации. Если два компьютера поменяли что-то одновременно, изменения объединяются: добавленные на разных
+            компьютерах серверы и пользователи сохраняются оба; если одно и то же поле изменили на обоих, остаётся последнее. На сервере хранятся 10 последних версий.</p>
 
           <h2 id="h-update">Обновление приложения</h2>
           <p>Приложение само проверяет новые версии на <a href="https://github.com/airflech/xui-fleet/releases" target="_blank" rel="noopener">GitHub</a>
-            при запуске и раз в 30 минут и ставит их. Запасной путь — сервер синхронизации: компьютер с самой новой версией сам выкладывает её на сервер
-            синхронизации (зашифрованной паролем синхронизации), остальные при запуске или в течение минуты ставят её и перезапускаются.
-            Пока компьютер не обновился, он не принимает и не отправляет данные, записанные более новой версией, — так их нельзя испортить.</p>
+            при запуске и раз в 30 минут. Когда выходит новая, в шапке появляется кнопка «Доступна 0.x.y»: она открывает окно «Версии»
+            со списком изменений и кнопкой «Обновить». Там же можно включить «Обновлять автоматически», выбрать, предлагать ли пререлизы,
+            и вернуться на любую прежнюю версию.</p>
+          <p>Если другой компьютер уже перешёл на новую ветку версий, кнопка станет жёлтой «Нужно обновление»: до обновления этот компьютер
+            сохраняет свои изменения у себя, а после — объединяет их с данными на сервере, ничего не теряя.</p>
           <p class="muted small" id="appVersion"></p>
 
           <h2 id="h-move">Копия приложения</h2>
@@ -720,7 +729,10 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
   <div class="dlg-h"><h2>Версии приложения</h2><p>Обновления приходят сами. Здесь можно поставить конкретную версию, в том числе пререлиз, или вернуться на предыдущую.</p></div>
   <div class="dlg-b">
     <div class="vsum" id="verSummary"></div>
-    <div class="vchan"><span class="muted small">Автообновление:</span>
+    <div id="verBanner"></div>
+    <label class="check" style="margin:6px 0 2px"><input type="checkbox" id="verAuto"> Обновлять автоматически
+      <span class="muted small">— иначе новая версия только предлагается</span></label>
+    <div class="vchan"><span class="muted small">Какие версии предлагать:</span>
       <div class="seg" role="group" aria-label="Канал обновлений">
         <button type="button" data-chan="stable" aria-pressed="true">Только стабильные</button>
         <button type="button" data-chan="prerelease" aria-pressed="false">Включая пререлизы</button>
@@ -1376,6 +1388,7 @@ $('btnDomain').addEventListener('click', () => {
 });
 $('btnRole').addEventListener('click', openRole);
 $('appVer').addEventListener('click', (e) => { e.preventDefault(); openVersions(); });
+$('updPill').addEventListener('click', () => openVersions(true));
 $('appVer').title = 'Версии и обновления';
 function relNotes(t) {
   return (t || '').replace(/\r/g, '').replace(/^#+\s*/gm, '').replace(/\*\*/g, '')
@@ -1387,6 +1400,22 @@ async function openVersions(fresh) {
   list.textContent = ''; const w = el('div', 'empty'); w.appendChild(el('span', 'spin')); w.appendChild(document.createTextNode(' Загружаю список с GitHub…')); list.appendChild(w);
   let d; try { d = await api('/api/versions' + (fresh ? '?fresh=1' : '')); } catch (e) { $('verErr').textContent = e.message; return; }
   $('verErr').textContent = d.error || '';
+  $('verAuto').checked = !!d.auto;
+  const ban = $('verBanner'); ban.textContent = '';
+  const target = (d.channel === 'prerelease' ? d.latestPre || d.latest : d.latest);
+  const cmpV = (a, b) => { const p = (v) => { const m = (v || '').match(/(\d+)\.(\d+)\.(\d+)(?:[-.]?(alpha|beta|rc|a|b)\.?(\d*))?/) || [];
+    const pre = { a: 0, alpha: 0, b: 1, beta: 1, rc: 2 }; return [+m[1] || 0, +m[2] || 0, +m[3] || 0, m[4] ? pre[m[4]] : 3, +m[5] || 0]; };
+    const x = p(a), y = p(b); for (let i = 0; i < 5; i++) if (x[i] !== y[i]) return x[i] - y[i]; return 0; };
+  if (target && cmpV(target, d.current) > 0) {
+    const b = el('div', 'vbanner' + (updInfo.syncWaits ? ' warn' : ''));
+    const g = el('div', 'grow'); g.appendChild(el('b', null, 'Доступна версия ' + target));
+    g.appendChild(document.createTextNode(updInfo.syncWaits ? ' — другой компьютер уже на ней, синхронизация продолжится после обновления.'
+      : ' — что нового, смотрите в списке ниже.'));
+    b.appendChild(g);
+    const go = el('button', 'btn primary', 'Обновить'); go.dataset.access = 'version';
+    go.addEventListener('click', () => { $('dlgVersions').close(); start('/api/versions/install', { version: target }); });
+    b.appendChild(go); ban.appendChild(b);
+  }
   $('verGitHub').href = 'https://github.com/' + d.repo + '/releases';
   document.querySelectorAll('[data-chan]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.chan === d.channel)));
   const sum = $('verSummary'); sum.textContent = '';
@@ -1437,6 +1466,10 @@ document.querySelectorAll('[data-chan]').forEach((b) => b.addEventListener('clic
   openVersions();
 }));
 $('verRefresh').addEventListener('click', () => openVersions(true));
+$('verAuto').addEventListener('change', async (e) => {
+  await api('/api/versions/settings', { auto: e.target.checked });
+  toast(e.target.checked ? 'Новые версии будут ставиться сами' : 'Новые версии будут предлагаться — обновление по кнопке');
+});
 $('roleForm').addEventListener('submit', (e) => {
   e.preventDefault();
   const d = formData(e.target);
@@ -1592,7 +1625,7 @@ showTab(['servers', 'users', 'panels', 'backups', 'help'].includes(store.get('xf
 refresh();
 
 // The service restarts itself after an update; the page notices and reloads, so it never needs closing.
-let codeVersion = null, dataMark = null, pageApp = null;
+let codeVersion = null, dataMark = null, pageApp = null, updInfo = {};
 async function watchVersion() {
   try {
     const r = await fetch('/api/version', { headers: { 'X-Fleet-Token': TOKEN }, cache: 'no-store' });
@@ -1604,6 +1637,14 @@ async function watchVersion() {
       location.reload(); return;
     }
     if (info.app) { pageApp = pageApp || info.app; $('appVer').textContent = info.app; $('appVer').classList.remove('hidden'); }
+    updInfo = info;
+    const pill = $('updPill');
+    pill.classList.toggle('hidden', !info.available);
+    pill.classList.toggle('warn', !!info.syncWaits);
+    if (info.available) {
+      pill.textContent = (info.syncWaits ? 'Нужно обновление: ' : 'Доступна ') + info.available;
+      pill.title = info.syncWaits ? 'Другой компьютер уже на новой версии: синхронизация продолжится после обновления' : 'Посмотреть, что нового, и обновиться';
+    }
     if (dataMark !== null && info.data !== dataMark && !(overview && overview.job && overview.job.running)
         && !document.querySelector('dialog[open]')) { toast('Получены изменения с другого компьютера'); refresh(); }
     dataMark = info.data;

@@ -26,7 +26,7 @@
   --font-mono: "Twemoji Country Flags", "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme=light]) {
     /* Night map: deep navy, lime routes. */
     color-scheme: dark;
     --bg: #0a101b; --surface: #101929; --raised: #142036; --sunken: #0d1523;
@@ -36,6 +36,16 @@
     --ok: #9be36a; --ok-soft: #17291a; --bad: #ff6f61; --bad-soft: #341a19; --warn: #f3b847; --warn-soft: #33270f;
     --shadow: none; --shadow-lg: 0 24px 64px rgba(0,0,0,.6);
   }
+}
+:root[data-theme=dark] {
+    /* Night map: deep navy, lime routes. */
+    color-scheme: dark;
+    --bg: #0a101b; --surface: #101929; --raised: #142036; --sunken: #0d1523;
+    --ink: #e7eef8; --ink-2: #a7b4c8; --muted: #6c7c95; --line: #1b2840; --line-2: #283a58;
+    --accent: #c8f25a; --accent-soft: #1d2a17; --accent-ink: #132003;
+    --route: #c8f25a; --route-dim: #2c3c58; --grid: rgba(167,180,200,.06); --warp: #f6913a;
+    --ok: #9be36a; --ok-soft: #17291a; --bad: #ff6f61; --bad-soft: #341a19; --warn: #f3b847; --warn-soft: #33270f;
+    --shadow: none; --shadow-lg: 0 24px 64px rgba(0,0,0,.6);
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
@@ -57,7 +67,10 @@ svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none;
 .logo svg { width: 20px; height: 20px; }
 .logo .lr { stroke: var(--accent); stroke-width: 2.2; fill: none; stroke-linecap: round; }
 .logo .ln { fill: var(--bg); } .logo .lh { fill: var(--accent); }
-@media (prefers-color-scheme: dark) { .logo { background: var(--accent-soft); } .logo .ln { fill: var(--ink); } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme=light]) .logo { background: var(--accent-soft); } }
+:root[data-theme=dark] .logo { background: var(--accent-soft); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme=light]) .logo .ln { fill: var(--ink); } }
+:root[data-theme=dark] .logo .ln { fill: var(--ink); }
 .ver { font-size: 11.5px; font-weight: 550; color: var(--muted); background: var(--sunken); border-radius: 999px; padding: 1px 8px;
   margin-left: 2px; font-variant-numeric: tabular-nums; }
 .ver:hover { color: var(--ink); text-decoration: none; }
@@ -251,7 +264,8 @@ label.f { display: block; font-size: 12.5px; font-weight: 550; color: var(--ink-
 
 /* ---------- users ---------- */
 .avatar { --h: 220; background: hsl(var(--h) 55% 92%) !important; color: hsl(var(--h) 45% 32%) !important; }
-@media (prefers-color-scheme: dark) { .avatar { background: hsl(var(--h) 28% 22%) !important; color: hsl(var(--h) 60% 80%) !important; } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme=light]) .avatar { background: hsl(var(--h) 28% 22%) !important; color: hsl(var(--h) 60% 80%) !important; } }
+:root[data-theme=dark] .avatar { background: hsl(var(--h) 28% 22%) !important; color: hsl(var(--h) 60% 80%) !important; }
 .device { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--muted); background: var(--sunken);
   border-radius: 5px; padding: 0 6px; height: 18px; margin-left: 6px; vertical-align: 1px; font-weight: 500; }
 .avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 12.5px; font-weight: 650;
@@ -456,3 +470,35 @@ body { background-color: var(--bg);
 .warpflow .lbl { width: 100%; font-size: 12px; color: var(--muted); }
 
 input, select, textarea, button { font-family: inherit; }
+
+/* theme switch in the header: auto → light → dark */
+.themebtn { width: 30px; height: 30px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink-2);
+  display: inline-grid; place-items: center; cursor: pointer; padding: 0; }
+.themebtn:hover { border-color: var(--muted); color: var(--ink); }
+
+/* theme switch in the header: auto → light → dark */
+.themebtn { width: 30px; height: 30px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink-2);
+  display: inline-grid; place-items: center; cursor: pointer; padding: 0; flex: none; }
+.themebtn:hover { border-color: var(--muted); color: var(--ink); }
+
+/* quick search (Ctrl+K) */
+.cmdbtn { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 6px 0 10px; border-radius: 999px; border: 1px solid var(--line-2);
+  background: var(--surface); color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; flex: none; }
+.cmdbtn:hover { border-color: var(--muted); color: var(--ink); }
+kbd { font: 600 11px var(--font-mono); border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 6px; padding: 1px 5px; color: var(--ink-2); background: var(--sunken); }
+@media (max-width: 760px) { .cmdbtn .txt, .cmdbtn kbd { display: none; } .cmdbtn { width: 30px; padding: 0; justify-content: center; } }
+dialog.palette { width: min(620px, calc(100vw - 24px)); margin-top: 12vh; padding: 0; }
+dialog.palette .dlg { padding: 0; }
+.pal-in { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.pal-in .i { color: var(--muted); width: 18px; height: 18px; }
+.pal-in input { flex: 1; border: 0 !important; outline: none; background: transparent; font-size: 16px; color: var(--ink); padding: 0; box-shadow: none !important; height: auto; }
+.pal-list { max-height: min(52vh, 440px); overflow: auto; padding: 6px; }
+.pal-g { font-size: 11.5px; font-weight: 600; color: var(--muted); padding: 10px 10px 4px; letter-spacing: .02em; }
+.pal-i { display: flex; width: 100%; align-items: baseline; gap: 10px; padding: 9px 10px; border: 0; border-radius: 8px; background: none;
+  color: var(--ink); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.pal-i.sel { background: var(--accent-soft); }
+.pal-i.sel .pal-t { color: var(--ink); }
+.pal-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pal-s { color: var(--muted); font-size: 12px; font-family: var(--font-mono); white-space: nowrap; }
+.pal-f { display: flex; gap: 16px; padding: 9px 16px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.pal-f kbd { margin-right: 3px; }

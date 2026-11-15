@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "вместо «Применить» — статус «Всё настроено» / «Исправить», а на карте маршрутов видны выходы в интернет и через WARP"
+WHATS_NEW = "быстрый поиск по Ctrl+K (⌘K) и ручной выбор темы — кнопка в шапке"
 
 
 def _last_backup(fleet: Any) -> int:

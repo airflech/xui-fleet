@@ -93,6 +93,19 @@ def test_every_tab_and_main_dialog_opens_without_errors(page_url):
         page.wait_for_selector("#jobhist:not(.hidden)")
         assert "Операций пока не было" in page.inner_text("#jobhist")
 
+        # quick search: Ctrl+K, Cyrillic finds a Latin name, Enter runs the action
+        page.keyboard.press("Control+k")
+        page.wait_for_selector("#dlgCmd[open]")
+        page.fill("#palInput", "domeny")  # typed in Latin, found in Cyrillic (users need live data: none here)
+        assert "Домены и адреса" in page.inner_text("#palList")
+        page.fill("#palInput", "тема")
+        page.keyboard.press("Enter")
+        assert page.evaluate("document.documentElement.dataset.theme") == "light"  # auto → light
+        page.click("#themeBtn")
+        assert page.evaluate("document.documentElement.dataset.theme") == "dark"
+        page.click("#themeBtn")
+        assert page.evaluate("document.documentElement.dataset.theme") is None  # back to the system's
+
         # the address book of the page and the server agree (a mistyped name would 404 here)
         assert page.evaluate("typeof renderDomains === 'function' && typeof attentionOf === 'function'")
         browser.close()

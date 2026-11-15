@@ -143,3 +143,20 @@ function openLabel(n) {
   $('labelPreview').textContent = 'Сейчас у пользователей: «' + (n.display || n.name) + '» · ' + n.name;
   $('dlgLabel').showModal();
 }
+
+// ---------- theme ----------
+// As the system (default), always light or always dark; remembered on this computer.
+const THEMES = { auto: ['i-auto', 'Тема: как в системе'], light: ['i-sun', 'Тема: дневная'], dark: ['i-moon', 'Тема: ночная'] };
+function currentTheme() { try { return localStorage.getItem('xf-theme') || 'auto'; } catch (e) { return 'auto'; } }
+function paintTheme() {
+  const th = currentTheme(), [ic, label] = THEMES[th] || THEMES.auto;
+  if (th === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = th;
+  $('themeBtn').querySelector('use').setAttribute('href', '#' + ic);
+  $('themeBtn').title = label + ' — нажмите, чтобы сменить'; $('themeBtn').setAttribute('aria-label', label);
+}
+$('themeBtn').addEventListener('click', () => {
+  const order = ['auto', 'light', 'dark'], next = order[(order.indexOf(currentTheme()) + 1) % order.length];
+  try { localStorage.setItem('xf-theme', next); } catch (e) {}
+  paintTheme(); toast(THEMES[next][1]);
+});
+paintTheme();

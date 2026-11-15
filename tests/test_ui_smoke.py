@@ -110,3 +110,37 @@ def test_every_tab_and_main_dialog_opens_without_errors(page_url):
         assert page.evaluate("typeof renderDomains === 'function' && typeof attentionOf === 'function'")
         browser.close()
     assert not errors, "\n".join(errors)
+
+
+def test_first_run_goes_step_by_step_and_draws_the_network(tmp_path, monkeypatch):
+    from xui_fleet import service
+    from xui_fleet.ui import App, make_handler
+    data = tmp_path / "data"
+    data.mkdir()
+    monkeypatch.setattr(service, "APP_DIR", data)
+    app = App(tmp_path / "fleet.yaml")  # nothing set up yet
+    server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(app))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    errors = []
+    try:
+        with playwright.sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page(viewport={"width": 1100, "height": 800})
+            page.on("pageerror", lambda exc: errors.append(f"pageerror: {exc}"))
+            page.goto(f"http://127.0.0.1:{server.server_port}/?t={app.token}")
+            page.wait_for_selector("#setup:not(.hidden)")
+            assert page.locator("#setupMap .rm-box.master.ghost").count() == 1  # drawn before anything is typed
+            page.check("#setupRoles input[value=vpn]")
+            page.click("[data-step='1'] [data-next]")
+            page.fill("#s_host", "198.51.100.7")
+            assert "198.51.100.7" in page.inner_text("#setupMap")
+            page.click("[data-step='2'] [data-next]")  # no SSH password yet: stays
+            assert page.get_attribute("[data-step='2']", "class").split().count("active") == 1
+            page.fill("[data-step='2'] [name=sshPassword]", "secret")
+            page.click("[data-step='2'] [data-next]")
+            assert "active" in page.get_attribute("[data-step='3']", "class")
+            assert page.inner_text("[data-step='1'] .sum") == "сам VPN"
+            browser.close()
+    finally:
+        server.shutdown()
+    assert not errors, "\n".join(errors)

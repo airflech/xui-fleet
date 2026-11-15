@@ -62,43 +62,71 @@
 <main>
   <!-- first run -->
   <section class="hidden" id="setup">
-    <div class="bar"><h1>Настройка главного сервера</h1>
-      <div class="lead">На этот сервер ставится главная панель 3x-ui: с него пользователи получают подписку. Выберите, что он будет делать — это можно поменять позже.</div></div>
-    <div class="panel"><div class="panel-b">
-      <form id="setupForm">
-        <label class="f">Роль этого сервера</label>
-        <div class="roles" id="setupRoles">
-          <label class="role"><input type="radio" name="role" value="gateway" checked><span><b>Вход для зарубежных серверов</b>
-            Сервер в России: пользователи подключаются к нему, а трафик уходит через ваши зарубежные серверы (каскад).</span></label>
-          <label class="role"><input type="radio" name="role" value="vpn"><span><b>Сам VPN-сервер</b>
-            Один сервер — и есть ваш VPN: пользователи подключаются к нему напрямую. Зарубежные серверы можно добавить позже.</span></label>
-          <label class="role"><input type="radio" name="role" value="both"><span><b>И то и другое</b>
-            Свои подключения плюс каскады на зарубежные серверы.</span></label>
+    <div class="wz-hero">
+      <span class="logo big" aria-hidden="true"><svg viewBox="0 0 20 20"><path class="lr" d="M4 10 C 9 10, 9 4.5, 15.5 4.5 M4 10 C 9 10, 9 15.5, 15.5 15.5"/><circle class="lh" cx="4" cy="10" r="2.6"/><circle class="ln" cx="15.5" cy="4.5" r="2.2"/><circle class="ln" cx="15.5" cy="15.5" r="2.2"/></svg></span>
+      <div><h1>Соберём вашу сеть</h1>
+        <p>Четыре шага — и у пользователей будет одна ссылка-подписка на все подключения. Всё можно поменять позже.</p></div>
+      <div class="wz-alt"><span class="muted small">Сеть уже настроена на другом компьютере?</span>
+        <button class="btn sm" type="button" id="btnJoin">Подключить к синхронизации</button>
+        <button class="btn sm" type="button" data-click="btnAppImport">Восстановить из копии</button></div>
+    </div>
+    <div class="wz">
+      <form id="setupForm" class="wz-steps" novalidate>
+        <div class="step active" data-step="1">
+          <div class="step-h"><span class="num">1</span><b>Что будет делать главный сервер</b><span class="sum"></span></div>
+          <div class="step-b">
+            <div class="roles" id="setupRoles">
+              <label class="role"><input type="radio" name="role" value="gateway" checked><span><b>Вход для зарубежных серверов</b>
+                Сервер в России: пользователи подключаются к нему, а трафик уходит через ваши зарубежные серверы (каскад). Так работает обход блокировок «белых списков».</span></label>
+              <label class="role"><input type="radio" name="role" value="vpn"><span><b>Сам VPN-сервер</b>
+                Один сервер — и есть ваш VPN: пользователи подключаются к нему напрямую. Зарубежные серверы можно добавить позже.</span></label>
+              <label class="role"><input type="radio" name="role" value="both"><span><b>И то и другое</b>
+                Свои подключения плюс каскады на зарубежные серверы.</span></label>
+            </div>
+            <div class="step-f"><button class="btn primary" type="button" data-next>Дальше</button></div>
+          </div>
         </div>
-        <div class="grid2">
-          <div><label class="f" for="s_host">IP-адрес или домен сервера</label><input type="text" id="s_host" name="host" required placeholder="203.0.113.10"></div>
-          <div><label class="f" for="s_name">Короткое имя</label><input type="text" id="s_name" name="name" required value="main" pattern="[a-z0-9][a-z0-9\-]*" title="Латиница в нижнем регистре, цифры и дефис"></div>
+        <div class="step" data-step="2">
+          <div class="step-h"><span class="num">2</span><b>Сервер и доступ к нему</b><span class="sum"></span></div>
+          <div class="step-b">
+            <div class="grid2">
+              <div><label class="f" for="s_host">IP-адрес или домен сервера</label><input type="text" id="s_host" name="host" required placeholder="203.0.113.10"></div>
+              <div><label class="f" for="s_name">Короткое имя</label><input type="text" id="s_name" name="name" required value="main" pattern="[a-z0-9][a-z0-9\-]*" title="Латиница в нижнем регистре, цифры и дефис"></div>
+            </div>
+            <div data-ssh></div>
+            <div id="s_label_box" class="hidden"><label class="f" for="s_label">Название в приложениях <span class="muted">— пусто: по стране сервера</span></label>
+              <input type="text" id="s_label" name="label" placeholder="например, Netherlands"></div>
+            <div class="hint">Пароль нужен один раз: приложение само поставит 3x-ui и всё настроит, а пароль сохранит только на этом компьютере.</div>
+            <div class="step-f"><button class="btn ghost" type="button" data-back>Назад</button><button class="btn primary" type="button" data-next>Дальше</button></div>
+          </div>
         </div>
-        <div data-ssh></div>
-        <div id="s_label_box" class="hidden"><label class="f" for="s_label">Название в приложениях <span class="muted">— пусто: по стране сервера</span></label>
-          <input type="text" id="s_label" name="label" placeholder="например, Netherlands"></div>
-        <label class="f" for="s_tls">Сертификат для подписок</label>
-        <select id="s_tls" name="tls">
-          <option value="ip">Let's Encrypt на IP-адрес (нужен открытый порт 80)</option>
-          <option value="domain">Let's Encrypt на домен (нужен открытый порт 80)</option>
-          <option value="selfsigned">Самоподписанный (приложения могут не скачать подписку)</option>
-        </select>
-        <div id="s_domain_box" class="hidden"><label class="f" for="s_domain">Домен</label><input type="text" id="s_domain" name="domain" placeholder="panel.example.com"></div>
-        <label class="f" for="s_user">Первый пользователь <span class="muted">— необязательно</span></label>
-        <input type="text" id="s_user" name="user" placeholder="me">
-        <div class="formerr" role="alert"></div>
-        <div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-          <button class="btn primary" type="submit">Установить и настроить</button>
-          <span class="muted small">или</span>
-          <button class="btn ghost" type="button" id="btnJoin">Подключить к синхронизации…</button>
-          <button class="btn ghost" type="button" data-click="btnAppImport">Восстановить из копии…</button></div>
+        <div class="step" data-step="3">
+          <div class="step-h"><span class="num">3</span><b>Как раздавать подписку</b><span class="sum"></span></div>
+          <div class="step-b">
+            <label class="f" for="s_tls">Сертификат для подписок</label>
+            <select id="s_tls" name="tls">
+              <option value="ip">Let's Encrypt на IP-адрес (нужен открытый порт 80)</option>
+              <option value="domain">Let's Encrypt на домен (нужен открытый порт 80)</option>
+              <option value="selfsigned">Самоподписанный (приложения могут не скачать подписку)</option>
+            </select>
+            <div id="s_domain_box" class="hidden"><label class="f" for="s_domain">Домен</label><input type="text" id="s_domain" name="domain" placeholder="panel.example.com">
+              <div class="hint">Сначала у регистратора направьте A-запись домена на адрес сервера. Домен удобнее: если его заблокируют, можно перейти на резервный.</div></div>
+            <div class="step-f"><button class="btn ghost" type="button" data-back>Назад</button><button class="btn primary" type="button" data-next>Дальше</button></div>
+          </div>
+        </div>
+        <div class="step" data-step="4">
+          <div class="step-h"><span class="num">4</span><b>Первый пользователь</b><span class="sum"></span></div>
+          <div class="step-b">
+            <label class="f" for="s_user">Имя <span class="muted">— необязательно, можно добавить позже</span></label>
+            <input type="text" id="s_user" name="user" placeholder="me">
+            <div class="formerr" role="alert"></div>
+            <div class="step-f"><button class="btn ghost" type="button" data-back>Назад</button><button class="btn primary" type="submit">Установить и настроить</button></div>
+            <div class="hint">Займёт 2–5 минут: установка 3x-ui, сертификат, подключения. Журнал покажет каждый шаг.</div>
+          </div>
+        </div>
       </form>
-    </div></div>
+      <aside class="wz-map" aria-label="Как будет устроена сеть"><div id="setupMap"></div><div class="wz-cap" id="setupCap"></div></aside>
+    </div>
   </section>
 
   <div class="notice bad hidden" id="notready" role="alert">

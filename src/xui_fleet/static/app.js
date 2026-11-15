@@ -357,3 +357,86 @@ watchVersion();
   } catch (e) {}
 })();
 $('btnMasterRotate').addEventListener('click', () => askRotate(overview.master.name, 'главного сервера', false));
+
+// ---------- first run: one step at a time, the network drawn as it is described ----------
+function setupRole() { return (document.querySelector('#setupRoles input:checked') || {}).value || 'gateway'; }
+function setupStep(n) {
+  document.querySelectorAll('#setupForm .step').forEach((s) => {
+    const k = +s.dataset.step;
+    s.classList.toggle('active', k === n); s.classList.toggle('done', k < n);
+  });
+  paintSetupSums(); renderSetupMap();
+  const f = document.querySelector('#setupForm .step.active input:not([type=hidden]):not([type=radio]), #setupForm .step.active select');
+  if (f && n > 1) setTimeout(() => f.focus(), 30);
+}
+function paintSetupSums() {
+  const f = $('setupForm'), sum = (n, text) => { f.querySelector('[data-step="' + n + '"] .sum').textContent = text || ''; };
+  sum(1, { gateway: 'вход для зарубежных', vpn: 'сам VPN', both: 'VPN + каскады' }[setupRole()]);
+  sum(2, $('s_host').value.trim() ? $('s_name').value.trim() + ' · ' + $('s_host').value.trim() : '');
+  sum(3, { ip: 'сертификат на IP', domain: $('s_domain').value.trim() || 'домен', selfsigned: 'самоподписанный' }[$('s_tls').value]);
+  sum(4, $('s_user').value.trim());
+}
+function setupStepValid(n) {
+  const step = document.querySelector('#setupForm [data-step="' + n + '"]'), err = $('setupForm').querySelector('.formerr');
+  for (const input of step.querySelectorAll('input[required], input[pattern]')) {
+    if (!input.checkValidity()) { input.reportValidity(); return false; }
+  }
+  if (n === 2) {
+    const auth = step.querySelector('[name=sshAuth]').value, pw = step.querySelector('[name=sshPassword]').value, key = step.querySelector('[name=sshKey]').value;
+    if (auth === 'password' && !pw) { const i = step.querySelector('[name=sshPassword]'); i.setCustomValidity('Введите пароль SSH'); i.reportValidity(); i.setCustomValidity(''); return false; }
+    if (auth === 'key' && !key) { const i = step.querySelector('[name=sshKey]'); i.setCustomValidity('Укажите путь к ключу'); i.reportValidity(); i.setCustomValidity(''); return false; }
+  }
+  if (n === 3 && $('s_tls').value === 'domain' && !$('s_domain').value.trim()) {
+    $('s_domain').setCustomValidity('Введите домен'); $('s_domain').reportValidity(); $('s_domain').setCustomValidity(''); return false;
+  }
+  if (err) err.textContent = '';
+  return true;
+}
+document.querySelectorAll('#setupForm [data-next]').forEach((b) => b.addEventListener('click', () => {
+  const n = +b.closest('.step').dataset.step; if (setupStepValid(n)) setupStep(n + 1);
+}));
+document.querySelectorAll('#setupForm [data-back]').forEach((b) => b.addEventListener('click', () => setupStep(+b.closest('.step').dataset.step - 1)));
+document.querySelectorAll('#setupForm .step-h').forEach((hd) => hd.addEventListener('click', () => {
+  const s = hd.closest('.step'); if (s.classList.contains('done')) setupStep(+s.dataset.step);
+}));
+$('setupForm').addEventListener('input', () => { paintSetupSums(); renderSetupMap(); });
+$('setupForm').addEventListener('change', () => { paintSetupSums(); renderSetupMap(); });
+function renderSetupMap() {
+  const box = $('setupMap'); box.textContent = '';
+  const role = setupRole(), host = $('s_host').value.trim(), name = $('s_name').value.trim() || 'main';
+  const W = 460, H = 300, cy = 150, svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'rm', role: 'img' });
+  svg.appendChild(svgEl('title', null, 'Как будет устроена сеть'));
+  const ug = svgEl('g', { class: 'rm-users' });
+  for (const [dx, dy] of [[-12, -8], [9, -11], [0, 9], [-17, 11], [17, 8]]) ug.appendChild(svgEl('circle', { cx: 40 + dx, cy: cy + dy, r: 6 }));
+  svg.appendChild(ug);
+  svg.appendChild(svgEl('text', { x: 40, y: cy + 40, class: 'rm-cap', 'text-anchor': 'middle' }, 'пользователи'));
+  const st = host ? 'live' : 'idle';
+  svg.appendChild(svgEl('path', { d: `M 68 ${cy} L 130 ${cy}`, class: 'rm-line ' + st }));
+  const mg = svgEl('g', { class: 'rm-box master ' + (host ? 'live' : 'ghost') });
+  mg.appendChild(svgEl('rect', { x: 130, y: cy - 34, width: 150, height: 68, rx: 13 }));
+  mg.appendChild(svgEl('text', { x: 146, y: cy - 6, class: 'rm-t' }, role === 'vpn' ? 'VPN · ' + name : 'RU · ' + name));
+  mg.appendChild(svgEl('text', { x: 146, y: cy + 16, class: 'rm-s' }, host || 'адрес сервера'));
+  const exits = [];
+  if (role !== 'gateway') exits.push(['интернет', 'с адреса сервера', cy - (role === 'both' ? 75 : 0), true]);
+  if (role !== 'vpn') {
+    exits.push(['зарубежный', 'после установки', role === 'both' ? cy + 5 : cy - 45, false]);
+    exits.push(['ещё один', 'сколько угодно', role === 'both' ? cy + 80 : cy + 45, false]);
+  }
+  for (const [title, sub, y, real] of exits) {
+    svg.appendChild(svgEl('path', { d: `M 280 ${cy} C 310 ${cy}, 300 ${y}, 330 ${y}`, class: 'rm-line ' + (real && host ? 'live' : 'idle') }));
+    const g = svgEl('g', { class: 'rm-box ' + (real ? (host ? 'live' : 'ghost') : 'ghost') });
+    g.appendChild(svgEl('rect', { x: 330, y: y - 24, width: 120, height: 48, rx: 10 }));
+    g.appendChild(svgEl('text', { x: 342, y: y - 3, class: 'rm-t', style: 'font-size:13px' }, title));
+    g.appendChild(svgEl('text', { x: 342, y: y + 14, class: 'rm-s', style: 'font-size:10.5px' }, sub));
+    g.appendChild(svgEl('title', null, title + ' — ' + sub));
+    svg.appendChild(g);
+  }
+  svg.appendChild(mg);  // drawn last: on top of the lines
+  box.appendChild(svg);
+  $('setupCap').textContent = {
+    gateway: 'Пользователи подключаются к серверу в России, а в интернет выходят через ваши зарубежные серверы. Их вы добавите после установки — кнопкой «Добавить сервер».',
+    vpn: 'Пользователи подключаются прямо к этому серверу и выходят в интернет с его адреса. Зарубежные серверы можно добавить позже.',
+    both: 'У сервера свои подключения с выходом в интернет, и он же — вход для каскадов на зарубежные серверы.',
+  }[role] + (host ? '' : ' Схема заполнится, когда вы укажете адрес.');
+}
+setupStep(1);

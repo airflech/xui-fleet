@@ -541,3 +541,28 @@ dialog.palette .dlg { padding: 0; }
   .hbar { grid-template-columns: 110px 1fr 70px; } }
 #rtTiles { grid-template-columns: repeat(auto-fit, minmax(108px, 1fr)); }
 #rtTiles .tile b { font-family: var(--font-mono); }
+
+/* first run: steps on the left, the network drawing itself on the right */
+.wz-hero { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 6px 0 22px; }
+.wz-hero h1 { margin: 0; font-size: 28px; letter-spacing: -.04em; } .wz-hero p { margin: 4px 0 0; color: var(--ink-2); }
+.logo.big { width: 52px; height: 52px; border-radius: 15px; } .logo.big svg { width: 34px; height: 34px; }
+.wz-alt { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.wz { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.wz-steps { display: grid; gap: 10px; }
+.step { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); }
+.step.active { border-color: var(--accent); }
+.step-h { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: default; }
+.step.done .step-h { cursor: pointer; } .step.done .step-h:hover b { color: var(--accent); }
+.step-h .num { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font: 700 13px var(--font-mono);
+  background: var(--sunken); color: var(--muted); flex: none; }
+.step.active .num { background: var(--accent); color: var(--accent-ink); } .step.done .num { background: var(--accent-soft); color: var(--accent); }
+.step-h .sum { margin-left: auto; color: var(--muted); font-size: 12.5px; font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45%; }
+.step-b { display: none; padding: 0 16px 16px; } .step.active .step-b { display: block; }
+.step-f { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.wz-map { position: sticky; top: 76px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 14px; overflow: hidden; }
+.wz-map::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px); background-size: 28px 28px; }
+.wz-cap { position: relative; font-size: 13px; color: var(--ink-2); margin-top: 8px; line-height: 1.5; }
+.rm-box.ghost rect { stroke-dasharray: 5 5; fill: transparent; stroke: var(--muted) !important; stroke-width: 1.2; }
+.rm-box.ghost .rm-t { fill: var(--muted); }
+@media (max-width: 860px) { .wz { grid-template-columns: 1fr; } .wz-map { position: relative; top: 0; order: -1; } .wz-alt { margin-left: 0; } }

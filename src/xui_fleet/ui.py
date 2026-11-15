@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "«Сменить маскировку» в меню сервера — если его подключения начали блокировать"
+WHATS_NEW = "новое окно первого запуска: четыре шага и схема сети, которая рисуется по ходу настройки"
 
 
 def _last_backup(fleet: Any) -> int:

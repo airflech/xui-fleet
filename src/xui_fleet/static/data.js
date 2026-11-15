@@ -102,7 +102,7 @@ async function loadDrift() {
   driftLoading = false; paintSync();
 }
 function paintSync() {
-  const b = $('btnApply'), t = $('syncText');
+  const b = $('btnApply'), t = $('driftText');
   b.classList.remove('ok', 'need', 'warn', 'checking');
   const ago = driftAt ? Math.round((Date.now() - driftAt) / 60000) : 0;
   const when = ago < 1 ? 'только что' : ago + ' мин назад';

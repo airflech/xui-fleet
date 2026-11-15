@@ -81,3 +81,16 @@ def test_the_page_files_and_fonts_are_served_and_nothing_else():
     assert _static("core.js")[1].startswith("text/javascript")
     for bad in ("../ui.py", "fonts/../../ui.py", "fonts/x.ttf", "Core.js", "fonts/a/b.woff2", "nope.js"):
         assert _static(bad) is None, bad
+
+
+def test_no_two_elements_of_the_page_share_an_id():
+    """A repeated id makes $('x') find the wrong element: the sync block once stayed at «Загружаю…» because
+    the status button had taken its id."""
+    from collections import Counter
+    from importlib import resources as _r
+    html = _r.files("xui_fleet").joinpath("ui.html").read_text(encoding="utf-8")
+    ids = Counter(re.findall(r'\sid="([^"]+)"', html))
+    assert [i for i, n in ids.items() if n > 1] == []
+    # and ids the scripts create on the fly do not clash with the page's
+    created = set(re.findall(r"""\.id = '([^']+)'""", _page_sources()))
+    assert created & set(ids) == set()

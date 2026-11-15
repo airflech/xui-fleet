@@ -30,7 +30,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "в окне «Версии» и на GitHub появился список изменений каждой версии"
+WHATS_NEW = "после смены или удаления профиля в шапке больше не появляется пустая «Ошибка:»"
 
 
 class Job:

@@ -1473,6 +1473,10 @@ function renderJob(job) {
   if (!job || !job.id) return;
   curJob = job.id;
   const chip = $('jobchip');
+  if (!job.running && !job.title) {
+    // Cleared on a profile switch or exit: there is no operation to show (not an error).
+    chip.classList.add('hidden'); $('drawer').classList.add('hidden'); setBusy(false); return;
+  }
   chip.classList.remove('hidden', 'ok', 'bad');
   chip.textContent = '';
   if (job.running) chip.appendChild(el('span', 'spin'));

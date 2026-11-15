@@ -39,6 +39,7 @@ function showTab(name) {
   store.set('xf-tab', name);
   if (name === 'backups') { loadBackups(); loadSync(); }
   if (name === 'inbounds') loadInbounds();
+  if (name === 'stats') loadStats();
   if (name === 'help') api('/api/sync').then((d) => { $('appVersion').textContent = 'Версия на этом компьютере: ' + d.app + (d.serverApp ? ' · на сервере синхронизации: ' + d.serverApp : ''); }).catch(() => {});
 }
 document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));

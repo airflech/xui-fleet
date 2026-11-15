@@ -236,6 +236,20 @@ def _drift(c: Call):
     return dict(c.app.fleet().drift(), at=int(time.time()))
 
 
+@get("/api/history/health", needs={"hours": "int?"})
+def _history_health(c: Call):
+    from .history import History
+    hours = min(int(c.body.get("hours") or 24), 24 * 14)
+    return History(c.app.path).health(hours)
+
+
+@get("/api/history/traffic", needs={"days": "int?"})
+def _history_traffic(c: Call):
+    from .history import History
+    days = min(int(c.body.get("days") or 7), 120)
+    return History(c.app.path).traffic(days)
+
+
 @get("/api/master/probe", busy=True)
 def _master_probe(c: Call):
     return c.app.fleet().master_probe()

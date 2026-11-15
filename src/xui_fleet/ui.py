@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "быстрый поиск по Ctrl+K (⌘K) и ручной выбор темы — кнопка в шапке"
+WHATS_NEW = "вкладка «Статистика»: доступность маршрутов и трафик по дням; щелчок по серверу на карте — график задержки"
 
 
 def _last_backup(fleet: Any) -> int:
@@ -271,6 +271,8 @@ class App:
                 if " ".join(str(body.get("confirm") or "").split()).lower() != item["name"].lower():
                     raise ProfileError("для подтверждения введите название профиля точно")
                 removed = str(self.profiles.config_path(pid))
+                from .history import History
+                History(Path(removed)).forget()
                 self.profiles.remove(pid)
                 self.job.forget(removed)
             elif action == "wipe":
@@ -278,6 +280,9 @@ class App:
                     raise ProfileError("для подтверждения введите слово «стереть»")
                 self.profiles.wipe_all()
                 self.job.forget()
+                import shutil
+                from .service import APP_DIR
+                shutil.rmtree(APP_DIR / "history", ignore_errors=True)
             else:
                 raise ValueError("неизвестная команда")
         finally:
@@ -668,6 +673,21 @@ def serve(config_path: Path, port: int = 8787, open_browser: bool = True, servic
                     app.data_lock.release()
             time.sleep(5)
     threading.Thread(target=sync_loop, daemon=True).start()
+
+    def history_loop() -> None:
+        """Route health every 5 minutes and traffic counters every hour, while the app runs (see history.py)."""
+        from . import history as hs
+        time.sleep(20)  # let the page open first
+        while True:
+            try:
+                if not app.job.running and app.path.exists():
+                    fleet = app.fleet()
+                    if fleet.state.get(fleet.cfg.master.name, "api_token") or fleet.cfg.master.api_url:
+                        hs.record(fleet, hs.History(app.path))
+            except Exception as exc:  # a server that does not answer is just a gap in the history
+                print(f"история: {exc}", flush=True)
+            time.sleep(60)
+    threading.Thread(target=history_loop, daemon=True).start()
 
     if service_mode:
         started = service.code_version()

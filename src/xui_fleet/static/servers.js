@@ -160,8 +160,11 @@ function renderMap() {
     if (info && ok && info.cpu != null) bits.push('cpu ' + info.cpu + '%');
     if (direct != null && n.direct) bits.push(direct + ' напрямую');
     g.appendChild(svgEl('text', { x: NX + 16, y: y + 16, class: 'rm-s' }, bits.join(' · ')));
-    g.appendChild(svgEl('title', null, (text || n.name) + ' · ' + n.host + (n.cascade ? '' : ' · без каскада через RU')));
-    g.addEventListener('click', () => focusCard(n.name));
+    const hh = histHealth && histHealth.nodes[n.name];
+    if (hh) g.appendChild(sparkline(hh.points, NX + NW - 96, y - 24, 82, 16));
+    g.appendChild(svgEl('title', null, (text || n.name) + ' · ' + n.host + (n.cascade ? '' : ' · без каскада через RU')
+      + (hh ? ' · доступность за 24 ч: ' + hh.uptime + '%, задержка ' + (hh.median ?? '—') + ' мс' : '') + ' — нажмите для графика'));
+    g.addEventListener('click', () => openRoute(n.name));
     svg.appendChild(g);
   });
   if (nodes.length) {
@@ -232,7 +235,7 @@ function renderMapNarrow(box, m, nodes, ready, mi, masterOk, online) {
       g.appendChild(svgEl('text', { x: W - 26, y: y - 1, class: 'rm-lat ' + st, 'text-anchor': 'end' }, t));
     }
     if (n.warp) g.appendChild(svgEl('text', { x: W - 26, y: y + 15, class: 'rm-s warp', 'text-anchor': 'end' }, '+ WARP'));
-    g.addEventListener('click', () => focusCard(n.name));
+    g.addEventListener('click', () => openRoute(n.name));
     svg.appendChild(g);
   });
   box.appendChild(svg);

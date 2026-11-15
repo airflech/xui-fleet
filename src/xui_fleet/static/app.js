@@ -308,7 +308,7 @@ $('btnApply').addEventListener('click', syncClick);
 $('btnUpgrade').addEventListener('click', () => { closeMenus(); confirmAction('Обновить 3x-ui на всех серверах?',
   'Сначала обновятся зарубежные серверы, затем главный. Подключения кратко прервутся.', () => start('/api/upgrade'), 'Обновить'); });
 
-showTab(['servers', 'users', 'panels', 'backups', 'help'].includes(store.get('xf-tab')) ? store.get('xf-tab') : 'servers');
+showTab(['servers', 'users', 'panels', 'backups', 'stats', 'help'].includes(store.get('xf-tab')) ? store.get('xf-tab') : 'servers');
 refresh();
 
 // The service restarts itself after an update; the page notices and reloads, so it never needs closing.

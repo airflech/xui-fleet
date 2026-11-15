@@ -115,6 +115,7 @@
       <button class="tab" role="tab" data-tab="inbounds">Входящие</button>
       <button class="tab" role="tab" data-tab="panels">Панели 3x-ui</button>
       <button class="tab" role="tab" data-tab="backups">Бэкапы</button>
+      <button class="tab" role="tab" data-tab="stats">Статистика</button>
       <button class="tab" role="tab" data-tab="help">Помощь</button>
     </nav>
 
@@ -192,6 +193,24 @@
     </section>
 
     <!-- help -->
+    <section data-pane="stats" class="hidden">
+      <div class="bar">
+        <h1>Статистика</h1>
+        <div class="spacer"></div>
+        <div class="seg" role="group" aria-label="Период">
+          <button type="button" data-statdays="7" aria-pressed="true">7 дней</button>
+          <button type="button" data-statdays="30" aria-pressed="false">30 дней</button>
+        </div>
+        <div class="lead" id="statSince"></div>
+      </div>
+      <div class="panel"><div class="panel-h"><b>Доступность маршрутов</b><span class="muted small">замеры с главного сервера — то есть из российской сети</span></div>
+        <div class="panel-b"><div class="atable" id="statAvail"></div></div></div>
+      <div class="panel"><div class="panel-h"><b>Трафик по дням</b><span class="muted small">по серверам выхода</span></div>
+        <div class="panel-b"><div id="statDaily"></div><div class="atable" id="statRoutes" style="margin-top:14px"></div></div></div>
+      <div class="panel"><div class="panel-h"><b>Кто больше всех тратит</b><span class="muted small">за период, щелчок — карточка пользователя</span></div>
+        <div class="panel-b"><div id="statUsers"></div></div></div>
+    </section>
+
     <section data-pane="help" class="hidden">
       <div class="help">
         <nav aria-label="Разделы помощи">
@@ -721,6 +740,21 @@
   <div class="pal-f"><span><kbd>↑</kbd><kbd>↓</kbd> выбрать</span><span><kbd>Enter</kbd> выполнить</span><span><kbd>Esc</kbd> закрыть</span></div>
 </div></dialog>
 
+<dialog id="dlgRoute" class="wide"><div class="dlg">
+  <div class="dlg-h"><h2 id="rtTitle"></h2><p id="rtLead"></p></div>
+  <div class="dlg-b">
+    <div class="seg" role="group" aria-label="Период" style="margin-bottom:12px">
+      <button type="button" data-rthours="24" aria-pressed="true">24 часа</button>
+      <button type="button" data-rthours="168" aria-pressed="false">7 дней</button>
+    </div>
+    <div class="tiles" id="rtTiles"></div>
+    <div class="sect"><h3>Задержка RU → сервер, мс</h3><div id="rtChart"></div>
+      <div class="hint">Красные полосы — маршрут не отвечал. Замеры делает главный сервер, то есть это задержка из российской сети.</div></div>
+  </div>
+  <div class="dlg-f"><button type="button" class="btn" id="rtCard">Показать карточку</button><div class="spacer"></div><button type="button" class="btn" data-close>Закрыть</button></div>
+</div></dialog>
+<div class="charttip hidden" id="chartTip" role="tooltip"></div>
+
 <dialog id="dlgConfirm"><div class="dlg">
   <div class="dlg-h"><h2 id="confirmTitle"></h2><p id="confirmText"></p></div>
   <div class="dlg-b"></div>
@@ -751,6 +785,7 @@
 <script src="/static/data.js?v={{V}}"></script>
 <script src="/static/userinfo.js?v={{V}}"></script>
 <script src="/static/inbounds.js?v={{V}}"></script>
+<script src="/static/stats.js?v={{V}}"></script>
 <script src="/static/manage.js?v={{V}}"></script>
 <script src="/static/app.js?v={{V}}"></script>
 <script src="/static/palette.js?v={{V}}"></script>

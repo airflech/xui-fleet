@@ -1272,3 +1272,28 @@ def test_link_check_uses_its_own_service_client():
     assert sorted(panel._clients["fleet-check"]["inboundIds"]) == sorted(i["id"] for i in tags.values())
     assert "fleet-check" not in report.subscriptions and "alice" in report.subscriptions
     assert cfg.clients.service_emails == {"fleet-bridge", "fleet-check"}
+
+
+def test_history_turns_counters_into_days_and_probes_into_uptime(tmp_path, monkeypatch):
+    import time as _t
+    from xui_fleet import history as hs
+    from xui_fleet import service
+    monkeypatch.setattr(service, "APP_DIR", tmp_path)
+    h = hs.History(tmp_path / "fleet.yaml")
+    now = _t.time()
+    for k, lat in enumerate([20, 22, None, 25]):  # one probe failed: 75% up
+        h.add_health({"t": int(now - (3 - k) * 300), "n": {"uk": lat}, "m": 1})
+    got = h.health(24)["nodes"]["uk"]
+    assert got["uptime"] == 75.0 and got["median"] == 22 and [p[1] for p in got["points"]] == [20, 22, None, 25]
+    # traffic: cumulative counters; a reset in the panel (counter went down) counts from zero
+    for k, (alice, ru, d) in enumerate([(100, 10, 5), (160, 30, 5), (40, 35, 9)]):
+        h.add_traffic({"t": int(now - (2 - k) * 60), "u": {"alice": alice}, "r": {"uk": {"ru": ru, "d": d}}})
+    tr = h.traffic(7)
+    assert sum(tr["users"]["alice"]) == 60 + 40  # +60, then reset to 40
+    assert sum(tr["routes"]["uk"]["ru"]) == 25 and sum(tr["routes"]["uk"]["d"]) == 4
+    sample = hs.traffic_sample(
+        [{"email": "alice", "traffic": {"up": 1, "down": 2}}, {"email": "fleet-check", "traffic": {"up": 9, "down": 9}}],
+        [{"tag": "fleet-rxh-uk", "up": 5, "down": 5}, {"tag": "fleet-xhttp-uk", "nodeId": 3, "up": 1, "down": 1},
+         {"tag": "fleet-warpup-uk", "nodeId": 3, "up": 50, "down": 50}, {"tag": "mine", "up": 7, "down": 7}],
+        {3: "uk"}, {"fleet-check", "fleet-bridge"})
+    assert sample["u"] == {"alice": 3} and sample["r"] == {"uk": {"ru": 10, "d": 2}}  # service traffic left out

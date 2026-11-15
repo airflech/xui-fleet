@@ -679,8 +679,13 @@ class Reconciler:
             w = want[kind]
             payload = {"inboundIds": ids, "hosts": [w["address"]], "remark": w["remark"], "isDisabled": w["disabled"],
                        "security": "same", "sni": w["address"], "tags": [self.HOST_TAGS[kind]], "sortOrder": 0 if kind == "main" else 1}
-            same = (have and sorted({r["inboundId"] for r in have}) == ids and {r.get("address") for r in have} == {w["address"]}
+            # the panel lists one object per group (hosts[] + inboundIds[]); older builds listed a row per inbound and address
+            have_ids = sorted({int(i) for r in have for i in (r.get("inboundIds") or ([r["inboundId"]] if "inboundId" in r else []))})
+            have_addrs = {a for r in have for a in (r.get("hosts") or ([r["address"]] if r.get("address") else []))}
+            same = (len({r["groupId"] for r in have}) == 1 and have_ids == ids and have_addrs == {w["address"]}
                     and all(bool(r.get("isDisabled")) == w["disabled"] and r.get("sni") == w["address"] and r.get("remark") == w["remark"] for r in have))
+            for extra in sorted({r["groupId"] for r in have} - {gid}):
+                self._do(f"мастер: убираю лишнюю копию хостов «{kind}»", lambda g=extra: self.panel.post(f"/hosts/del/{g}", json_body={}))
             if same:
                 continue
             state = "выключены" if w["disabled"] else "включены"

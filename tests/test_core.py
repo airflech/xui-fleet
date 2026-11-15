@@ -189,16 +189,13 @@ class FakePanel:
     hosts: list = []
 
     def post(self, path, json_body=None, form=None):
-        """3x-ui hosts API: a group = one row per inbound per address."""
+        """3x-ui hosts API: /hosts/list returns one object per group (hosts[] + inboundIds[]), as the real panel does."""
         import secrets as _s
         body = json_body or {}
         if path == "/hosts/add" or path.startswith("/hosts/update/"):
             gid = path.rsplit("/", 1)[1] if "update" in path else _s.token_hex(4)
             self.hosts = [h for h in self.hosts if h["groupId"] != gid]
-            for ib in body["inboundIds"]:
-                for addr in body.get("hosts") or [""]:
-                    self.hosts.append(dict({k: v for k, v in body.items() if k not in ("inboundIds", "hosts", "groupId")},
-                                           groupId=gid, inboundId=ib, address=addr))
+            self.hosts.append(dict(body, groupId=gid, snis=[body.get("sni", "")]))
             self.calls.append("hosts")
             return [h for h in self.hosts if h["groupId"] == gid]
         if path.startswith("/hosts/del/"):
@@ -1234,7 +1231,8 @@ def test_reserve_domain_through_3xui_hosts_switches_without_touching_entries():
     assert master["fleet-rxh-de"]["streamSettings"]["realitySettings"]["serverNames"] == ["a.example", "b.example"]
     groups = {h["tags"][0]: h for h in panel.hosts}
     assert groups["xui-fleet-main"]["isDisabled"] and groups["xui-fleet-reserve"]["isDisabled"]  # main mode: links as before
-    covered = {h["inboundId"] for h in panel.hosts if h["tags"] == ["xui-fleet-reserve"]}
+    assert len(panel.hosts) == 2  # one group per address, as the real panel lists them
+    covered = set(groups["xui-fleet-reserve"]["inboundIds"])
     assert covered == {i["id"] for t, i in master.items() if t.startswith(("fleet-rxh", "fleet-rhy2", "fleet-rwarp", "fleet-cascade"))}
     keys = {t: i["streamSettings"].get("realitySettings", {}).get("privateKey") for t, i in master.items()}
     for mode, main_on, reserve_on in (("both", True, True), ("reserve", False, True), ("main", False, False)):
@@ -1246,3 +1244,6 @@ def test_reserve_domain_through_3xui_hosts_switches_without_touching_entries():
                 for t, i in ((i["tag"], i) for i in panel.inbounds() if not i.get("nodeId"))} == keys  # entries untouched
     assert "{{INBOUND}}{{HOST}}" in panel.settings()["remarkTemplate"]  # the two links are told apart by name
     assert Reconciler(panel, FleetConfig.model_validate(doc)).run(_stale(_access(["de"]))).changes == []
+    doc["master"]["tls"]["address_mode"] = "both"
+    Reconciler(panel, FleetConfig.model_validate(doc)).run(_stale(_access(["de"])))
+    assert Reconciler(panel, FleetConfig.model_validate(doc)).run(_stale(_access(["de"]))).changes == []  # idempotent when on

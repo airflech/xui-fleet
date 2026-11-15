@@ -760,7 +760,8 @@ class Fleet:
             if user is None:
                 raise FleetError("нет ни одного пользователя с подпиской")
             s = panel.settings()
-            hosts = [h for h in (self.cfg.tls_for(self.cfg.master).domain, self.cfg.master.host) if h]
+            tls = self.cfg.tls_for(self.cfg.master)
+            hosts = [h for h in (tls.domain, *tls.reserve_domains, self.cfg.master.host) if h]
             outs, last_err = None, None
             for host in hosts:  # the domain may still point at the old server right after a move
                 url = f"https://{host}:{s.get('subPort', 2096)}{s.get('subPath', '/sub/')}{user['subId']}"
@@ -775,7 +776,7 @@ class Fleet:
             node_host = {n["id"]: n.get("address") for n in panel.nodes()}
             cfg_host = {n.name: n.host for n in self.cfg.nodes}
             node_host.update({n["id"]: cfg_host.get(n["name"], n.get("address")) for n in panel.nodes()})
-            master_hosts = {self.cfg.master.host, self.cfg.tls_for(self.cfg.master).domain}
+            master_hosts = {self.cfg.master.host, tls.domain, *tls.reserve_domains}  # reserve links come from 3x-ui hosts
             names: Dict[Any, str] = {}
             for i in panel.inbounds():  # ports repeat across servers, so match on (address, port, protocol)
                 proto = "hysteria" if i["protocol"] == "hysteria" else "vless"
@@ -798,6 +799,8 @@ class Fleet:
                         break
                 key = (h.get("address"), int(h.get("port") or 0), "hysteria" if o.get("protocol") == "hysteria" else "vless")
                 label = names.get(key) or f"{h.get('address')}:{h.get('port')}"
+                if names.get(key) and h.get("address") in tls.reserve_domains:
+                    label += " · резерв"
                 if result.get("success"):
                     eg = result.get("egress") or {}
                     self.log(f"  ✅ {label} — {result.get('delay')} мс, выход {eg.get('ipv4') or '?'} ({eg.get('country') or '?'})")

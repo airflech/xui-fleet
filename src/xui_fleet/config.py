@@ -47,7 +47,17 @@ class TLSConfig(Strict):
     # Spare domains on the same master, in the same certificate: subscriptions open on them too, and if the
     # main domain is blocked the master switches to one of them (users keep a ready reserve link).
     reserve_domains: List[str] = Field(default_factory=list)
+    # Which address the entries via the master carry in subscriptions (3x-ui "hosts"): main — the main domain,
+    # both — two links per entry (main + reserve), reserve — only the reserve domain (main one blocked).
+    address_mode: str = "main"
     email: Optional[str] = None
+
+    @field_validator("address_mode")
+    @classmethod
+    def _am(cls, v: str) -> str:
+        if v not in ("main", "both", "reserve"):
+            raise ValueError("tls.address_mode: main | both | reserve")
+        return v
 
     @field_validator("mode")
     @classmethod
@@ -328,7 +338,8 @@ class FleetConfig(Strict):
             if domain:
                 # "Steal from yourself": the SNI is our own domain, which really resolves to this IP and
                 # serves a real h2 site with a valid cert, so SNI/IP checks and active probes see nothing odd.
-                reality = RealityConfig(target=f"127.0.0.1:{self.master.decoy_port}", server_names=[domain],
+                reality = RealityConfig(target=f"127.0.0.1:{self.master.decoy_port}",
+                                        server_names=[domain] + [d for d in self.tls_for(self.master).reserve_domains if d != domain],
                                         fingerprint=reality.fingerprint)
             else:
                 reality = RealityConfig(target="ya.ru:443", server_names=["ya.ru"], fingerprint=reality.fingerprint)
@@ -507,6 +518,18 @@ def set_master_role(path: Path, vpn: bool, cascades: bool, label: Optional[str] 
             m["hide"] = hide
         else:
             m.pop("hide", None)
+    FleetConfig.model_validate(doc)
+    _save_doc(path, doc)
+
+
+def set_address_mode(path: Path, mode: str) -> None:
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    tls = (doc.setdefault("master", {}).get("tls") or {})
+    if mode == "main":
+        tls.pop("address_mode", None)
+    else:
+        tls["address_mode"] = mode
+    doc["master"]["tls"] = tls
     FleetConfig.model_validate(doc)
     _save_doc(path, doc)
 

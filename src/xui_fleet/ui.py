@@ -30,7 +30,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "у вкладки появилась иконка, в консоли браузера больше нет ошибки favicon.ico"
+WHATS_NEW = "адреса подключений через RU: основной, оба или только резервный домен — переключение одной кнопкой через хосты 3x-ui"
 
 
 class Job:
@@ -241,6 +241,7 @@ class App:
                 "countries": [[iso, geo.flag(iso), nm] for iso, nm in sorted(geo.COUNTRIES.items(), key=lambda x: x[1])], "version": cfg.panel.version,
                 "master": {"name": cfg.master.name, "host": cfg.master.host, "label": cfg.master.label,
                            "tls": tls.mode, "domain": tls.domain or "", "reserveDomains": list(tls.reserve_domains),
+                           "addressMode": tls.address_mode,
                            "access": access(cfg.master), "vpn": cfg.master.vpn, "cascades": cfg.master.cascades,
                            "labelText": cfg.master.label or "", "flag": cfg.master.flag or "auto", "hide": list(cfg.master.hide),
                            "country": state.get(cfg.master.name, "country") or "",
@@ -618,6 +619,14 @@ def make_handler(app: App):
             if path == "/api/domain":
                 domain = _req(body, "domain")
                 return run(f"Домен подписки {domain}", lambda log: app.fleet(log).set_sub_domain(domain))
+            if path == "/api/master/addresses":
+                from .config import set_address_mode
+                mode = _req(body, "mode")
+                if app.job.running:
+                    raise RuntimeError("уже выполняется другая операция — дождитесь её окончания")
+                set_address_mode(app.path, mode)
+                title = {"main": "Основной домен", "both": "Основной и резервный домены", "reserve": "Только резервный домен"}.get(mode, mode)
+                return run(f"Адреса подключений: {title.lower()}", lambda log: app.fleet(log).apply(skip_provision=True))
             if path == "/api/domain/reserve":
                 domain = (body.get("domain") or "").strip()
                 return run(f"Резервный домен {domain}" if domain else "Удаление резервного домена",

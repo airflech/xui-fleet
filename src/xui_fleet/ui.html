@@ -676,6 +676,7 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
   <button role="menuitem" id="btnRole"><svg class="i"><use href="#i-net"/></svg><span>Роль и подключения<small>VPN-сервер, каскады, название</small></span></button>
   <hr>
   <button role="menuitem" id="btnDomain"><svg class="i"><use href="#i-globe"/></svg><span>Домен подписки<small id="domainNow"></small></span></button>
+  <button role="menuitem" id="btnAddr" class="hidden"><svg class="i"><use href="#i-globe"/></svg><span>Адреса подключений через RU<small id="addrNow"></small></span></button>
   <button role="menuitem" id="btnReserve"><svg class="i"><use href="#i-globe"/></svg><span>Резервный домен<small id="reserveNow"></small></span></button>
   <button role="menuitem" id="btnSwitch" class="hidden"><svg class="i"><use href="#i-refresh"/></svg><span>Перейти на резервный домен<small>Если основной заблокирован</small></span></button>
   <hr>
@@ -760,6 +761,22 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
     <div class="formerr" role="alert"></div>
   </div>
   <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Проверить DNS и выпустить сертификат</button></div>
+</form></dialog>
+
+<dialog id="dlgAddr"><form id="addrForm">
+  <div class="dlg-h"><h2>Адреса подключений через RU</h2><p>Какой домен стоит в ссылках подписки у подключений через главный сервер.
+    Переключается хостами 3x-ui: сами подключения и их ключи не меняются, пользователям достаточно обновить подписку.</p></div>
+  <div class="dlg-b">
+    <div class="roles">
+      <label class="role"><input type="radio" name="mode" value="main"><span><b>Основной домен</b><span id="addrMain"></span> — как обычно.</span></label>
+      <label class="role"><input type="radio" name="mode" value="both"><span><b>Основной и резервный</b>
+        У каждого подключения две ссылки: «· основной» и «· резерв». Удобно заранее, на случай блокировки.</span></label>
+      <label class="role"><input type="radio" name="mode" value="reserve"><span><b>Только резервный</b><span id="addrReserve"></span> — если основной домен заблокировали.</span></label>
+    </div>
+    <div class="hint">Подключения напрямую к зарубежным серверам это не затрагивает. Сама ссылка на подписку по-прежнему открывается по основному домену — резервную копирует кнопка «Резерв» у пользователя.</div>
+    <div class="formerr" role="alert"></div>
+  </div>
+  <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Применить</button></div>
 </form></dialog>
 
 <dialog id="dlgReserve"><form id="reserveForm">
@@ -1549,6 +1566,8 @@ async function refresh() {
     $('reserveNow').textContent = rsv || 'не задан';
     $('btnReserve').disabled = !m.prepared || !m.domain;
     $('btnSwitch').classList.toggle('hidden', !rsv);
+    $('btnAddr').classList.toggle('hidden', !rsv || !m.domain);
+    $('addrNow').textContent = { main: 'сейчас: основной домен', both: 'сейчас: оба домена', reserve: 'сейчас: только резервный' }[m.addressMode || 'main'];
     if (rsv) $('btnSwitch').querySelector('span').firstChild.textContent = 'Перейти на ' + rsv;
     $('btnDomain').disabled = !m.prepared;
   }
@@ -2107,6 +2126,20 @@ $('btnReserve').addEventListener('click', () => {
 });
 $('reserveForm').addEventListener('submit', (e) => { e.preventDefault(); start('/api/domain/reserve', formData(e.target), e.target); });
 $('reserveRemove').addEventListener('click', () => start('/api/domain/reserve', { domain: '' }, $('reserveForm')));
+$('btnAddr').addEventListener('click', () => {
+  closeMenus();
+  const m = overview.master, form = $('addrForm'); resetForm(form);
+  $('addrMain').textContent = ' (' + m.domain + ')';
+  $('addrReserve').textContent = ' (' + ((m.reserveDomains || [])[0] || '') + ')';
+  form.querySelector('[value=' + (m.addressMode || 'main') + ']').checked = true;
+  $('dlgAddr').showModal();
+});
+$('addrForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const mode = (e.target.querySelector('input[name=mode]:checked') || {}).value;
+  if (mode === (overview.master.addressMode || 'main')) { $('dlgAddr').close(); return; }
+  start('/api/master/addresses', { mode }, e.target);
+});
 $('btnSwitch').addEventListener('click', () => {
   closeMenus();
   const rsv = overview.master.reserveDomains[0], cur = overview.master.domain;

@@ -186,7 +186,30 @@ class FakePanel:
     def new_x25519(self):
         return {"privateKey": "PRIV", "publicKey": "PUB"}
 
+    hosts: list = []
+
+    def post(self, path, json_body=None, form=None):
+        """3x-ui hosts API: a group = one row per inbound per address."""
+        import secrets as _s
+        body = json_body or {}
+        if path == "/hosts/add" or path.startswith("/hosts/update/"):
+            gid = path.rsplit("/", 1)[1] if "update" in path else _s.token_hex(4)
+            self.hosts = [h for h in self.hosts if h["groupId"] != gid]
+            for ib in body["inboundIds"]:
+                for addr in body.get("hosts") or [""]:
+                    self.hosts.append(dict({k: v for k, v in body.items() if k not in ("inboundIds", "hosts", "groupId")},
+                                           groupId=gid, inboundId=ib, address=addr))
+            self.calls.append("hosts")
+            return [h for h in self.hosts if h["groupId"] == gid]
+        if path.startswith("/hosts/del/"):
+            self.hosts = [h for h in self.hosts if h["groupId"] != path.rsplit("/", 1)[1]]
+            self.calls.append("hosts")
+            return None
+        raise AssertionError(path)
+
     def get(self, path):
+        if path == "/hosts/list":
+            return copy.deepcopy(self.hosts)
         assert path == "/server/getNewVlessEnc"
         self.calls.append("vless_enc")
         return {"auths": [{"id": "x25519", "decryption": "X-D", "encryption": "X-E"},
@@ -753,7 +776,7 @@ def test_switching_the_domain_moves_every_ru_entry_and_keeps_its_keys():
         assert i["shareAddr"] == "b.example", tag
         st = i["streamSettings"]
         if st["security"] == "reality":
-            assert st["realitySettings"]["serverNames"] == ["b.example"]
+            assert st["realitySettings"]["serverNames"] == ["b.example", "a.example"]  # both, the main one first
             assert st["realitySettings"]["privateKey"] == before[tag]["streamSettings"]["realitySettings"]["privateKey"]
         else:
             assert st["tlsSettings"]["serverName"] == "b.example"
@@ -1196,3 +1219,30 @@ def test_sync_remembers_the_host_key_per_address(tmp_path, monkeypatch):
         s.meta = {"server": {"name": "sync", "host": host}, "password": "x" * 8}
         s._ssh()
     assert seen["names"] == ["82.21.150.10:22", "77.105.146.10:22"]
+
+
+
+def test_reserve_domain_through_3xui_hosts_switches_without_touching_entries():
+    panel = FakePanel()
+    panel.hosts = []
+    panel._settings = {"subEnable": True, "subPort": 2096, "subPath": "/s/", "subCertFile": "/c", "webCertFile": "/c",
+                       "remarkTemplate": "{{INBOUND}}-{{EMAIL}}"}
+    doc = {"master": {"name": "ru", "host": "9.9.9.9", "tls": {"mode": "domain", "domain": "a.example", "reserve_domains": ["b.example"]}},
+           "users": [{"name": "x"}], "nodes": [{"name": "de", "host": "de.example", "set": {"cascade_tcp": False}}]}
+    Reconciler(panel, FleetConfig.model_validate(doc)).run(_access(["de"]))
+    master = {i["tag"]: i for i in panel.inbounds() if not i.get("nodeId")}
+    assert master["fleet-rxh-de"]["streamSettings"]["realitySettings"]["serverNames"] == ["a.example", "b.example"]
+    groups = {h["tags"][0]: h for h in panel.hosts}
+    assert groups["xui-fleet-main"]["isDisabled"] and groups["xui-fleet-reserve"]["isDisabled"]  # main mode: links as before
+    covered = {h["inboundId"] for h in panel.hosts if h["tags"] == ["xui-fleet-reserve"]}
+    assert covered == {i["id"] for t, i in master.items() if t.startswith(("fleet-rxh", "fleet-rhy2", "fleet-rwarp", "fleet-cascade"))}
+    keys = {t: i["streamSettings"].get("realitySettings", {}).get("privateKey") for t, i in master.items()}
+    for mode, main_on, reserve_on in (("both", True, True), ("reserve", False, True), ("main", False, False)):
+        doc["master"]["tls"]["address_mode"] = mode
+        Reconciler(panel, FleetConfig.model_validate(doc)).run(_stale(_access(["de"])))
+        on = {h["tags"][0] for h in panel.hosts if not h["isDisabled"]}
+        assert ("xui-fleet-main" in on, "xui-fleet-reserve" in on) == (main_on, reserve_on), mode
+        assert {t: i["streamSettings"].get("realitySettings", {}).get("privateKey")
+                for t, i in ((i["tag"], i) for i in panel.inbounds() if not i.get("nodeId"))} == keys  # entries untouched
+    assert "{{INBOUND}}{{HOST}}" in panel.settings()["remarkTemplate"]  # the two links are told apart by name
+    assert Reconciler(panel, FleetConfig.model_validate(doc)).run(_stale(_access(["de"]))).changes == []

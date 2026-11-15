@@ -203,6 +203,7 @@ class Reconciler:
         cascade = self._ensure_cascade_inbounds(nodes)
         self._ensure_cascade_hy2(nodes)
         self._ensure_cascade_xhttp(nodes)
+        self._ensure_master_hosts()
         self._ensure_routes(direct, cascade, bridge_id)
         self._ensure_users(direct, cascade)
         self._ensure_subscription_settings()
@@ -603,7 +604,7 @@ class Reconciler:
             tcp_taken.add(port)
             keys = self._keys()
             payload = xc.build_inbound(tag=tag, remark=remark, port=port, profile=xc.get_profile("vless-reality-xhttp-enc"),
-                                       target=f"127.0.0.1:{self.cfg.master.decoy_port}", server_names=[tls.domain],
+                                       target=f"127.0.0.1:{self.cfg.master.decoy_port}", server_names=self._master_names(),
                                        fingerprint="firefox", private_key=keys["privateKey"], public_key=keys["publicKey"],
                                        exclude_from_sub=hidden, sniffing=False, sort_index=sort, share_addr=tls.domain,
                                        vless_enc=self._vless_enc())
@@ -616,14 +617,19 @@ class Reconciler:
         """A master entry made for another domain (after a switch to the reserve one): move its link address,
         Reality SNI or Hysteria2 certificate to the current domain. Keys stay, so a subscription refresh is enough."""
         tls = self.cfg.tls_for(self.cfg.master)
-        if tls.mode != "domain" or not tls.domain or cur.get("shareAddr") == tls.domain:
+        if tls.mode != "domain" or not tls.domain:
+            return False
+        names = self._master_names()
+        reality = ((cur.get("streamSettings") or {}).get("realitySettings") or {})
+        if cur.get("shareAddr") == tls.domain and (not reality or list(reality.get("serverNames") or []) == names):
             return False
         d = tls.domain
         updated = xc._clean(cur)
         updated["shareAddrStrategy"], updated["shareAddr"] = "custom", d
         stream = updated.get("streamSettings") or {}
         if stream.get("security") == "reality":
-            stream["realitySettings"]["serverNames"] = [d]
+            # Every domain of the master: links on the reserve domain (3x-ui hosts) carry its name as SNI.
+            stream["realitySettings"]["serverNames"] = names
         elif stream.get("security") == "tls":
             t = stream.setdefault("tlsSettings", {})
             t["serverName"] = d
@@ -632,6 +638,58 @@ class Reconciler:
                     c["certificateFile"], c["keyFile"] = f"/root/cert/{d}/fullchain.pem", f"/root/cert/{d}/privkey.pem"
         self._do(f"мастер: «{cur.get('remark')}» переходит на домен {d}", lambda: self.panel.update_inbound(cur["id"], updated))
         return True
+
+    def _master_names(self) -> List[str]:
+        tls = self.cfg.tls_for(self.cfg.master)
+        return [tls.domain] + [d for d in tls.reserve_domains if d != tls.domain] if tls.domain else []
+
+    HOST_TAGS = {"main": "xui-fleet-main", "reserve": "xui-fleet-reserve"}
+
+    def _ensure_master_hosts(self) -> None:
+        """Addresses of the entries via the master in subscriptions, through 3x-ui hosts.
+
+        Two host groups cover every such entry: the main domain and the reserve one. Which are on is
+        tls.address_mode — so switching to the reserve domain is just turning hosts on, the entries and their
+        keys stay as they are, and switching back is as quick."""
+        tls = self.cfg.tls_for(self.cfg.master)
+        try:
+            rows = self.panel.get("/hosts/list") or []
+        except PanelError:
+            return  # an older 3x-ui without hosts
+        ours: Dict[str, List[Dict[str, Any]]] = {}
+        for r in rows:
+            for kind, t in self.HOST_TAGS.items():
+                if t in (r.get("tags") or []):
+                    ours.setdefault(kind, []).append(r)
+        prefixes = (xc.cascade_tag(""), xc.rxh_tag(""), xc.rhy2_tag(""), xc.rwarp_tag(""))
+        ids = sorted(i["id"] for i in self.panel.inbounds() if not i.get("nodeId") and str(i.get("tag", "")).startswith(prefixes))
+        reserve = next((d for d in tls.reserve_domains if d != tls.domain), "")
+        want: Dict[str, Dict[str, Any]] = {}
+        if tls.mode == "domain" and tls.domain and reserve and ids:
+            mode = tls.address_mode
+            want["main"] = {"address": tls.domain, "remark": " · основной", "disabled": mode != "both"}
+            want["reserve"] = {"address": reserve, "remark": " · резерв", "disabled": mode == "main"}
+        for kind in self.HOST_TAGS:
+            have = ours.get(kind, [])
+            gid = have[0]["groupId"] if have else None
+            if kind not in want:
+                if gid:
+                    self._do(f"мастер: убираю хосты «{kind}»", lambda g=gid: self.panel.post(f"/hosts/del/{g}", json_body={}))
+                continue
+            w = want[kind]
+            payload = {"inboundIds": ids, "hosts": [w["address"]], "remark": w["remark"], "isDisabled": w["disabled"],
+                       "security": "same", "sni": w["address"], "tags": [self.HOST_TAGS[kind]], "sortOrder": 0 if kind == "main" else 1}
+            same = (have and sorted({r["inboundId"] for r in have}) == ids and {r.get("address") for r in have} == {w["address"]}
+                    and all(bool(r.get("isDisabled")) == w["disabled"] and r.get("sni") == w["address"] and r.get("remark") == w["remark"] for r in have))
+            if same:
+                continue
+            state = "выключены" if w["disabled"] else "включены"
+            if gid:
+                self._do(f"мастер: хосты {w['address']} для подключений через RU — {state}",
+                         lambda g=gid, p=dict(payload, groupId=gid): self.panel.post(f"/hosts/update/{g}", json_body=p))
+            else:
+                self._do(f"мастер: создаю хосты {w['address']} для подключений через RU ({state})",
+                         lambda p=payload: self.panel.post("/hosts/add", json_body=p))
 
     def _ensure_cascade_inbounds(self, nodes: List[NodeConfig]) -> Dict[str, Dict[str, Any]]:
         """One local inbound on the master per node; its traffic is chained to that node."""
@@ -804,6 +862,11 @@ class Reconciler:
         if settings.get("webCertFile") and not settings.get("subCertFile"):
             settings["subCertFile"], settings["subKeyFile"] = settings["webCertFile"], settings["webKeyFile"]
             changed.append("включаю HTTPS для подписок (сертификат панели)")
+        tmpl = settings.get("remarkTemplate") or ""
+        if self.cfg.tls_for(self.cfg.master).address_mode != "main" and tmpl and "{{HOST}}" not in tmpl:
+            # Links of the reserve/main hosts must be told apart: put the host's name right after the entry's.
+            settings["remarkTemplate"] = tmpl.replace("{{INBOUND}}", "{{INBOUND}}{{HOST}}", 1) if "{{INBOUND}}" in tmpl else tmpl + "{{HOST}}"
+            changed.append("в именах подключений появится пометка основного или резервного адреса")
         r = self.cfg.routing
         if r.client_profile:
             link = xc.happ_routing_link(r.extra_direct)

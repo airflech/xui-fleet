@@ -1,0 +1,6 @@
+TwemojiCountryFlags.woff2 — country flags only, for systems that cannot draw flag emoji themselves (Windows).
+
+Flag graphics: Twemoji, Copyright Twitter, Inc and other contributors,
+licensed under CC-BY 4.0 — https://creativecommons.org/licenses/by/4.0/
+Font: a subset of Twemoji Mozilla (https://github.com/mozilla/twemoji-colr),
+made by country-flag-emoji-polyfill (https://github.com/talkjs/country-flag-emoji-polyfill), MIT license.

@@ -1,3 +1,7 @@
+/* Country flags for every system: Windows has no flag emoji of its own (Twemoji, CC-BY 4.0, see fonts/). */
+@font-face { font-family: "Twemoji Country Flags"; font-style: normal; font-display: swap;
+  src: url("/static/fonts/TwemojiCountryFlags.woff2") format("woff2");
+  unicode-range: U+1F1E6-1F1FF, U+1F3F4, U+E0062-E0063, U+E0065, U+E0067, U+E006C, U+E006E, U+E0073-E0074, U+E0077, U+E007F; }
 /* Brand fonts, shipped with the app (SIL Open Font License, see fonts/*-LICENSE.txt): work offline. */
 @font-face { font-family: "Inter Tight"; font-style: normal; font-weight: 100 900; font-display: swap;
   src: url("/static/fonts/inter-tight-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
@@ -18,8 +22,8 @@
   --shadow: 0 1px 2px rgba(14,26,43,.05), 0 6px 18px rgba(14,26,43,.06);
   --shadow-lg: 0 18px 48px rgba(14,26,43,.20);
   --r: 10px; --r-lg: 16px;
-  --font: "Inter Tight", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Roboto, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --font: "Twemoji Country Flags", "Inter Tight", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Twemoji Country Flags", "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -450,3 +454,5 @@ body { background-color: var(--bg);
 .warpflow .hop.w { border-color: var(--warp); color: var(--warp); }
 .warpflow .arr { color: var(--muted); }
 .warpflow .lbl { width: 100%; font-size: 12px; color: var(--muted); }
+
+input, select, textarea, button { font-family: inherit; }

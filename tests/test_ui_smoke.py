@@ -72,6 +72,8 @@ def test_every_tab_and_main_dialog_opens_without_errors(page_url):
                                              document.fonts.load("12px 'JetBrains Mono'", '16 мс')])
                                   .then(r => r.map(faces => faces.length))""")
         assert loaded == [2, 2], loaded  # latin and cyrillic faces of each
+        # country flags come from the app too: Windows has none of its own
+        assert page.evaluate("""document.fonts.load("26px 'Twemoji Country Flags'", '🇬🇧🇩🇪').then(f => f.length)""") == 1
         for tab in ("users", "inbounds", "panels", "backups", "help", "servers"):
             page.click(f".tab[data-tab={tab}]")
             assert page.locator(f"section[data-pane={tab}]").is_visible(), tab

@@ -30,7 +30,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "удаление главного сервера без бэкапа — только после вашего подтверждения; без долгого ожидания мёртвой панели"
+WHATS_NEW = "в окне «Версии» и на GitHub появился список изменений каждой версии"
 
 
 class Job:

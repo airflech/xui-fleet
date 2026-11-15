@@ -2001,8 +2001,11 @@ $('appVer').addEventListener('click', (e) => { e.preventDefault(); openVersions(
 $('updPill').addEventListener('click', () => openVersions(true));
 $('appVer').title = 'Версии и обновления';
 function relNotes(t) {
-  return (t || '').replace(/\r/g, '').replace(/^#+\s*/gm, '').replace(/\*\*/g, '')
-    .replace(/https:\/\/github\.com\/\S+\/(pull|compare)\/\S+/g, '').trim();
+  // The release page's own lines (installation, the compare link, the heading) are not news inside the app.
+  return (t || '').replace(/\r/g, '')
+    .replace(/^(Установка:|Все изменения:|\*\*Full Changelog\*\*|---\s*$|## Что нового\s*$).*$/gm, '')
+    .replace(/^#+\s*/gm, '').replace(/\*\*/g, '')
+    .replace(/https:\/\/github\.com\/\S+\/(pull|compare)\/\S+/g, '').replace(/\n{3,}/g, '\n\n').trim();
 }
 async function openVersions(fresh) {
   const list = $('verList');

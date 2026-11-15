@@ -63,6 +63,19 @@ jobs:
           v=${GITHUB_REF_NAME#v}
           pre=""
           case "$v" in *-*) pre="--prerelease" ;; esac
+          # The notes are the commit messages since the previous version: there are no pull requests here,
+          # so --generate-notes would leave nothing but a "Full Changelog" link.
+          python3 scripts/release_notes.py "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" > notes.md
           gh release create "$GITHUB_REF_NAME" "dist/xui-fleet-$v.zip" "dist/xui-fleet-$v.zip.sha256" \
-            --title "xui-fleet $v" $pre --generate-notes \
-            --notes "Установка: скачайте xui-fleet-$v.zip, распакуйте и запустите файл для своей системы. Установленные копии обновятся сами."
+            --title "xui-fleet $v" $pre --notes-file notes.md
+      - name: Fill in the notes of earlier releases that have none
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for tag in $(gh release list --limit 100 --json tagName --jq '.[].tagName'); do
+            [ "$tag" = "$GITHUB_REF_NAME" ] && continue
+            if ! gh release view "$tag" --json body --jq .body | grep -q '^## Что нового'; then
+              python3 scripts/release_notes.py "$tag" "$GITHUB_REPOSITORY" > "notes-$tag.md"
+              gh release edit "$tag" --notes-file "notes-$tag.md" && echo "notes added: $tag"
+            fi
+          done

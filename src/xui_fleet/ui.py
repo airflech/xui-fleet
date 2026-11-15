@@ -485,16 +485,19 @@ def _page() -> bytes:
     return html.replace("{{V}}", code_version()[:12]).encode()
 
 
-STATIC_TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
+STATIC_TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".woff2": "font/woff2",
+                ".txt": "text/plain; charset=utf-8"}
 
 
 def _static(name: str) -> Optional[Tuple[bytes, str]]:
     """The page's own scripts and styles. Code, not data: served without the token (a <script src> cannot send
     one), and only plain file names from the package's static folder."""
     import re
-    if not re.fullmatch(r"[a-z0-9-]+\.(js|css)", name):
+    if not re.fullmatch(r"[a-z0-9-]+\.(js|css)|fonts/[A-Za-z0-9-]+\.(woff2|txt)", name):
         return None
-    f = resources.files("xui_fleet").joinpath("static").joinpath(name)
+    f = resources.files("xui_fleet").joinpath("static")
+    for part in name.split("/"):
+        f = f.joinpath(part)
     if not f.is_file():
         return None
     return f.read_bytes(), STATIC_TYPES["." + name.rsplit(".", 1)[1]]

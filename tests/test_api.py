@@ -70,3 +70,13 @@ def test_dispatch_refuses_unknown_addresses_and_busy_states():
             api.dispatch(app, "POST", "/api/user/edit", {"name": "x"})
     finally:
         app.job.running = False
+
+
+def test_the_page_files_and_fonts_are_served_and_nothing_else():
+    from xui_fleet.ui import _static
+    body, ctype = _static("fonts/inter-tight-cyrillic.woff2")
+    assert body[:4] == b"wOF2" and ctype == "font/woff2"
+    assert _static("fonts/jetbrains-mono-LICENSE.txt")[0].startswith(b"Copyright")
+    assert _static("core.js")[1].startswith("text/javascript")
+    for bad in ("../ui.py", "fonts/../../ui.py", "fonts/x.ttf", "Core.js", "fonts/a/b.woff2", "nope.js"):
+        assert _static(bad) is None, bad

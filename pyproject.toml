@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "xui-fleet"
-version = "0.7.0"
+version = "0.7.1"
 description = "Автоматизация 3x-ui: главная панель, ноды и каскад RU -> зарубежные серверы"
 requires-python = ">=3.9"
 dependencies = [
@@ -27,7 +27,7 @@ xui-fleet = "xui_fleet.cli:app"
 where = ["src"]
 
 [tool.setuptools.package-data]
-xui_fleet = ["*.html", "static/*.js", "static/*.css"]
+xui_fleet = ["*.html", "static/*.js", "static/*.css", "static/fonts/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

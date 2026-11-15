@@ -30,7 +30,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "после смены или удаления профиля в шапке больше не появляется пустая «Ошибка:»"
+WHATS_NEW = "у вкладки появилась иконка, в консоли браузера больше нет ошибки favicon.ico"
 
 
 class Job:
@@ -417,6 +417,13 @@ def make_handler(app: App):
 
         def do_GET(self) -> None:  # noqa: N802
             url = urlparse(self.path)
+            if url.path == "/favicon.ico":
+                # Browsers ask for it on their own, without the token. The page carries its icon inline;
+                # answer "nothing here" instead of a 403 that shows up as an error in the console.
+                self.send_response(204)
+                self.send_header("Cache-Control", "max-age=86400")
+                self.end_headers()
+                return
             if url.path == "/":
                 given = (parse_qs(url.query).get("t") or [""])[0]
                 if not (self._local() and hmac.compare_digest(given, app.token)):

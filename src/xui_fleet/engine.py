@@ -1002,6 +1002,55 @@ class Fleet:
             rec._collect_subscriptions()
             return rec.report.subscriptions
 
+    # ---- user statistics --------------------------------------------------
+    def user_stats(self) -> Dict[str, Dict[str, Any]]:
+        """Traffic, servers in use right now, devices and IPs of every user (see stats.py)."""
+        from . import stats
+        with self.master_panel(provision=False) as panel:
+            clients = panel.clients_with_traffic()
+            names = stats.server_names(panel.nodes(), self.cfg.master.name)
+            online, ips = panel.onlines_by_server(), panel.ips_by_server()
+            bridge = self.cfg.clients.bridge_email
+            emails = [c["email"] for c in clients if c.get("email") and c["email"] != bridge]
+
+            def count(email: str) -> Optional[int]:
+                try:
+                    return len([d for d in panel.client_devices(email) if not stats.is_service_device(d)])
+                except PanelError:
+                    return None  # a panel without device tracking: shown as "—", never as 0
+            devices = dict(zip(emails, parallel(emails, count, 30, lambda _e: None)))
+            return stats.summarize(clients, names, online, ips, devices, hidden=[bridge])
+
+    def user_detail(self, name: str) -> Dict[str, Any]:
+        """One user: the list row plus every device and recent IP with its server."""
+        from . import stats
+        with self.master_panel(provision=False) as panel:
+            client = next((c for c in panel.clients_with_traffic() if c.get("email") == name), None)
+            if not client:
+                raise FleetError(f"пользователя {name} нет на главном сервере")
+            names = stats.server_names(panel.nodes(), self.cfg.master.name)
+            devices = panel.client_devices(name)
+            row = stats.summarize([client], names, panel.onlines_by_server(), panel.ips_by_server(),
+                                  {name: len([d for d in devices if not stats.is_service_device(d)])})[name]
+            ips = sorted(panel.client_ips(name), key=lambda x: str(x.get("time") or ""), reverse=True)
+            row["deviceList"] = sorted((stats.device_view(d) for d in devices), key=lambda d: -d["lastSeen"])
+            row["ipList"] = [{"ip": i.get("ip", ""), "time": i.get("time", ""), "server": i.get("node") or self.cfg.master.name}
+                             for i in ips]
+            return row
+
+    def set_user_limits(self, name: str, devices: Any, ips: Any) -> None:
+        """Limits live in the panel (fleet.yaml only seeds new users), so `apply` never undoes them."""
+        from . import stats
+        fields = {"limitHwid": stats.validate_limit(devices, "устройств"), "limitIp": stats.validate_limit(ips, "IP-адресов")}
+        with self.master_panel(provision=False) as panel:
+            panel.update_client(name, fields)
+        self.log(f"{name}: устройств — {fields['limitHwid'] or 'без ограничения'}, IP — {fields['limitIp'] or 'без ограничения'}")
+
+    def forget_device(self, name: str, device_id: int) -> None:
+        """Free a device slot: the device has to fetch the subscription again to come back."""
+        with self.master_panel(provision=False) as panel:
+            panel.forget_device(name, device_id)
+
     def status(self) -> Tuple[List[dict], List[dict]]:
         with self.master_panel(provision=False) as panel:
             def probe(node):  # refresh, do not show a stale heartbeat; an offline node must not hold the rest

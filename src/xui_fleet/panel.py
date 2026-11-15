@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import time
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 
 import httpx
 
@@ -171,6 +172,47 @@ class Panel:
 
     def sub_links(self, sub_id: str) -> List[str]:
         return self.get(f"/clients/subLinks/{sub_id}") or []
+
+    # ---- client statistics ----------------------------------------------
+    def clients_with_traffic(self) -> List[Dict[str, Any]]:
+        """Every client with its limits and traffic counters (up/down, lastOnline, lastSubFetch)."""
+        out: List[Dict[str, Any]] = []
+        page = 1
+        while True:
+            res = self.get(f"/clients/list/paged?page={page}&pageSize=200") or {}
+            items = res.get("items") or []
+            out.extend(items)
+            if not items or len(out) >= int(res.get("total") or 0):
+                return out
+            page += 1
+
+    def onlines_by_server(self) -> Dict[str, List[str]]:
+        """Who is connected right now, per server (keyed by the panel GUID of the master or a node)."""
+        return self.post("/clients/onlinesByGuid") or {}
+
+    def ips_by_server(self) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
+        """Recent client IPs per server: {guid: {email: [{ip, timestamp}]}}."""
+        return self.post("/clients/clientIpsByGuid") or {}
+
+    def client_devices(self, email: str) -> List[Dict[str, Any]]:
+        """Devices registered by the subscription (HWID): deviceOs, osVersion, deviceModel, userAgent, firstSeen, lastSeen."""
+        return self.post(f"/clients/hwids/{_seg(email)}") or []
+
+    def client_ips(self, email: str) -> List[Dict[str, Any]]:
+        """Recent IPs of one client with the server each one was seen on: [{ip, time, node}]."""
+        return self.post(f"/clients/ips/{_seg(email)}") or []
+
+    def forget_device(self, email: str, device_id: int) -> None:
+        self._call("DELETE", f"/clients/hwids/{_seg(email)}/{int(device_id)}")
+
+    def update_client(self, email: str, fields: Dict[str, Any]) -> None:
+        """Change only the given fields (3x-ui keeps everything that is not in the body)."""
+        self.post(f"/clients/update/{_seg(email)}", json_body=fields)
+
+
+def _seg(value: str) -> str:
+    """One path segment: names may hold letters of any alphabet, never a slash or a query."""
+    return quote(str(value), safe="@.-_")
 
 
 def _decode_inbound(inbound: Dict[str, Any]) -> Dict[str, Any]:

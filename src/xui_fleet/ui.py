@@ -30,7 +30,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "профили — несколько наборов серверов и выход из профиля (кнопка в шапке)"
+WHATS_NEW = "статистика пользователей: трафик, устройства, IP и лимиты — клик по пользователю"
 
 
 class Job:
@@ -450,6 +450,12 @@ def make_handler(app: App):
                     return (self._send(200, v.encode(), "text/plain") if url.path == "/api/ping"
                             else self._send(200, {"version": v, "app": __import__("xui_fleet").__version__,
                                                   "whatsNew": WHATS_NEW, "data": app.data_mark(), **app.update_note()}))
+                if url.path == "/api/users/stats":
+                    if app.job.running:
+                        return self._send(200, {"busy": True})
+                    return self._send(200, {"stats": app.fleet().user_stats()})
+                if url.path == "/api/user":
+                    return self._send(200, app.fleet().user_detail(_req({"name": (parse_qs(url.query).get("name") or [""])[0]}, "name")))
                 if url.path == "/api/panels":
                     if app.job.running:
                         return self._send(200, {"busy": True})
@@ -644,6 +650,15 @@ def make_handler(app: App):
             if path == "/api/node/remove":
                 name = _req(body, "name")
                 return run(f"Удаление сервера {name}", lambda log: app.remove_node(name, log))
+            if path in ("/api/user/limits", "/api/user/device/forget"):
+                if app.job.running:
+                    raise RuntimeError("дождитесь окончания текущей операции")
+                name = _req(body, "name")
+                if path == "/api/user/limits":
+                    app.fleet().set_user_limits(name, body.get("devices"), body.get("ips"))
+                else:
+                    app.fleet().forget_device(name, int(body.get("id") or 0))
+                return {"ok": True, "user": app.fleet().user_detail(name)}
             if path == "/api/user":
                 name = _req(body, "name")
                 return run(f"Создание пользователя {name}",

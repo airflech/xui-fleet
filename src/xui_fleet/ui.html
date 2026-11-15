@@ -71,6 +71,24 @@ svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none;
 .menu button .tick { visibility: hidden; color: var(--accent); } .menu button[aria-checked=true] .tick { visibility: visible; }
 .menu button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 ul.plain { margin: 0; padding-left: 18px; } ul.plain li { margin: 3px 0; }
+.list > .item.click { cursor: pointer; } .list > .item.click:hover { background: var(--sunken); }
+.ustats { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 3px; font-size: 12px; color: var(--ink-2); }
+.ustats span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.ustats .i { width: 13px; height: 13px; color: var(--muted); }
+.ustats .over { color: var(--bad); font-weight: 600; } .ustats .over .i { color: var(--bad); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.tile { background: var(--sunken); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.tile small { display: block; color: var(--muted); font-size: 12px; }
+.tile b { display: block; font-size: 15px; margin-top: 2px; overflow-wrap: anywhere; }
+.meter { height: 6px; border-radius: 3px; background: var(--line); margin-top: 6px; overflow: hidden; }
+.meter > i { display: block; height: 100%; background: var(--accent); } .meter.bad > i { background: var(--bad); }
+.sect { margin-top: 18px; } .sect h3 { font-size: 14px; margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
+.rows { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.rows > div { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-top: 1px solid var(--line); font-size: 13px; min-width: 0; }
+.rows > div:first-child { border-top: 0; } .rows .grow { flex: 1; min-width: 0; }
+.rows .sub { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; } .rows .muted-row { color: var(--muted); }
+.limits { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }
+@media (max-width: 560px) { .limits { grid-template-columns: 1fr 1fr; } .limits .btn { grid-column: 1 / -1; } }
 .jobchip.ok { color: var(--ok); } .jobchip.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }
 
 /* ---------- layout ---------- */
@@ -324,6 +342,8 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
   <symbol id="i-logout" viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 8l-4 4 4 4M6 12h10"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></symbol>
   <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
   <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></symbol>
 </svg>
 
@@ -525,6 +545,13 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
           <h2 id="h-users">Пользователи</h2>
           <p>«Пользователи» → «Добавить пользователя». Каждый получает одну ссылку-подписку со всеми подключениями — кнопка «Ссылка».
             Её вставляют в Happ, v2rayNG, Hiddify или Streisand как подписку. Кнопка «Резерв» — та же подписка на резервном домене.</p>
+          <p>Под именем — трафик за всё время, число устройств и IP-адресов; рядом с «онлайн сейчас» — серверы, через которые человек
+            подключён. Клик по пользователю открывает карточку: устройства (модель, система, приложение, когда впервые и в последний раз),
+            IP-адреса с сервером и лимиты. Красным отмечено то, что превышает лимит.</p>
+          <p>Устройства видны, если приложение сообщает о себе при обновлении подписки (Happ, v2RayTun, INCY). Лимит устройств не даёт
+            новой копии подписки заработать; «Забыть» освобождает место. Конфиг, уже скопированный в приложение, этот лимит не остановит —
+            для этого лимит IP: лишние одновременные адреса 3x-ui отключает на время. Трафик считается на пользователя целиком,
+            по отдельным подключениям 3x-ui его не делит.</p>
 
           <h2 id="h-conn">Какое подключение выбрать</h2>
           <p>Подписка сгруппирована по странам, внутри — сначала лучшие подключения. Обычно достаточно первого в списке.</p>
@@ -864,6 +891,12 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
   <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn danger" type="submit" id="logoutGo" disabled></button></div>
 </form></dialog>
 
+<dialog id="dlgUserInfo" class="wide"><div class="dlg">
+  <div class="dlg-h"><h2 id="uiName"></h2><p id="uiLead"></p></div>
+  <div class="dlg-b" id="uiBody"></div>
+  <div class="dlg-f"><button type="button" class="btn" id="uiRefresh"><svg class="i"><use href="#i-refresh"/></svg>Обновить</button><div class="spacer"></div><button type="button" class="btn" data-close>Закрыть</button></div>
+</div></dialog>
+
 <dialog id="dlgConfirm"><div class="dlg">
   <div class="dlg-h"><h2 id="confirmTitle"></h2><p id="confirmText"></p></div>
   <div class="dlg-b"></div>
@@ -903,7 +936,7 @@ async function api(path, body) {
   return data;
 }
 
-let overview = null, live = null, jobSeen = 0, jobTimer = null, curJob = 0, jobClosed = 0, userFilter = 'all';
+let userStats = null, overview = null, live = null, jobSeen = 0, jobTimer = null, curJob = 0, jobClosed = 0, userFilter = 'all';
 
 // ---------- toast ----------
 let toastTimer;
@@ -1228,7 +1261,8 @@ function renderUsers() {
   if (!users.length) return msg('Никого не найдено', q ? 'Измените запрос.' : 'Сейчас никто не подключён.');
   for (const [name, url] of users) {
     const on = online.has(name);
-    const r = el('div', 'item');
+    const r = el('div', 'item click'); r.title = 'Трафик, устройства и лимиты';
+    r.addEventListener('click', (e) => { if (!e.target.closest('button')) openUserInfo(name); });
     const av = el('div', 'avatar', initials(name)); av.appendChild(el('span', 'dot ' + (on ? 'ok' : ''))); av.title = on ? 'сейчас подключён' : 'не подключён';
     let hue = 0; for (const ch of name) hue = (hue * 31 + ch.codePointAt(0)) % 360; av.style.setProperty('--h', hue);
     r.appendChild(av);
@@ -1236,7 +1270,9 @@ function renderUsers() {
     const t = el('div', 'title', name);
     const dev = deviceOf(name); if (dev) t.appendChild(el('span', 'device', dev));
     g.appendChild(t);
-    g.appendChild(el('div', 'meta', on ? 'онлайн сейчас' : lastSeen(seen[name])));
+    const st = userStats && userStats[name];
+    g.appendChild(el('div', 'meta', on ? 'онлайн сейчас' + (st && st.servers.length ? ' · ' + st.servers.map(serverLabel).join(', ') : '') : lastSeen(seen[name])));
+    if (st) g.appendChild(statLine(st));
     r.appendChild(g);
     const b = el('button', 'btn sm'); b.appendChild(icon('copy')); b.appendChild(document.createTextNode('Ссылка'));
     b.title = 'Скопировать ссылку-подписку';
@@ -1418,6 +1454,7 @@ async function loadLive() {
   btn.disabled = false;
   renderServers(); renderUsers();
   if (live.failed) { clearTimeout(liveRetry); liveRetry = setTimeout(loadLive, 5000); }
+  else if (live.ready && !live.busy) loadUserStats();
 }
 
 async function refresh() {
@@ -1476,6 +1513,134 @@ function confirmAction(title, text, fn, yes, danger) {
   $('dlgConfirm').showModal();
 }
 
+
+
+// ---------- user statistics ----------
+function fmtBytes(n) {
+  if (!n) return '0';
+  const u = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ']; let i = 0; let v = n;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return (v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1).replace('.', ',')) + ' ' + u[i];
+}
+function fmtWhen(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts > 1e12 ? ts : ts * 1000);
+  return d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+function serverLabel(name) {
+  if (!overview) return name;
+  if (overview.master && overview.master.name === name) return overview.master.display || 'Главный сервер';
+  const n = (overview.nodes || []).find((x) => x.name === name);
+  return n ? (n.display || n.name) : name;
+}
+function plural(n, one, few, many) {
+  const m10 = n % 10, m100 = n % 100;
+  return n + ' ' + (m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many);
+}
+function statLine(st) {
+  const box = el('div', 'ustats');
+  const add = (ic, text, title, bad) => { const s = el('span', bad ? 'over' : null); s.appendChild(icon(ic)); s.appendChild(document.createTextNode(text)); s.title = title; box.appendChild(s); };
+  add('chart', fmtBytes(st.used) + (st.quota ? ' из ' + fmtBytes(st.quota) : ''), 'Трафик за всё время: отдано ' + fmtBytes(st.up) + ', получено ' + fmtBytes(st.down),
+    st.quota && st.used >= st.quota);
+  if (st.devices !== null && st.devices !== undefined) {
+    const overDev = st.limitDevices && st.devices > st.limitDevices;
+    add('phone', st.devices + (st.limitDevices ? ' из ' + st.limitDevices : ''), 'Устройств получили подписку' + (st.limitDevices ? ', лимит ' + st.limitDevices : ', без лимита'), overDev);
+  }
+  const overIp = st.limitIp && st.ips > st.limitIp;
+  if (st.ips || st.limitIp) add('globe', 'IP ' + st.ips + (st.limitIp ? ' из ' + st.limitIp : ''), 'Разных IP-адресов за последнее время' + (st.limitIp ? ', лимит ' + st.limitIp : ''), overIp);
+  if (!st.enabled) { const s = el('span', 'over', 'отключён'); box.appendChild(s); }
+  return box;
+}
+async function loadUserStats() {
+  try { const d = await api('/api/users/stats'); if (d.stats) { userStats = d.stats; renderUsers(); } }
+  catch (e) { /* the list works without statistics */ }
+}
+let infoUser = null;
+async function openUserInfo(name) {
+  infoUser = name;
+  $('uiName').textContent = name; $('uiLead').textContent = 'Загружаю с главного сервера…';
+  const body = $('uiBody'); body.textContent = '';
+  const w = el('div', 'empty'); w.appendChild(el('span', 'spin')); body.appendChild(w);
+  if (!$('dlgUserInfo').open) $('dlgUserInfo').showModal();
+  try { renderUserInfo(await api('/api/user?name=' + encodeURIComponent(name))); }
+  catch (e) { body.textContent = ''; body.appendChild(el('div', 'empty err', e.message)); $('uiLead').textContent = ''; }
+}
+$('uiRefresh').addEventListener('click', () => { if (infoUser) openUserInfo(infoUser); });
+function renderUserInfo(u) {
+  if (userStats) { userStats[infoUser] = u; renderUsers(); }
+  const on = u.servers.length > 0;
+  $('uiLead').textContent = (u.enabled ? '' : 'Отключён в панели. ') + (on ? 'Сейчас подключён: ' + u.servers.map(serverLabel).join(', ') : lastSeen(u.lastOnline));
+  const body = $('uiBody'); body.textContent = '';
+  const tiles = el('div', 'tiles');
+  const tile = (label, value, extra) => { const t = el('div', 'tile'); t.appendChild(el('small', null, label)); t.appendChild(el('b', null, value)); if (extra) t.appendChild(extra); tiles.appendChild(t); };
+  let meter = null;
+  if (u.quota) { meter = el('div', 'meter' + (u.used >= u.quota ? ' bad' : '')); const i = el('i'); i.style.width = Math.min(100, 100 * u.used / u.quota) + '%'; meter.appendChild(i); }
+  tile('Трафик за всё время', fmtBytes(u.used) + (u.quota ? ' из ' + fmtBytes(u.quota) : ''), meter);
+  tile('Получено / отдано', fmtBytes(u.down) + ' / ' + fmtBytes(u.up));
+  tile('Последнее подключение', on ? 'сейчас' : fmtWhen(u.lastOnline));
+  tile('Подписка обновлялась', fmtWhen(u.lastSubFetch));
+  body.appendChild(tiles);
+
+  // devices
+  const real = u.deviceList.filter((d) => !d.service);
+  const ds = el('div', 'sect');
+  const h = el('h3'); h.appendChild(icon('phone')); h.appendChild(document.createTextNode('Устройства: ' + real.length + (u.limitDevices ? ' из ' + u.limitDevices : '')));
+  if (u.limitDevices && real.length > u.limitDevices) h.appendChild(el('span', 'tag bad', 'больше лимита'));
+  ds.appendChild(h);
+  const rows = el('div', 'rows');
+  if (!u.deviceList.length) rows.appendChild(el('div', 'muted-row', 'Пока ни одно приложение не сообщило об устройстве. Их передают Happ, v2RayTun и INCY при обновлении подписки.'));
+  for (const d of u.deviceList) {
+    const r = el('div', d.service ? 'muted-row' : null);
+    const g = el('div', 'grow');
+    const title = d.service ? 'Служебный запрос 3x-ui (не устройство)' : [d.model, d.os && (d.os + (d.osVersion ? ' ' + d.osVersion : ''))].filter(Boolean).join(' · ') || 'Устройство без описания';
+    g.appendChild(el('div', null, title));
+    g.appendChild(el('div', 'sub', [d.app, 'впервые ' + fmtWhen(d.firstSeen), 'последний раз ' + fmtWhen(d.lastSeen)].filter(Boolean).join(' · ')));
+    r.appendChild(g);
+    if (!d.service) {
+      const b = el('button', 'btn ghost sm danger', 'Забыть'); b.title = 'Освободить место: устройство вернётся, только если снова получит подписку и лимит это позволит';
+      b.addEventListener('click', () => confirmAction('Забыть устройство «' + title + '»?',
+        'Место в лимите освободится. Если у устройства осталась подписка, при следующем обновлении оно зарегистрируется снова (если лимит позволит).',
+        () => userAction('/api/user/device/forget', { name: infoUser, id: d.id }), 'Забыть', true));
+      r.appendChild(b);
+    }
+    rows.appendChild(r);
+  }
+  ds.appendChild(rows); body.appendChild(ds);
+
+  // IPs
+  const is = el('div', 'sect');
+  const hi = el('h3'); hi.appendChild(icon('globe')); hi.appendChild(document.createTextNode('IP-адреса за последнее время: ' + u.ipList.length + (u.limitIp ? ' (лимит ' + u.limitIp + ')' : '')));
+  if (u.limitIp && u.ips > u.limitIp) hi.appendChild(el('span', 'tag bad', 'больше лимита'));
+  is.appendChild(hi);
+  const ir = el('div', 'rows');
+  if (!u.ipList.length) ir.appendChild(el('div', 'muted-row', 'Нет данных: пользователь давно не подключался.'));
+  for (const i of u.ipList) {
+    const r = el('div'); const g = el('div', 'grow');
+    g.appendChild(el('div', null, i.ip)); g.appendChild(el('div', 'sub', serverLabel(i.server) + (i.time ? ' · ' + i.time : '')));
+    r.appendChild(g); ir.appendChild(r);
+  }
+  is.appendChild(ir); body.appendChild(is);
+
+  // limits
+  const ls = el('div', 'sect');
+  ls.appendChild(el('h3', null, 'Лимиты'));
+  const f = el('form', 'limits');
+  const field = (label, nameAttr, value) => { const d = el('div'); const l = el('label', 'f', label); const inp = el('input'); inp.type = 'number'; inp.min = '0'; inp.max = '1000'; inp.name = nameAttr; inp.value = value; l.appendChild(inp); d.appendChild(l); return d; };
+  f.appendChild(field('Устройств', 'devices', u.limitDevices));
+  f.appendChild(field('IP одновременно', 'ips', u.limitIp));
+  const save = el('button', 'btn primary', 'Сохранить'); save.type = 'submit'; f.appendChild(save);
+  ls.appendChild(f);
+  ls.appendChild(el('div', 'hint', '0 — без ограничения. Лишнее устройство не получит подписку. Лишние IP 3x-ui отключает на время. '
+    + 'Уже скопированный в приложение конфиг лимит устройств не остановит — для этого есть лимит IP.'));
+  const err = el('div', 'formerr'); err.setAttribute('role', 'alert'); ls.appendChild(err);
+  f.addEventListener('submit', (e) => { e.preventDefault(); userAction('/api/user/limits', { name: infoUser, devices: f.devices.value, ips: f.ips.value }, err, 'Лимиты сохранены'); });
+  body.appendChild(ls);
+}
+async function userAction(path, body, errBox, done) {
+  if (errBox) errBox.textContent = '';
+  try { const r = await api(path, body); renderUserInfo(r.user); if (done) toast(done); }
+  catch (e) { if (errBox) errBox.textContent = e.message; else toast(e.message); }
+}
 
 // ---------- profiles ----------
 function curProfile() { return (overview && overview.profile) || { id: 'default', name: 'Основной' }; }

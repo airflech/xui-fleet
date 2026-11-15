@@ -61,8 +61,158 @@ function renderAttention() {
     box.appendChild(b);
   }
 }
+// ---------- route map ----------
+// The signature of the page: who goes where. Users → the RU server → each node abroad, with the latency on
+// every line. A working route "flows" (moving dashes), a broken one is a red static line, unknown is grey.
+const SVGNS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs, text) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) if (v != null) e.setAttribute(k, v);
+  if (text != null) e.textContent = text;
+  return e;
+}
+function title2(x, y, flag, text) {  // a flag and a name, with a real gap between them
+  const t = svgEl('text', { x, y, class: 'rm-t' });
+  if (flag) t.appendChild(svgEl('tspan', null, flag));
+  t.appendChild(svgEl('tspan', flag ? { dx: 7 } : null, text));
+  return t;
+}
+function focusCard(key) {
+  const c = document.querySelector('#nodeCards [data-node="' + CSS.escape(key) + '"]');
+  if (!c) return;
+  c.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash');
+}
+function renderMap() {
+  const box = $('routeMap');
+  if (!overview || !overview.configured || !overview.master) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden'); box.textContent = '';
+  const m = overview.master, nodes = (overview.nodes || []).filter((n) => n.cascade || n.direct);
+  const ready = live && live.ready && !live.busy && !live.failed;
+  const mi = ready ? live.master : null;
+  const masterOk = mi ? mi.xray === 'running' : null;
+  const online = ready ? (live.online || []).filter((n) => n in (live.users || {})).length : null;
+  if (box.clientWidth && box.clientWidth < 560) return renderMapNarrow(box, m, nodes, ready, mi, masterOk, online);
+  const W = 1000, rowH = 74, H = Math.max(170, nodes.length * rowH + 50);
+  const cy = H / 2, MX = 270, MW = 210, MH = 78, NX = 730, NW = 250, NH = 58;
+  const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'rm', role: 'img' });
+  svg.appendChild(svgEl('title', null, 'Маршруты: пользователи → главный сервер → зарубежные серверы'));
+  const state = (ok) => (ok == null ? 'idle' : ok ? 'live' : 'down');
+  const pill = (x, y, text, st) => {
+    const g = svgEl('g', { class: 'rm-pill ' + st });
+    const w = 14 + text.length * 7.2;
+    g.appendChild(svgEl('rect', { x: x - w / 2, y: y - 11, width: w, height: 22, rx: 11 }));
+    g.appendChild(svgEl('text', { x, y: y + 4, 'text-anchor': 'middle' }, text));
+    svg.appendChild(g);
+  };
+  // users
+  const ux = 70;
+  const ug = svgEl('g', { class: 'rm-users' });
+  for (const [dx, dy] of [[-16, -10], [12, -14], [0, 12], [-22, 14], [22, 10]]) ug.appendChild(svgEl('circle', { cx: ux + dx, cy: cy + dy, r: 7 }));
+  svg.appendChild(ug);
+  svg.appendChild(svgEl('text', { x: ux, y: cy + 46, class: 'rm-cap', 'text-anchor': 'middle' }, 'пользователи'));
+  // users → master
+  const inSt = state(masterOk);
+  svg.appendChild(svgEl('path', { d: `M ${ux + 34} ${cy} L ${MX} ${cy}`, class: 'rm-line ' + inSt }));
+  if (online != null) pill((ux + 34 + MX) / 2, cy, online + ' онлайн', inSt);
+  // master → nodes (drawn before the boxes so lines tuck under them)
+  const ny = (i) => (H - nodes.length * rowH) / 2 + i * rowH + rowH / 2;
+  nodes.forEach((n, i) => {
+    const info = ready && live.nodes ? live.nodes[n.name] : null;
+    const ok = info ? info.status === 'online' : null;
+    const st = n.cascade ? state(ok) : 'off';
+    const y = ny(i), x0 = MX + MW, x1 = NX;
+    svg.appendChild(svgEl('path', { d: `M ${x0} ${cy} C ${x0 + 120} ${cy}, ${x1 - 170} ${y}, ${x1} ${y}`, class: 'rm-line ' + st }));
+    // the latency sits on the straight end of each line, so labels never collide near the hub
+    if (n.cascade) pill(x1 - 48, y, info ? (ok ? (info.latency || 0) + ' мс' : 'нет связи') : '…', st);
+  });
+  // master box
+  const mg = svgEl('g', { class: 'rm-box master ' + inSt, tabindex: 0 });
+  mg.appendChild(svgEl('rect', { x: MX, y: cy - MH / 2, width: MW, height: MH, rx: 14 }));
+  const [mfl, mtext] = splitFlag(m.display || m.labelText || 'RU');
+  mg.appendChild(title2(MX + 18, cy - 8, mfl, (mtext || 'RU') + ' · главный'));
+  const sub = mi && mi.cpu != null ? `cpu ${mi.cpu}% · mem ${mi.mem ?? 0}%` : (m.domain || m.host);
+  mg.appendChild(svgEl('text', { x: MX + 18, y: cy + 16, class: 'rm-s' }, sub));
+  mg.appendChild(svgEl('title', null, 'Главный сервер ' + m.host + (m.domain ? ' · ' + m.domain : '')));
+  mg.addEventListener('click', () => focusCard('__master'));
+  svg.appendChild(mg);
+  // node boxes
+  nodes.forEach((n, i) => {
+    const info = ready && live.nodes ? live.nodes[n.name] : null;
+    const ok = info ? info.status === 'online' : null;
+    const y = ny(i);
+    const g = svgEl('g', { class: 'rm-box ' + state(ok), tabindex: 0 });
+    g.appendChild(svgEl('rect', { x: NX, y: y - NH / 2, width: NW, height: NH, rx: 12 }));
+    const [fl, text] = splitFlag(n.display || n.label || n.name);
+    g.appendChild(title2(NX + 16, y - 4, fl, text || n.name));
+    const direct = userStats ? Object.values(userStats).filter((u) => (u.servers || []).includes(n.name)).length : null;
+    const bits = [n.name];
+    if (info && ok && info.cpu != null) bits.push('cpu ' + info.cpu + '%');
+    if (direct != null && n.direct) bits.push(direct + ' напрямую');
+    g.appendChild(svgEl('text', { x: NX + 16, y: y + 16, class: 'rm-s' }, bits.join(' · ')));
+    g.appendChild(svgEl('title', null, (text || n.name) + ' · ' + n.host + (n.cascade ? '' : ' · без каскада через RU')));
+    g.addEventListener('click', () => focusCard(n.name));
+    svg.appendChild(g);
+  });
+  if (!nodes.length) {
+    const y = cy, x0 = MX + MW;
+    svg.appendChild(svgEl('path', { d: `M ${x0} ${y} L ${NX} ${y}`, class: 'rm-line ' + inSt }));
+    svg.appendChild(svgEl('text', { x: NX + 10, y: y + 5, class: 'rm-cap' }, m.vpn ? 'интернет — напрямую с этого сервера' : 'добавьте зарубежный сервер'));
+  }
+  box.appendChild(svg);
+  mapWidth = box.clientWidth;
+  const legend = el('div', 'rm-legend');
+  for (const [cls, txt] of [['live', 'маршрут работает'], ['down', 'нет связи'], ['idle', 'нет данных']]) {
+    const s = el('span'); s.appendChild(el('i', cls)); s.appendChild(document.createTextNode(txt)); legend.appendChild(s);
+  }
+  box.appendChild(legend);
+}
+// Phones: the same story top to bottom — users, the RU server, then a trunk line feeding every node.
+function renderMapNarrow(box, m, nodes, ready, mi, masterOk, online) {
+  const state = (ok) => (ok == null ? 'idle' : ok ? 'live' : 'down');
+  const W = 360, top = 128, rowH = 64, H = top + Math.max(1, nodes.length) * rowH + 8, inSt = state(masterOk);
+  const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'rm', role: 'img' });
+  svg.appendChild(svgEl('title', null, 'Маршруты: пользователи → главный сервер → зарубежные серверы'));
+  const ug = svgEl('g', { class: 'rm-users' });
+  for (const [dx, dy] of [[-10, -4], [8, -6], [0, 8], [-16, 8], [16, 6]]) ug.appendChild(svgEl('circle', { cx: 40 + dx, cy: 22 + dy, r: 5 }));
+  svg.appendChild(ug);
+  svg.appendChild(svgEl('text', { x: 70, y: 27, class: 'rm-cap' }, online != null ? 'пользователи · ' + online + ' онлайн' : 'пользователи'));
+  svg.appendChild(svgEl('path', { d: 'M 40 38 L 40 56', class: 'rm-line ' + inSt }));
+  const mg = svgEl('g', { class: 'rm-box master ' + inSt, tabindex: 0 });
+  mg.appendChild(svgEl('rect', { x: 14, y: 56, width: W - 28, height: 52, rx: 12 }));
+  const [mfl, mtext] = splitFlag(m.display || m.labelText || 'RU');
+  mg.appendChild(title2(30, 79, mfl, (mtext || 'RU') + ' · главный'));
+  mg.appendChild(svgEl('text', { x: 30, y: 97, class: 'rm-s' }, mi && mi.cpu != null ? `cpu ${mi.cpu}% · mem ${mi.mem ?? 0}%` : (m.domain || m.host)));
+  mg.addEventListener('click', () => focusCard('__master'));
+  svg.appendChild(mg);
+  nodes.forEach((n, i) => {
+    const info = ready && live.nodes ? live.nodes[n.name] : null;
+    const ok = info ? info.status === 'online' : null, st = n.cascade ? state(ok) : 'off';
+    const y = top + i * rowH + rowH / 2;
+    svg.appendChild(svgEl('path', { d: `M 40 108 L 40 ${y - 14} Q 40 ${y} 54 ${y} L 64 ${y}`, class: 'rm-line ' + st }));
+    const g = svgEl('g', { class: 'rm-box ' + state(ok), tabindex: 0 });
+    g.appendChild(svgEl('rect', { x: 64, y: y - 24, width: W - 78, height: 48, rx: 10 }));
+    const [fl, text] = splitFlag(n.display || n.label || n.name);
+    g.appendChild(title2(78, y - 3, fl, text || n.name));
+    g.appendChild(svgEl('text', { x: 78, y: y + 15, class: 'rm-s' }, n.name));
+    if (n.cascade) {
+      const t = info ? (ok ? (info.latency || 0) + ' мс' : 'нет связи') : '…';
+      g.appendChild(svgEl('text', { x: W - 26, y: y + 5, class: 'rm-lat ' + st, 'text-anchor': 'end' }, t));
+    }
+    g.addEventListener('click', () => focusCard(n.name));
+    svg.appendChild(g);
+  });
+  box.appendChild(svg);
+}
+let mapWidth = 0;
+window.addEventListener('resize', () => {
+  const w = $('routeMap').clientWidth;
+  if ((w < 560) !== (mapWidth < 560)) renderMap();
+  mapWidth = w;
+});
 function renderServers() {
   renderAttention();
+  renderMap();
   const box = $('nodeCards');
   box.textContent = '';
   const nodes = (overview && overview.nodes) || [];
@@ -72,6 +222,7 @@ function renderServers() {
   for (const n of nodes) {
     const info = live && live.nodes ? live.nodes[n.name] : null;
     const card = el('article', 'card' + (info && info.status !== 'online' ? ' down' : ''));
+    card.dataset.node = n.name;
     const h = el('div', 'card-h');
     const [fl, text] = splitFlag(n.display || n.label || n.name);
     h.appendChild(el('div', 'flag', fl || '🖥'));
@@ -133,6 +284,7 @@ function uptimeText(sec) {
 function masterCard(m) {
   const info = live && live.master;
   const card = el('article', 'card main-srv');
+  card.dataset.node = '__master';
   const h = el('div', 'card-h');
   const [fl, text] = splitFlag(m.display || '');
   const fb = el('div', 'flag', fl);

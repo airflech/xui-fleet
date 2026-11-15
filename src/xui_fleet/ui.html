@@ -39,7 +39,7 @@
 
 <header class="top">
   <div class="top-in">
-    <div class="brand"><span class="logo"><svg class="i"><use href="#i-net"/></svg></span>xui-fleet
+    <div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 20 20"><path class="lr" d="M4 10 C 9 10, 9 4.5, 15.5 4.5 M4 10 C 9 10, 9 15.5, 15.5 15.5"/><circle class="lh" cx="4" cy="10" r="2.6"/><circle class="ln" cx="15.5" cy="4.5" r="2.2"/><circle class="ln" cx="15.5" cy="15.5" r="2.2"/></svg></span><span>xui<span class="fleet">-fleet</span></span>
       <a class="ver hidden" id="appVer" href="#h-update" title="Версия приложения — обновляется само"></a>
       <button class="upd hidden" id="updPill" type="button"></button></div>
     <div class="master hidden" id="masterBox">
@@ -127,6 +127,7 @@
         <button class="btn primary" id="btnAddNode"><svg class="i"><use href="#i-plus"/></svg>Добавить сервер</button>
         </div>
       </div>
+      <div class="routemap hidden" id="routeMap"></div>
       <div class="attn hidden" id="attention" aria-live="polite"></div>
       <div class="cards" id="nodeCards"></div>
       <div class="panel hidden" id="noNodes"><div class="empty"><b>Зарубежных серверов пока нет</b>

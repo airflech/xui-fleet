@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "история операций в журнале и «Что изменит «Применить»» — проверка без изменений с кнопкой применить"
+WHATS_NEW = "новый облик: живая карта маршрутов на вкладке «Серверы», ночная и дневная тема"
 
 
 def _last_backup(fleet: Any) -> int:

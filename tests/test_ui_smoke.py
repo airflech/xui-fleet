@@ -55,6 +55,12 @@ def test_every_tab_and_main_dialog_opens_without_errors(page_url):
 
         # the main server card and the node are drawn
         assert page.locator("#nodeCards .card").count() == 2
+        # the route map: the RU server and the node, joined by a line (no live data yet: drawn as "unknown")
+        assert page.locator("#routeMap svg .rm-box").count() == 2
+        assert page.locator("#routeMap svg .rm-line.idle").count() >= 2
+        page.set_viewport_size({"width": 390, "height": 800})  # phones get the vertical map
+        page.wait_for_function("document.querySelector('#routeMap svg').viewBox.baseVal.width === 360")
+        page.set_viewport_size({"width": 1100, "height": 800})
         for tab in ("users", "inbounds", "panels", "backups", "help", "servers"):
             page.click(f".tab[data-tab={tab}]")
             assert page.locator(f"section[data-pane={tab}]").is_visible(), tab

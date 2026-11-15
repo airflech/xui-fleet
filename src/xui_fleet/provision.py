@@ -597,3 +597,63 @@ def pick_warp_endpoint(ssh: SSH, warp: Dict[str, Any], candidates: Optional[List
         scores[ep] = statistics.median(times) if len(times) >= 2 else 99.0
     best = min(scores, key=scores.get) if scores else ""
     return (best if best and scores[best] < 99 else ""), scores
+
+
+# ---- removal ------------------------------------------------------------
+_DOMAIN = re.compile(r"^[A-Za-z0-9.-]{1,253}$")
+
+UNINSTALL = r"""
+set +o pipefail
+say() { echo "$*"; }
+# 3x-ui: the same steps as its own `x-ui uninstall`, without the question.
+if systemctl list-unit-files x-ui.service >/dev/null 2>&1 || [ -e /etc/systemd/system/x-ui.service ]; then
+  systemctl stop x-ui >/dev/null 2>&1; systemctl disable x-ui >/dev/null 2>&1
+  rm -f /etc/systemd/system/x-ui.service; rm -rf /etc/systemd/system/x-ui.service.d
+  systemctl daemon-reload; systemctl reset-failed >/dev/null 2>&1
+  say "3x-ui остановлен и убран из автозапуска"
+fi
+for p in /etc/x-ui /usr/local/x-ui /etc/default/x-ui /usr/bin/x-ui /var/log/x-ui \
+         /etc/fail2ban/filter.d/3x-ipl.conf /etc/fail2ban/action.d/3x-ipl.conf /etc/fail2ban/jail.d/3x-ipl.conf; do
+  [ -e "$p" ] && rm -rf -- "$p" && say "удалено: $p"
+done
+command -v fail2ban-client >/dev/null && fail2ban-client reload >/dev/null 2>&1
+# Cover site: only our own config and pages; nginx itself stays (other sites may use it).
+if [ -e /etc/nginx/conf.d/xui-fleet-decoy.conf ] || [ -d /var/www/xui-fleet ]; then
+  rm -f /etc/nginx/conf.d/xui-fleet-decoy.conf; rm -rf /var/www/xui-fleet /var/www/acme
+  command -v nginx >/dev/null && nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1
+  say "сайт-витрина удалён (nginx оставлен)"
+fi
+# Certificates of this server's domains.
+for d in $FLEET_DOMAINS; do
+  [ -x ~/.acme.sh/acme.sh ] && ~/.acme.sh/acme.sh --remove -d "$d" >/dev/null 2>&1
+  rm -rf ~/.acme.sh/"$d" ~/.acme.sh/"${d}_ecc" /root/cert/"$d"
+  say "сертификат $d удалён"
+done
+# The certificate the 3x-ui installer issued for the server's IP ("ip" mode) lives here.
+if [ -d /root/cert/ip ]; then rm -rf /root/cert/ip; say "сертификат 3x-ui для IP удалён"; fi
+rmdir /root/cert 2>/dev/null
+# Firewall: rules for the ports of the removed connections and the panel; SSH and everything else stay.
+if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q 'Status: active'; then
+  for p in $FLEET_PORTS; do
+    [ "$p" = "$FLEET_SSH_PORT" ] && continue
+    while n=$(ufw status numbered | grep -E "^\[ *[0-9]+\] +${p}(/(tcp|udp))?( \(v6\))? +ALLOW" | head -1 | sed -E 's/^\[ *([0-9]+)\].*/\1/'); [ -n "$n" ]; do
+      yes | ufw delete "$n" >/dev/null 2>&1 || break
+    done
+  done
+  say "файрвол: закрыты порты $FLEET_PORTS"
+fi
+rm -f /etc/sysctl.d/99-xui-fleet.conf
+if [ "$FLEET_SYNC" = 1 ] && [ -d /root/.xui-fleet-sync ]; then rm -rf /root/.xui-fleet-sync; say "копия синхронизации удалена"; fi
+say "готово"
+"""
+
+
+def uninstall(ssh: SSH, ports: List[int], domains: List[str], ssh_port: int, sync_data: bool = False) -> List[str]:
+    """Remove 3x-ui and what xui-fleet put on the server (cover site, its certificates, firewall rules of its
+    ports, BBR file). SSH access, other sites, nginx itself and unrelated firewall rules stay. Returns the log."""
+    clean_ports = sorted({int(p) for p in ports if 0 < int(p) < 65536 and int(p) != int(ssh_port)})
+    clean_domains = sorted({d for d in domains if d and _DOMAIN.match(d)})
+    out = ssh.run(UNINSTALL, check=False, timeout=300, env={
+        "FLEET_PORTS": " ".join(map(str, clean_ports)), "FLEET_DOMAINS": " ".join(clean_domains),
+        "FLEET_SSH_PORT": str(int(ssh_port)), "FLEET_SYNC": "1" if sync_data else "0"}).out
+    return [line for line in out.splitlines() if line.strip()]

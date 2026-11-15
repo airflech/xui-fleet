@@ -179,6 +179,9 @@ class MasterConfig(ServerBase):
     vpn: bool = False
     cascades: bool = True
     hide: List[str] = Field(default_factory=list)  # own entries left out of subscriptions (like a node's)
+    # Its own connection set when vpn (like a node's): only the fields stated here override defaults.set.
+    set: Optional[SetConfig] = None
+    direct: DirectConfig = DirectConfig()
     # Address the foreign nodes are reached at from the master (defaults to node.host).
     api_url: Optional[str] = None  # direct panel URL instead of the SSH tunnel (tests)
 
@@ -341,7 +344,7 @@ class FleetConfig(Strict):
         m = self.master
         tls = self.tls_for(m)
         return NodeConfig(name=m.name, host=(tls.domain if tls.mode == "domain" and tls.domain else m.host),
-                          label=m.label, flag=m.flag, hide=list(m.hide), ssh=m.ssh)
+                          label=m.label, flag=m.flag, hide=list(m.hide), ssh=m.ssh, set=m.set, direct=m.direct)
 
     def set_for(self, node: NodeConfig) -> SetConfig:
         """The connection set every node gets (`defaults.set` — the template), with only the fields a node
@@ -387,6 +390,69 @@ def remove_node_entry(path: Path, name: str) -> bool:
     if len(kept) == len(nodes):
         return False
     doc["nodes"] = kept
+    _save_doc(path, doc)
+    return True
+
+
+# What turning off one kind of xui-fleet connection means in fleet.yaml (see inbound_kind).
+CONNECTION_SWITCH = {"xhttp": "xhttp", "hy2": "hysteria2", "warp": "warp", "rhy2": "cascade_hysteria2",
+                     "rxh": "cascade_xhttp", "rwarp": "cascade_warp", "cascade": "cascade_tcp"}
+
+
+def disable_connection(path: Path, server: str, kind: str) -> None:
+    """Turn one kind of connection off for one server, so `apply` removes it and never brings it back.
+    The direct entry is only hidden: the cascades of that server lead through it."""
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    master = doc.get("master") or {}
+    entry = master if master.get("name") == server else next(
+        (n for n in doc.get("nodes") or [] if (n or {}).get("name") == server), None)
+    if entry is None:
+        raise KeyError(f"сервер {server!r} не найден в конфиге")
+    if kind == "direct":
+        entry.setdefault("direct", {})["enabled"] = False
+    elif kind in CONNECTION_SWITCH:
+        entry.setdefault("set", {})[CONNECTION_SWITCH[kind]] = False
+    else:
+        raise ValueError("это служебное подключение — его нельзя удалить отдельно")
+    FleetConfig.model_validate(doc)
+    _save_doc(path, doc)
+
+
+def set_direct_port(path: Path, server: str, port: int) -> bool:
+    """A port written in fleet.yaml wins over the live one: keep it in step when the port is changed by hand."""
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    entry = next((n for n in [doc.get("master") or {}] + list(doc.get("nodes") or []) if (n or {}).get("name") == server), None)
+    if not entry or not (entry.get("direct") or {}).get("port"):
+        return False
+    entry["direct"]["port"] = int(port)
+    _save_doc(path, doc)
+    return True
+
+
+def remove_user_entry(path: Path, name: str) -> bool:
+    """Drop a user from fleet.yaml, so `apply` does not create it again."""
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    users = doc.get("users") or []
+    kept = [u for u in users if (u or {}).get("name") != name]
+    if len(kept) == len(users):
+        return False
+    doc["users"] = kept
+    _save_doc(path, doc)
+    return True
+
+
+def update_user_entry(path: Path, name: str, comment: str, total_gb: float) -> bool:
+    """Keep a user listed in fleet.yaml in step with the panel (it seeds the user if the panel loses it)."""
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    entry = next((u for u in doc.get("users") or [] if (u or {}).get("name") == name), None)
+    if entry is None:
+        return False
+    for key, value, empty in (("comment", comment, ""), ("total_gb", total_gb, 0)):
+        if value == empty:
+            entry.pop(key, None)
+        else:
+            entry[key] = value
+    FleetConfig.model_validate(doc)
     _save_doc(path, doc)
     return True
 

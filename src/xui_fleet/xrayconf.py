@@ -14,6 +14,13 @@ PREFIX = "fleet-"
 VISION = "xtls-rprx-vision"
 
 
+def inbound_kind(tag: str):
+    """(kind, server) of an entry xui-fleet created, from its tag; None for anything else."""
+    import re
+    m = re.match(r"^" + re.escape(PREFIX) + r"(direct|cascade|xhttp|hy2|rhy2|warpup|warp|rwarp|rxh)-(.+)$", tag or "")
+    return (m.group(1), m.group(2)) if m else None
+
+
 def direct_tag(node: str) -> str:
     return f"{PREFIX}direct-{node}"
 

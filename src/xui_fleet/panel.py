@@ -148,6 +148,10 @@ class Panel:
     def update_inbound(self, inbound_id: int, payload: Dict[str, Any]) -> None:
         self.post(f"/inbounds/update/{inbound_id}", json_body=payload)
 
+    def set_inbound_enable(self, inbound_id: int, enable: bool) -> None:
+        """On/off has its own call: /inbounds/update ignores `enable` (3x-ui 3.11)."""
+        self.post(f"/inbounds/setEnable/{inbound_id}", json_body={"enable": bool(enable)})
+
     def delete_inbound(self, inbound_id: int) -> None:
         self.post(f"/inbounds/del/{inbound_id}")
 
@@ -204,6 +208,10 @@ class Panel:
 
     def forget_device(self, email: str, device_id: int) -> None:
         self._call("DELETE", f"/clients/hwids/{_seg(email)}/{int(device_id)}")
+
+    def reset_traffic(self, email: str) -> None:
+        """Zero the counters; a user disabled by the quota is enabled again (one disabled by hand stays off)."""
+        self.post(f"/clients/resetTraffic/{_seg(email)}")
 
     def update_client(self, email: str, fields: Dict[str, Any]) -> None:
         """Change only the given fields (3x-ui keeps everything that is not in the body)."""

@@ -16,6 +16,7 @@ from .panel import Panel, PanelError
 from .reconcile import NodeAccess, Reconciler, Report
 from .ssh import SSH, SSHError
 from .state import State
+from . import xrayconf as xc
 from .xrayconf import cascade_tag as xc_cascade, direct_tag as xc_direct
 
 Log = Callable[[str], None]
@@ -977,13 +978,72 @@ class Fleet:
                 panel.update_inbound(inbound["id"], updated)
         return report
 
-    def remove_node(self, name: str) -> Report:
+    def remove_node(self, name: str, purge: bool = False) -> Report:
+        """Take a node out of the network. purge: also remove 3x-ui and everything xui-fleet put on it."""
+        node = self.cfg.node(name)
         self.auto_backup(max_age_hours=0, reason=f"перед удалением сервера {name}")
         with self.master_panel(provision=False) as panel:
+            ports = self._server_ports(panel, name) if purge else []
             rec = Reconciler(panel, self.cfg, countries=self.countries(), neighbors=self.neighbors(), health=self.health(), log=self.log)
             rec.remove_node(name)
-            self.state.forget(name)
-            return rec.report
+        if purge:
+            self._purge(node, ports, rec.report)
+        self.state.forget(name)
+        return rec.report
+
+    def remove_master(self, purge: bool = False, purge_nodes: bool = False, sync_data: bool = False) -> Report:
+        """Take down the whole network of this profile. The master's backup is made first (it holds every
+        user), so the network can be brought back with «Перенос главного сервера»."""
+        report = Report()
+        self.auto_backup(max_age_hours=0, reason="перед удалением главного сервера")
+        if not purge:
+            self.log("серверы не меняются: 3x-ui на них продолжает работать, пользователи — подключаться")
+            return report
+        ports: Dict[str, List[int]] = {}
+        try:
+            with self.master_panel(provision=False) as panel:
+                for server in [self.cfg.master] + (list(self.cfg.nodes) if purge_nodes else []):
+                    ports[server.name] = self._server_ports(panel, server.name)
+        except Exception as exc:  # the panel may already be gone: remove what is known from fleet.yaml
+            self.log(f"главная панель не ответила ({exc}) — порты возьму из настроек")
+        if purge_nodes:
+            for node in self.cfg.nodes:
+                self._purge(node, ports.get(node.name) or [], report)
+        self._purge(self.cfg.master, ports.get(self.cfg.master.name) or [], report, sync_data=sync_data)
+        return report
+
+    def _server_ports(self, panel: Panel, name: str) -> List[int]:
+        """Ports opened for xui-fleet's connections hosted on this server, plus its panel port."""
+        from .reconcile import _flatten_nodes
+        if name == self.cfg.master.name:
+            hosts: tuple = (None, 0)  # the master's own entries carry no nodeId (or 0)
+        else:
+            hosts = (next((n.get("id") for n in _flatten_nodes(panel.nodes()) if n.get("name") == name), -1),)
+        ports = [int(i["port"]) for i in panel.inbounds()
+                 if str(i.get("tag", "")).startswith("fleet-") and i.get("port") and i.get("nodeId") in hosts]
+        panel_port = self.state.get(name, "panel_port")
+        return ports + ([int(panel_port)] if panel_port else [])
+
+    def _purge(self, server, ports: List[int], report: Report, sync_data: bool = False) -> None:
+        """Uninstall on one server; a failure is reported, never stops the rest."""
+        tls = self.cfg.tls_for(server)
+        domains = ([tls.domain] if tls.domain else []) + list(tls.reserve_domains or [])
+        if tls.mode == "ip" and pv._is_ip(server.host):
+            domains.append(server.host)  # the installer's Let's Encrypt certificate for the IP, renewed by acme.sh
+        try:
+            ssh = self.ssh(server).connect()
+        except Exception as exc:
+            report.warnings.append(f"{server.name}: не удалось подключиться по SSH ({exc}) — 3x-ui на сервере остался")
+            return
+        try:
+            self.log(f"{server.name}: удаляю 3x-ui и всё, что ставил xui-fleet")
+            for line in pv.uninstall(ssh, ports, domains, self.cfg.ssh_for(server).port or 22, sync_data=sync_data):
+                self.log(f"{server.name}: {line}")
+            report.changes.append(f"{server.name}: 3x-ui удалён с сервера")
+        except Exception as exc:
+            report.warnings.append(f"{server.name}: удаление 3x-ui не завершено: {exc}")
+        finally:
+            ssh.close()
 
     def add_user(self, name: str, comment: str = "", total_gb: float = 0) -> str:
         from .config import UserConfig
@@ -1045,6 +1105,113 @@ class Fleet:
         with self.master_panel(provision=False) as panel:
             panel.update_client(name, fields)
         self.log(f"{name}: устройств — {fields['limitHwid'] or 'без ограничения'}, IP — {fields['limitIp'] or 'без ограничения'}")
+
+    def edit_user(self, name: str, body: Dict[str, Any]) -> None:
+        """Comment, traffic limit, expiry and on/off — in the panel, and in fleet.yaml when the user is listed there."""
+        from . import stats
+        from .config import update_user_entry
+        fields = stats.user_fields(body)
+        with self.master_panel(provision=False) as panel:
+            panel.update_client(name, fields)
+        update_user_entry(self.config_path, name, fields["comment"], round(fields["totalGB"] / 1024 ** 3, 3))
+
+    def reset_user_traffic(self, name: str) -> None:
+        with self.master_panel(provision=False) as panel:
+            panel.reset_traffic(name)
+
+    def delete_user(self, name: str) -> Report:
+        """Delete everywhere: the panel (every connection, the subscription) and fleet.yaml."""
+        from .config import remove_user_entry
+        if name == self.cfg.clients.bridge_email:
+            raise FleetError("это служебный клиент каскада — без него каскады перестанут работать")
+        report = Report()
+        self.auto_backup(max_age_hours=0, reason=f"перед удалением пользователя {name}")
+        with self.master_panel(provision=False) as panel:
+            if panel.client(name) is not None:
+                panel.delete_client(name)
+                report.changes.append(f"мастер: удалён пользователь {name} и его подписка")
+        if remove_user_entry(self.config_path, name):
+            report.changes.append(f"{name} убран из fleet.yaml")
+        self.log(f"{name}: удалён")
+        return report
+
+    # ---- inbounds («Входящие» of the master panel) --------------------------
+    def inbounds_view(self) -> List[Dict[str, Any]]:
+        """Every inbound of the master panel, the ones it hosts on the nodes included."""
+        from .reconcile import _flatten_nodes
+        with self.master_panel(provision=False) as panel:
+            hosts = {n.get("id"): n.get("name") for n in _flatten_nodes(panel.nodes())}
+            rows = []
+            for i in panel.inbounds():
+                stream = i.get("streamSettings") or {}
+                clients = (i.get("settings") or {}).get("clients") or []
+                kind = xc.inbound_kind(i.get("tag", ""))
+                rows.append({
+                    "id": i.get("id"), "tag": i.get("tag", ""), "remark": i.get("remark", ""), "port": i.get("port"),
+                    "protocol": i.get("protocol", ""), "network": stream.get("network", ""), "security": stream.get("security", ""),
+                    "enabled": bool(i.get("enable", True)), "hidden": bool(i.get("excludeFromSub")),
+                    "server": hosts.get(i.get("nodeId")) or self.cfg.master.name, "up": int(i.get("up") or 0),
+                    "down": int(i.get("down") or 0), "clients": len(clients),
+                    "managed": bool(kind), "kind": kind[0] if kind else "", "owner": kind[1] if kind else "",
+                    "service": bool(kind) and kind[0] == "warpup",
+                })
+            return sorted(rows, key=lambda r: (r["server"] != self.cfg.master.name, r["server"], r["port"] or 0))
+
+    def edit_inbound(self, inbound_id: int, body: Dict[str, Any]) -> Optional[str]:
+        """Name, port, on/off of one inbound. Returns the server to re-apply (xui-fleet's own entries:
+        the cascade and the firewall follow a new port), or None."""
+        from .config import set_direct_port
+        with self.master_panel(provision=False) as panel:
+            cur = next((i for i in panel.inbounds() if i.get("id") == inbound_id), None)
+            if cur is None:
+                raise FleetError("такого входящего уже нет — обновите список")
+            kind = xc.inbound_kind(cur.get("tag", ""))
+            update = dict(cur)
+            port = int(body.get("port") or cur["port"])
+            if not 0 < port < 65536:
+                raise FleetError("порт: от 1 до 65535")
+            if port != cur["port"]:
+                udp = cur.get("protocol") == "hysteria"
+                clash = next((i for i in panel.inbounds() if i.get("id") != inbound_id and int(i.get("port") or 0) == port
+                              and i.get("nodeId") == cur.get("nodeId") and (i.get("protocol") == "hysteria") == udp), None)
+                if clash:
+                    raise FleetError(f"порт {port} на этом сервере уже занят: «{clash.get('remark')}»")
+            update["port"] = port
+            if "enabled" in body:
+                update["enable"] = bool(body["enabled"])
+            remark = str(body.get("remark") if body.get("remark") is not None else cur.get("remark", "")).strip()
+            if kind and remark != cur.get("remark", ""):
+                raise FleetError("название подключений xui-fleet берётся из названия сервера — "
+                                 "измените его в «Название и подключения» сервера")
+            update["remark"] = remark
+            panel.update_inbound(inbound_id, update)
+            if bool(update.get("enable", True)) != bool(cur.get("enable", True)):
+                panel.set_inbound_enable(inbound_id, bool(update["enable"]))
+            self.log(f"«{remark}»: порт {port}, {'включено' if update.get('enable', True) else 'выключено'}")
+        if kind and port != cur["port"]:
+            if kind[0] == "direct":
+                set_direct_port(self.config_path, kind[1], port)
+            return kind[1]
+        return None
+
+    def delete_inbound(self, inbound_id: int) -> Optional[str]:
+        """Delete one inbound. xui-fleet's own: that kind is turned off for its server in fleet.yaml and the
+        server is returned to re-apply (otherwise `apply` would create it again)."""
+        from .config import disable_connection
+        self.auto_backup(max_age_hours=0, reason="перед удалением входящего")
+        with self.master_panel(provision=False) as panel:
+            cur = next((i for i in panel.inbounds() if i.get("id") == inbound_id), None)
+            if cur is None:
+                raise FleetError("такого входящего уже нет — обновите список")
+            kind = xc.inbound_kind(cur.get("tag", ""))
+            if not kind:
+                panel.delete_inbound(inbound_id)
+                self.log(f"удалено «{cur.get('remark')}» (порт {cur.get('port')})")
+                return None
+        disable_connection(self.config_path, kind[1], kind[0])
+        self.log(f"«{cur.get('remark')}»: этот тип подключения выключен у сервера {kind[1]} в fleet.yaml"
+                 + (" (прямое подключение скрывается: через него идут каскады)" if kind[0] == "direct" else ""))
+        return kind[1]
 
     def forget_device(self, name: str, device_id: int) -> None:
         """Free a device slot: the device has to fetch the subscription again to come back."""

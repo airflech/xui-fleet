@@ -191,7 +191,14 @@ class Profiles:
             _rm(_app_dir() / "last-job.json")
             _truncate(_app_dir() / "xui-fleet.log")
 
-    def wipe_files(self, pid: str) -> List[str]:
+    def forget_network(self, pid: str) -> List[str]:
+        """The servers of a profile are gone: forget its settings, access and sync, keep the master backups
+        (they are what brings the network back). The profile stays, showing the first-run screen."""
+        with _LOCK:
+            self._find(self._read(), pid)
+            return self.wipe_files(pid, keep_backups=True)
+
+    def wipe_files(self, pid: str, keep_backups: bool = False) -> List[str]:
         """Delete the files of one profile. Returns what was there (for the log)."""
         gone: List[str] = []
 
@@ -201,9 +208,17 @@ class Profiles:
                 _rm(path)
 
         config = self.config_path(pid)
-        if pid != DEFAULT:
+        if pid != DEFAULT and not keep_backups:
             rm(config.parent)
             rm(_app_dir() / "profiles" / pid)
+            return gone
+        if pid != DEFAULT:
+            rm(config)
+            for extra in sorted(config.parent.glob(config.name + ".*")):
+                rm(extra)
+            rm(config.parent / ".xui-fleet")
+            for name in SYNC_FILES:
+                rm(_app_dir() / "profiles" / pid / name)
             return gone
         # The default profile shares its folders with the program and with the data folder:
         # delete its own files only, never the folders themselves.
@@ -213,7 +228,7 @@ class Profiles:
             rm(extra)
         rm(config.parent / ".xui-fleet")
         backups = backup_dir()
-        if backups.is_dir():
+        if backups.is_dir() and not keep_backups:
             for f in sorted(backups.glob("master-*.tar.gz")):
                 rm(f)
             try:

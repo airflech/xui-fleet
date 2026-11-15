@@ -868,13 +868,26 @@ class Reconciler:
                 self.panel.save_xray_template(merged)
                 self.panel.restart_xray()
             self._do(f"мастер: убираю outbound и маршрут каскада для {name}", apply)
-        for tag in (xc.cascade_tag(name), xc.rhy2_tag(name), xc.rwarp_tag(name), xc.rxh_tag(name), xc.xhttp_tag(name), xc.hy2_tag(name),
-                    xc.warp_tag(name), xc.warpup_tag(name), xc.direct_tag(name)):
+        tags = (xc.cascade_tag(name), xc.rhy2_tag(name), xc.rwarp_tag(name), xc.rxh_tag(name), xc.xhttp_tag(name), xc.hy2_tag(name),
+                xc.warp_tag(name), xc.warpup_tag(name), xc.direct_tag(name))
+        for tag in tags:
             if tag in by_tag:
                 self._do(f"мастер: удаляю inbound {tag}", lambda i=by_tag[tag]["id"]: self.panel.delete_inbound(i))
-        for node in _flatten_nodes(self.panel.nodes()):
-            if node.get("name") == name and not node.get("transitive"):
-                self._do(f"мастер: удаляю ноду {name}", lambda i=node["id"]: self.panel.delete_node(i))
+        node_ids = [n["id"] for n in _flatten_nodes(self.panel.nodes()) if n.get("name") == name and not n.get("transitive")]
+        for node_id in node_ids:
+            self._do(f"мастер: удаляю ноду {name}", lambda i=node_id: self.panel.delete_node(i))
+        if self.dry:
+            return
+        # A node still online can report its own inbounds back to the master between the two steps above,
+        # and the master imports them again (seen on 3x-ui 3.11). Check again and remove what came back.
+        for _ in range(3):
+            back = [i for i in self.panel.inbounds() if i.get("tag") in tags or (node_ids and i.get("nodeId") in node_ids)]
+            if not back:
+                return
+            for i in back:
+                self._do(f"мастер: удаляю вернувшийся inbound {i.get('tag')}", lambda x=i["id"]: self.panel.delete_inbound(x))
+            time.sleep(2)
+        self._warn(f"мастер: подключения ноды {name} возвращаются после удаления — удалите их во вкладке «Входящие» панели")
 
 
 # ---- module helpers -----------------------------------------------------

@@ -30,7 +30,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "статистика пользователей: трафик, устройства, IP и лимиты — клик по пользователю"
+WHATS_NEW = "вкладка «Входящие», редактирование и удаление пользователей, удаление сервера вместе с 3x-ui"
 
 
 class Job:
@@ -352,10 +352,19 @@ class App:
             state.drop(name, "ssh_host_key")  # a different machine has a different key
         return None if server is fleet.cfg.master else name
 
-    def remove_node(self, name: str, log: Callable[[str], None]) -> Report:
+    def remove_node(self, name: str, log: Callable[[str], None], purge: bool = False) -> Report:
         from .cli import _drop_node_from_yaml
-        report = self.fleet(log).remove_node(name)
+        report = self.fleet(log).remove_node(name, purge=purge)
         _drop_node_from_yaml(self.path, name)
+        return report
+
+    def remove_master(self, body: Dict[str, Any], log: Callable[[str], None]) -> Report:
+        """Delete the master: the whole network of this profile. The profile then shows the first-run screen."""
+        report = self.fleet(log).remove_master(purge=bool(body.get("purge")), purge_nodes=bool(body.get("purgeNodes")),
+                                               sync_data=bool(body.get("syncData")))
+        with self.data_lock:  # the background sync must not bring the settings back
+            self.profiles.forget_network(self.profiles.active_id())
+        log("настройки сети и доступы стёрты с этого компьютера, бэкапы главного сервера сохранены")
         return report
 
 
@@ -450,6 +459,10 @@ def make_handler(app: App):
                     return (self._send(200, v.encode(), "text/plain") if url.path == "/api/ping"
                             else self._send(200, {"version": v, "app": __import__("xui_fleet").__version__,
                                                   "whatsNew": WHATS_NEW, "data": app.data_mark(), **app.update_note()}))
+                if url.path == "/api/inbounds":
+                    if app.job.running:
+                        return self._send(200, {"busy": True})
+                    return self._send(200, {"inbounds": app.fleet().inbounds_view()})
                 if url.path == "/api/users/stats":
                     if app.job.running:
                         return self._send(200, {"busy": True})
@@ -649,13 +662,43 @@ def make_handler(app: App):
                 return run(f"Добавление сервера {name}", lambda log: app.fleet(log).apply({name}))
             if path == "/api/node/remove":
                 name = _req(body, "name")
-                return run(f"Удаление сервера {name}", lambda log: app.remove_node(name, log))
-            if path in ("/api/user/limits", "/api/user/device/forget"):
+                purge = bool(body.get("purge"))
+                return run(f"Удаление сервера {name}" + (" вместе с 3x-ui" if purge else ""),
+                           lambda log: app.remove_node(name, log, purge))
+            if path == "/api/master/remove":
+                master = app.fleet().cfg.master
+                if " ".join(str(body.get("confirm") or "").split()).lower() != master.name.lower():
+                    raise ValueError(f"для подтверждения введите имя главного сервера: {master.name}")
+                return run("Удаление главного сервера" + (" вместе с 3x-ui" if body.get("purge") else ""),
+                           lambda log: app.remove_master(body, log))
+            if path in ("/api/inbound/edit", "/api/inbound/delete"):
+                inbound_id = int(body.get("id") or 0)
+                label = str(body.get("label") or inbound_id)
+
+                def change(log: Callable[[str], None]) -> Any:
+                    fleet = app.fleet(log)
+                    server = fleet.delete_inbound(inbound_id) if path.endswith("delete") else fleet.edit_inbound(inbound_id, body)
+                    if server is None:
+                        return "Готово"
+                    fleet = app.fleet(log)  # fleet.yaml may have changed
+                    log("применяю настройки сервера " + server)
+                    if server == fleet.cfg.master.name:
+                        return fleet.apply(skip_provision=True)
+                    return fleet.apply({server}, skip_provision=True)
+                return run(("Удаление" if path.endswith("delete") else "Изменение") + f" входящего «{label}»", change)
+            if path == "/api/user/delete":
+                name = _req(body, "name")
+                return run(f"Удаление пользователя {name}", lambda log: app.fleet(log).delete_user(name))
+            if path in ("/api/user/limits", "/api/user/device/forget", "/api/user/edit", "/api/user/reset"):
                 if app.job.running:
                     raise RuntimeError("дождитесь окончания текущей операции")
                 name = _req(body, "name")
                 if path == "/api/user/limits":
                     app.fleet().set_user_limits(name, body.get("devices"), body.get("ips"))
+                elif path == "/api/user/edit":
+                    app.fleet().edit_user(name, body)
+                elif path == "/api/user/reset":
+                    app.fleet().reset_user_traffic(name)
                 else:
                     app.fleet().forget_device(name, int(body.get("id") or 0))
                 return {"ok": True, "user": app.fleet().user_detail(name)}

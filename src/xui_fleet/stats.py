@@ -62,7 +62,8 @@ def summarize(clients: List[Dict[str, Any]], names: Dict[str, str], online_by: D
         limit_dev, limit_ip = int(c.get("limitHwid") or 0), int(c.get("limitIp") or 0)
         n_dev, n_ip = devices.get(email), len(ips.get(email, ()))
         out[email] = {
-            "enabled": bool(c.get("enable", True)), "up": up, "down": down, "used": up + down,
+            "enabled": bool(c.get("enable", True)), "comment": str(c.get("comment") or ""),
+            "up": up, "down": down, "used": up + down,
             "quota": int(c.get("totalGB") or 0), "expiry": int(c.get("expiryTime") or 0),
             "lastOnline": int(t.get("lastOnline") or 0), "lastSubFetch": int(t.get("lastSubFetch") or 0),
             "limitDevices": limit_dev, "limitIp": limit_ip,
@@ -82,6 +83,23 @@ def device_view(device: Dict[str, Any]) -> Dict[str, Any]:
     return {"id": device.get("id"), "os": device.get("deviceOs") or "", "osVersion": device.get("osVersion") or "",
             "model": device.get("deviceModel") or "", "app": app.strip(), "firstSeen": int(device.get("firstSeen") or 0),
             "lastSeen": int(device.get("lastSeen") or 0), "service": is_service_device(device)}
+
+
+def user_fields(body: Dict[str, Any]) -> Dict[str, Any]:
+    """What the page may change about a user, checked and in 3x-ui's terms."""
+    comment = " ".join(str(body.get("comment") or "").split())
+    if len(comment) > 200:
+        raise ValueError("комментарий — не длиннее 200 символов")
+    try:
+        gb = float(str(body.get("totalGb") or 0).replace(",", "."))
+        expiry = int(body.get("expiry") or 0)
+    except (TypeError, ValueError):
+        raise ValueError("лимит трафика и срок — числа") from None
+    if gb < 0 or gb > 100_000:
+        raise ValueError("лимит трафика: от 0 (без ограничения) до 100 000 ГБ")
+    if expiry < 0:
+        raise ValueError("срок действия: дата или пусто")
+    return {"comment": comment, "totalGB": int(round(gb * 1024 ** 3)), "expiryTime": expiry, "enable": bool(body.get("enabled", True))}
 
 
 def validate_limit(value: Any, what: str) -> int:

@@ -33,6 +33,39 @@ from .state import State
 WHATS_NEW = "адреса подключений через RU: основной, оба или только резервный домен — переключение одной кнопкой через хосты 3x-ui"
 
 
+def _last_backup(fleet: Any) -> int:
+    """When the newest master backup was made (0: none). Only file times — the overview is asked often."""
+    from . import backup as bk
+    try:
+        files = list(fleet.backup_dir.glob(f"{bk.PREFIX}*.tar.gz"))
+        return int(max(p.stat().st_mtime for p in files)) if files else 0
+    except OSError:
+        return 0
+
+
+def domain_reachability(tls: Any, users: Dict[str, str]) -> Dict[str, bool]:
+    """Does the subscription answer on each domain from this computer (DNS, TCP and a valid certificate)?
+    This is the user's own network, so a domain blocked by the provider shows up here first."""
+    import socket
+    import ssl
+    from concurrent.futures import ThreadPoolExecutor
+    from urllib.parse import urlparse
+    if getattr(tls, "mode", "") != "domain" or not tls.domain or not users:
+        return {}
+    port = urlparse(next(iter(users.values()))).port or 443
+    domains = [tls.domain] + [d for d in tls.reserve_domains if d != tls.domain]
+
+    def check(domain: str) -> bool:
+        try:
+            with socket.create_connection((domain, port), timeout=4) as raw:
+                with ssl.create_default_context().wrap_socket(raw, server_hostname=domain):
+                    return True
+        except (OSError, ssl.SSLError):
+            return False
+    with ThreadPoolExecutor(len(domains)) as pool:
+        return dict(zip(domains, pool.map(check, domains)))
+
+
 class Job:
     """One long operation at a time; the page polls its log."""
 
@@ -253,7 +286,8 @@ class App:
                            "country": state.get(cfg.master.name, "country") or "",
                            "display": geo.display_label(cfg.master.name, cfg.master.label, cfg.master.flag,
                                                         state.get(cfg.master.name, "country")),
-                           "prepared": bool(state.get(cfg.master.name, "api_token"))}}
+                           "prepared": bool(state.get(cfg.master.name, "api_token")),
+                           "lastBackup": _last_backup(fleet)}}
 
     def live(self) -> Dict[str, Any]:
         """Live node health and subscriptions straight from the master panel."""
@@ -282,8 +316,10 @@ class App:
                   "cpu": round(ms["cpu"]) if isinstance(ms.get("cpu"), (int, float)) else None,
                   "mem": pct(ms.get("mem")), "disk": pct(ms.get("disk")), "uptime": ms.get("uptime"),
                   "panel": ms.get("panelVersion", ""), "ip": (ms.get("publicIP") or {}).get("ipv4", "")}
-        return {"ready": True, "nodes": rows, "users": fleet.subscriptions(), "master": master,
-                "online": activity["online"], "lastOnline": activity["lastOnline"]}
+        users = fleet.subscriptions()
+        return {"ready": True, "nodes": rows, "users": users, "master": master,
+                "online": activity["online"], "lastOnline": activity["lastOnline"],
+                "domains": domain_reachability(fleet.cfg.tls_for(fleet.cfg.master), users)}
 
     # ---- write ----------------------------------------------------------
     def setup(self, body: Dict[str, Any]) -> None:
@@ -741,7 +777,10 @@ def make_handler(app: App):
                 if path == "/api/user/limits":
                     app.fleet().set_user_limits(name, body.get("devices"), body.get("ips"))
                 elif path == "/api/user/edit":
-                    app.fleet().edit_user(name, body)
+                    fleet = app.fleet()
+                    fleet.edit_user(name, body)
+                    if "devices" in body or "ips" in body:  # the dialog saves settings and limits with one button
+                        fleet.set_user_limits(name, body.get("devices"), body.get("ips"))
                 elif path == "/api/user/reset":
                     app.fleet().reset_user_traffic(name)
                 else:

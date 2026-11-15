@@ -95,6 +95,22 @@ ul.plain { margin: 0; padding-left: 18px; } ul.plain li { margin: 3px 0; }
 .uform { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .uform .wide { grid-column: 1 / -1; }
 @media (max-width: 560px) { .uform { grid-template-columns: 1fr; } }
+.domrows > div { align-items: center; padding: 12px 14px; } .domrows .k { font-size: 12px; color: var(--muted); }
+.domrows .v { font-weight: 600; overflow-wrap: anywhere; } .domrows .tag { margin-left: 6px; }
+.alert-row { background: color-mix(in srgb, var(--bad) 8%, transparent); }
+.danger-zone { border: 1px solid color-mix(in srgb, var(--bad) 35%, var(--line)); border-radius: 10px; padding: 12px 14px; }
+.danger-zone .uactions { margin-top: 0; padding-top: 0; border-top: 0; }
+.sortsel { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
+.sortsel select { height: 32px; width: auto; padding: 0 28px 0 10px; }
+.seg .cnt:empty { display: none; } .seg .cnt { color: var(--warn); margin-left: 2px; }
+.ustats .warn { color: var(--warn); }
+.splitbtn { display: inline-flex; } .splitbtn > .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.splitbtn > .btn + .btn { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; padding: 0 8px; }
+.attn { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.attn .h { font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); width: 100%; }
+.attn button { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--warn-soft);
+  color: var(--ink); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.attn button.bad { background: var(--bad-soft); } .attn button:hover { border-color: var(--muted); }
 .uactions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
 .limits { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }
 @media (max-width: 560px) { .limits { grid-template-columns: 1fr 1fr; } .limits .btn { grid-column: 1 / -1; } }
@@ -450,6 +466,7 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
         <button class="btn primary" id="btnAddNode"><svg class="i"><use href="#i-plus"/></svg>Добавить сервер</button>
         </div>
       </div>
+      <div class="attn hidden" id="attention" aria-live="polite"></div>
       <div class="cards" id="nodeCards"></div>
       <div class="panel hidden" id="noNodes"><div class="empty"><b>Зарубежных серверов пока нет</b>
         Добавьте первый — установка и подключение к главной панели пройдут сами.<br><br>
@@ -471,7 +488,15 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
           <div class="seg" role="group" aria-label="Фильтр">
             <button type="button" data-filter="all" aria-pressed="true">Все</button>
             <button type="button" data-filter="online" aria-pressed="false">Онлайн</button>
+            <button type="button" data-filter="attention" aria-pressed="false" title="Истекает срок, кончается трафик, превышены лимиты или выключен">Внимание <span class="cnt" id="cntAttention"></span></button>
           </div>
+          <label class="sortsel"><span class="muted small">Сортировка</span>
+            <select id="userSort" aria-label="Сортировка">
+              <option value="activity">сначала онлайн</option>
+              <option value="name">по имени</option>
+              <option value="traffic">по трафику</option>
+              <option value="expiry">по сроку действия</option>
+            </select></label>
         </div>
         <div class="list" id="userRows"></div>
       </div>
@@ -679,14 +704,15 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
 <div class="menu hidden" id="masterMenu" role="menu">
   <button role="menuitem" id="btnRole"><svg class="i"><use href="#i-net"/></svg><span>Роль и подключения<small>VPN-сервер, каскады, название</small></span></button>
   <hr>
-  <button role="menuitem" id="btnDomain"><svg class="i"><use href="#i-globe"/></svg><span>Домен подписки<small id="domainNow"></small></span></button>
-  <button role="menuitem" id="btnAddr" class="hidden"><svg class="i"><use href="#i-globe"/></svg><span>Адреса подключений через RU<small id="addrNow"></small></span></button>
-  <button role="menuitem" id="btnReserve"><svg class="i"><use href="#i-globe"/></svg><span>Резервный домен<small id="reserveNow"></small></span></button>
-  <button role="menuitem" id="btnSwitch" class="hidden"><svg class="i"><use href="#i-refresh"/></svg><span>Перейти на резервный домен<small>Если основной заблокирован</small></span></button>
+  <button role="menuitem" id="btnDomains"><svg class="i"><use href="#i-globe"/></svg><span>Домены и адреса<small id="domainsNow"></small></span></button>
   <hr>
   <button role="menuitem" id="btnMasterAccess"><svg class="i"><use href="#i-key"/></svg><span>Адрес и доступ по SSH</span></button>
   <hr>
   <button role="menuitem" id="btnMasterRemove" class="danger"><svg class="i"><use href="#i-trash"/></svg><span>Удалить главный сервер<small>Вся сеть этого профиля</small></span></button>
+</div>
+<div class="menu hidden" id="linkMenu" role="menu">
+  <button role="menuitem" data-link="main"><svg class="i"><use href="#i-copy"/></svg><span>Основная ссылка<small id="linkMain"></small></span></button>
+  <button role="menuitem" data-link="reserve"><svg class="i"><use href="#i-copy"/></svg><span>Резервная ссылка<small id="linkReserve"></small></span></button>
 </div>
 <div class="menu hidden" id="profileMenu" role="menu">
   <div class="menu-h">Профили на этом компьютере</div>
@@ -795,6 +821,13 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
   <div class="dlg-f"><button type="button" class="btn danger hidden" id="reserveRemove">Убрать</button><span style="flex:1"></span>
     <button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Проверить DNS и подключить</button></div>
 </form></dialog>
+
+<dialog id="dlgDomains" class="wide"><div class="dlg">
+  <div class="dlg-h"><h2>Домены и адреса</h2><p>По какому адресу пользователи получают подписку и подключаются через главный сервер.
+    Доступность проверяется с этого компьютера — то есть из вашей сети.</p></div>
+  <div class="dlg-b"><div class="rows domrows" id="domRows"></div><div class="hint" id="domHint"></div></div>
+  <div class="dlg-f"><button type="button" class="btn" id="domCheck"><svg class="i"><use href="#i-refresh"/></svg>Проверить ещё раз</button><div class="spacer"></div><button type="button" class="btn" data-close>Закрыть</button></div>
+</div></dialog>
 
 <dialog id="dlgAppExport"><form id="appExportForm">
   <div class="dlg-h"><h2>Копия приложения</h2><p>В файл попадут настройки, SSH-пароли, ключи доступа к панелям и бэкапы главного сервера.
@@ -1171,7 +1204,48 @@ function humanError(msg) {
 function problem(title, hint) { const p = el('div', 'problem'); p.appendChild(el('b', null, title)); if (hint) p.appendChild(document.createTextNode(hint)); return p; }
 function stat(k, v, pct) { const s = el('div', 'stat'); s.appendChild(el('div', 'k', k)); s.appendChild(el('div', 'v', v)); if (pct != null) s.appendChild(meter(pct)); return s; }
 
+// "Needs attention": what is wrong right now, across the whole network, one click from where to fix it.
+// Text cut with "…" shows in full on hover: any element that is narrower than its text gets a tooltip.
+document.addEventListener('mouseover', (e) => {
+  const x = e.target;
+  if (!(x instanceof HTMLElement) || x.title || x.children.length || !x.textContent.trim()) return;
+  if (x.scrollWidth > x.clientWidth + 1) x.title = x.textContent.trim();
+});
+function renderAttention() {
+  const box = $('attention'); box.textContent = '';
+  const items = [];
+  const add = (text, bad, fn) => items.push({ text, bad, fn });
+  if (overview && overview.configured && live && live.ready && !live.busy && !live.failed) {
+    const m = overview.master;
+    if (live.master && live.master.xray && live.master.xray !== 'running') add('Главный сервер: Xray остановлен', true, null);
+    if (m.domain && domainState(m.domain) === false) add('Подписка не открывается по ' + m.domain, true, () => { renderDomains(); $('dlgDomains').showModal(); });
+    for (const n of overview.nodes || []) {
+      const i = live.nodes && live.nodes[n.name];
+      if (i && i.status !== 'online') add((splitFlag(n.display || n.name)[1] || n.name) + ': не в сети', true, null);
+    }
+    if (userStats) {
+      const need = Object.keys(live.users || {}).filter((n) => attentionOf(userStats[n]).length);
+      if (need.length) add('Пользователи: ' + need.length + ' — срок, трафик или лимиты', false, () => {
+        userFilter = 'attention';
+        document.querySelectorAll('[data-filter]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.filter === 'attention')));
+        showTab('users'); renderUsers();
+      });
+    }
+    const lb = m.lastBackup;
+    if (m.prepared && (!lb || Date.now() / 1000 - lb > 3 * 86400)) add(lb ? 'Последнему бэкапу больше 3 дней' : 'Бэкапов главного сервера ещё нет', false, () => showTab('backups'));
+  }
+  box.classList.toggle('hidden', !items.length);
+  if (!items.length) return;
+  box.appendChild(el('div', 'h', 'Требует внимания'));
+  for (const it of items) {
+    const b = el('button', it.bad ? 'bad' : null); b.type = 'button';
+    b.appendChild(el('span', 'dot ' + (it.bad ? 'bad' : 'warn'))); b.appendChild(document.createTextNode(it.text));
+    if (it.fn) b.addEventListener('click', it.fn); else b.style.cursor = 'default';
+    box.appendChild(b);
+  }
+}
 function renderServers() {
+  renderAttention();
   const box = $('nodeCards');
   box.textContent = '';
   const nodes = (overview && overview.nodes) || [];
@@ -1214,7 +1288,13 @@ function renderServers() {
 
     if (info && info.status === 'online') {
       const s = el('div', 'stats');
-      s.appendChild(stat('Онлайн', String(info.online ?? 0)));
+      // Users connected straight to this server (from the user statistics); people who come through RU
+      // are counted on the main server. Before the statistics arrive: the panel's own counter.
+      const direct = userStats ? Object.values(userStats).filter((u) => (u.servers || []).includes(n.name)).length : null;
+      const os = stat(direct == null ? 'Онлайн' : 'Напрямую', String(direct == null ? (info.online ?? 0) : direct));
+      os.title = direct == null ? 'Клиентов на сервере сейчас (по данным панели)'
+        : 'Пользователей, подключённых прямо к этому серверу; кто идёт через RU — в «Онлайн всего» главного сервера';
+      s.appendChild(os);
       s.appendChild(stat('CPU', (info.cpu ?? 0) + '%', info.cpu));
       s.appendChild(stat('Память', (info.mem ?? 0) + '%', info.mem));
       card.appendChild(s);
@@ -1271,10 +1351,15 @@ function masterCard(m) {
   }
   card.appendChild(st);
   if (info && info.xrayError) card.appendChild(problem(humanError(info.xrayError), 'Нажмите «Применить» — сервис перезапустит Xray и проверит настройки.'));
+  if (m.domain && domainState(m.domain) === false) {
+    const r0 = (m.reserveDomains || [])[0];
+    card.appendChild(problem('Подписка не открывается по ' + m.domain + ' из вашей сети. ',
+      r0 && domainState(r0) ? 'Резервный ' + r0 + ' работает: «⋯» → «Домены и адреса».' : 'Проверьте DNS домена и что сервер включён.'));
+  }
   if (info && info.cpu != null) {
     const s = el('div', 'stats');
     const online = live && live.online ? live.online.filter((n) => n in (live.users || {})).length : 0;
-    s.appendChild(stat('Онлайн', String(online)));
+    const os = stat('Онлайн всего', String(online)); os.title = 'Пользователей подключено сейчас — на любом сервере сети'; s.appendChild(os);
     s.appendChild(stat('CPU', info.cpu + '%', info.cpu));
     const mem = stat('Память', (info.mem ?? 0) + '%', info.mem); mem.title = 'Диск занят на ' + (info.disk ?? 0) + '%';
     s.appendChild(mem);
@@ -1325,6 +1410,31 @@ function initials(name) {
   const w = parts.length ? parts : [name];
   return (w[0][0] + (w[1] ? w[1][0] : (w[0][1] || ''))).toUpperCase();
 }
+// What needs the admin's hand: an expiring or expired subscription, traffic running out, limits exceeded, switched off.
+const DAY = 86400000;
+function attentionOf(st) {
+  if (!st) return [];
+  const out = [], now = Date.now();
+  if (!st.enabled) out.push('выключен');
+  if (st.expiry > 0) {
+    const days = Math.ceil((st.expiry - now) / DAY);
+    if (days <= 0) out.push('срок истёк'); else if (days <= 7) out.push('истекает через ' + days + ' дн.');
+  }
+  if (st.quota) { if (st.used >= st.quota) out.push('трафик исчерпан'); else if (st.used >= 0.9 * st.quota) out.push('трафик на исходе'); }
+  if (st.over) out.push('больше лимита устройств или IP');
+  return out;
+}
+let userSort = 'activity';
+try { userSort = localStorage.getItem('xf-user-sort') || 'activity'; } catch (e) {}
+$('userSort').value = userSort;
+$('userSort').addEventListener('change', () => { userSort = $('userSort').value; try { localStorage.setItem('xf-user-sort', userSort); } catch (e) {} renderUsers(); });
+let linkTarget = null;
+$('linkMenu').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-link]'); if (!b || !linkTarget) return;
+  closeMenus();
+  if (b.dataset.link === 'main') copy(linkTarget.url, 'Подписка ' + linkTarget.name);
+  else copy(linkTarget.alt, 'Резервная подписка ' + linkTarget.name);
+});
 function renderUsers() {
   const box = $('userRows');
   box.textContent = '';
@@ -1344,9 +1454,24 @@ function renderUsers() {
   $('onlineText').textContent = 'онлайн ' + online.size + ' из ' + all.length;
   if (!all.length) return msg('Пользователей пока нет', 'Добавьте первого — он получит ссылку со всеми подключениями.');
   const q = $('userSearch').value.trim().toLowerCase();
-  const users = all.filter(([n]) => (!q || n.toLowerCase().includes(q)) && (userFilter === 'all' || online.has(n)))
-    .sort((a, b) => (online.has(b[0]) - online.has(a[0])) || ((seen[b[0]] || 0) - (seen[a[0]] || 0)) || a[0].localeCompare(b[0], 'ru'));
-  if (!users.length) return msg('Никого не найдено', q ? 'Измените запрос.' : 'Сейчас никто не подключён.');
+  const st0 = (n) => (userStats && userStats[n]) || null;
+  const nAttention = userStats ? all.filter(([n]) => attentionOf(st0(n)).length).length : 0;
+  $('cntAttention').textContent = nAttention ? String(nAttention) : '';
+  const byName = (a, b) => a[0].localeCompare(b[0], 'ru');
+  const sorters = {
+    activity: (a, b) => (online.has(b[0]) - online.has(a[0])) || ((seen[b[0]] || 0) - (seen[a[0]] || 0)) || byName(a, b),
+    name: byName,
+    traffic: (a, b) => (((st0(b[0]) || {}).used || 0) - ((st0(a[0]) || {}).used || 0)) || byName(a, b),
+    // the nearest end first; without a date — at the bottom
+    expiry: (a, b) => { const ea = (st0(a[0]) || {}).expiry || 0, eb = (st0(b[0]) || {}).expiry || 0;
+      return ((ea > 0 ? ea : Infinity) - (eb > 0 ? eb : Infinity)) || byName(a, b); },
+  };
+  const users = all.filter(([n]) => (!q || n.toLowerCase().includes(q))
+      && (userFilter === 'all' || (userFilter === 'online' ? online.has(n) : attentionOf(st0(n)).length > 0)))
+    .sort(sorters[userSort] || sorters.activity);
+  if (!users.length) return msg('Никого не найдено', q ? 'Измените запрос.'
+    : userFilter === 'attention' ? (userStats ? 'Ни у кого не истекает срок, не кончается трафик и не превышены лимиты.' : 'Загружаю статистику…')
+    : 'Сейчас никто не подключён.');
   for (const [name, url] of users) {
     const on = online.has(name);
     const r = el('div', 'item click'); r.title = 'Трафик, устройства и лимиты';
@@ -1367,12 +1492,17 @@ function renderUsers() {
     b.addEventListener('click', () => copy(url, 'Подписка ' + name));
     const reserve = ((overview && overview.master && overview.master.reserveDomains) || [])[0];
     if (reserve) {
+      // the reserve link is one click away, not a button in every row
       const alt = url.replace(/^(https?:\/\/)[^/:]+/, '$1' + reserve);
-      const rb = el('button', 'btn ghost sm', 'Резерв'); rb.title = 'Скопировать резервную ссылку (' + reserve + ')';
-      rb.addEventListener('click', () => copy(alt, 'Резервная подписка ' + name));
-      r.appendChild(rb);
-    }
-    r.appendChild(b);
+      const split = el('div', 'splitbtn'); split.appendChild(b);
+      const mb = el('button', 'btn sm'); mb.appendChild(icon('chevron')); mb.title = 'Основная или резервная ссылка';
+      mb.setAttribute('aria-haspopup', 'menu'); mb.setAttribute('aria-label', 'Другие ссылки');
+      mb.addEventListener('click', (e) => toggleMenu($('linkMenu'), e.currentTarget, () => {
+        linkTarget = { name, url, alt };
+        $('linkMain').textContent = new URL(url).hostname; $('linkReserve').textContent = reserve;
+      }));
+      split.appendChild(mb); r.appendChild(split);
+    } else r.appendChild(b);
     box.appendChild(r);
   }
 }
@@ -1474,7 +1604,7 @@ function openMigrate() {
 }
 
 // ---------- job ----------
-const BUSY_IDS = ['btnRole', 'btnAppExport', 'btnAppImport', 'btnReserve', 'btnSwitch', 'btnApply', 'btnUpgrade', 'btnAddNode', 'btnAddUser', 'btnRefresh', 'btnMasterAccess', 'btnFixAccess', 'btnRetry', 'btnDomain', 'btnPanels', 'btnBackup', 'btnMigrate', 'btnCheck'];
+const BUSY_IDS = ['btnRole', 'btnAppExport', 'btnAppImport', 'btnDomains', 'btnApply', 'btnUpgrade', 'btnAddNode', 'btnAddUser', 'btnRefresh', 'btnMasterAccess', 'btnFixAccess', 'btnRetry', 'btnPanels', 'btnBackup', 'btnMigrate', 'btnCheck'];
 function setBusy(busy) {
   for (const id of BUSY_IDS) if ($(id)) $(id).disabled = busy;
   document.querySelectorAll('[data-access], [data-click]').forEach((b) => { b.disabled = busy; });
@@ -1612,15 +1742,10 @@ async function refresh() {
     $('masterline').textContent = (m.domain || m.host) + ' · 3x-ui ' + overview.version;
     $('masterline').title = 'Главный сервер ' + m.name + ' · ' + m.host;
     $('masterDot').className = 'dot ' + (m.prepared ? 'ok' : 'warn');
-    $('domainNow').textContent = m.domain || 'не задан';
     const rsv = (m.reserveDomains || [])[0];
-    $('reserveNow').textContent = rsv || 'не задан';
-    $('btnReserve').disabled = !m.prepared || !m.domain;
-    $('btnSwitch').classList.toggle('hidden', !rsv);
-    $('btnAddr').classList.toggle('hidden', !rsv || !m.domain);
-    $('addrNow').textContent = { main: 'сейчас: основной домен', both: 'сейчас: оба домена', reserve: 'сейчас: только резервный' }[m.addressMode || 'main'];
-    if (rsv) $('btnSwitch').querySelector('span').firstChild.textContent = 'Перейти на ' + rsv;
-    $('btnDomain').disabled = !m.prepared;
+    $('domainsNow').textContent = m.domain ? m.domain + (rsv ? ' · резерв ' + rsv : ' · без резерва') : 'домен не задан';
+    $('btnDomains').disabled = !m.prepared;
+    if ($('dlgDomains').open) renderDomains();
   }
   $('notready').classList.toggle('hidden', !configured || overview.master.prepared || running);
   renderJob(overview.job);
@@ -1687,15 +1812,21 @@ function statLine(st) {
     st.quota && st.used >= st.quota);
   if (st.devices !== null && st.devices !== undefined) {
     const overDev = st.limitDevices && st.devices > st.limitDevices;
-    add('phone', st.devices + (st.limitDevices ? ' из ' + st.limitDevices : ''), 'Устройств получили подписку' + (st.limitDevices ? ', лимит ' + st.limitDevices : ', без лимита'), overDev);
+    add('phone', st.devices + (st.limitDevices ? ' из ' + st.limitDevices : '') + ' устр.', 'Устройств получили подписку' + (st.limitDevices ? ', лимит ' + st.limitDevices : ', без лимита'), overDev);
   }
   const overIp = st.limitIp && st.ips > st.limitIp;
   if (st.ips || st.limitIp) add('globe', 'IP ' + st.ips + (st.limitIp ? ' из ' + st.limitIp : ''), 'Разных IP-адресов за последнее время' + (st.limitIp ? ', лимит ' + st.limitIp : ''), overIp);
+  if (st.expiry > 0) {
+    const days = Math.ceil((st.expiry - Date.now()) / DAY), d = new Date(st.expiry).toLocaleDateString('ru-RU');
+    const s = el('span', days <= 0 ? 'over' : days <= 7 ? 'warn' : null, days <= 0 ? 'истёк ' + d : 'до ' + d);
+    s.title = days <= 0 ? 'Срок действия закончился' : 'Действует до ' + d + (days <= 7 ? ' — осталось ' + days + ' дн.' : '');
+    box.appendChild(s);
+  }
   if (!st.enabled) { const s = el('span', 'over', 'отключён'); box.appendChild(s); }
   return box;
 }
 async function loadUserStats() {
-  try { const d = await api('/api/users/stats'); if (d.stats) { userStats = d.stats; renderUsers(); } }
+  try { const d = await api('/api/users/stats'); if (d.stats) { userStats = d.stats; renderUsers(); renderServers(); } }
   catch (e) { /* the list works without statistics */ }
 }
 let infoUser = null;
@@ -1703,17 +1834,27 @@ async function openUserInfo(name) {
   infoUser = name;
   $('uiName').textContent = name; $('uiLead').textContent = 'Загружаю с главного сервера…';
   const body = $('uiBody'); body.textContent = '';
-  const w = el('div', 'empty'); w.appendChild(el('span', 'spin')); body.appendChild(w);
+  // What the list already knows shows at once; devices and IPs follow from the master.
+  if (userStats && userStats[name]) renderUserInfo(Object.assign({}, userStats[name], { partial: true }));
+  else { const w = el('div', 'empty'); w.appendChild(el('span', 'spin')); body.appendChild(w); }
   if (!$('dlgUserInfo').open) $('dlgUserInfo').showModal();
-  try { renderUserInfo(await api('/api/user?name=' + encodeURIComponent(name))); }
-  catch (e) { body.textContent = ''; body.appendChild(el('div', 'empty err', e.message)); $('uiLead').textContent = ''; }
+  try { const u = await api('/api/user?name=' + encodeURIComponent(name)); if (infoUser === name) renderUserInfo(u); }
+  catch (e) {
+    if (userStats && userStats[name]) { $('uiLead').textContent = 'Не удалось загрузить подробности: ' + e.message; return; }
+    body.textContent = ''; body.appendChild(el('div', 'empty err', e.message)); $('uiLead').textContent = '';
+  }
 }
 $('uiRefresh').addEventListener('click', () => { if (infoUser) openUserInfo(infoUser); });
 function renderUserInfo(u) {
-  if (userStats) { userStats[infoUser] = u; renderUsers(); }
+  if (userStats && !u.partial) { userStats[infoUser] = u; renderUsers(); }
   const on = u.servers.length > 0;
-  $('uiLead').textContent = (u.enabled ? '' : 'Отключён в панели. ') + (on ? 'Сейчас подключён: ' + u.servers.map(serverLabel).join(', ') : lastSeen(u.lastOnline));
-  const body = $('uiBody'); body.textContent = '';
+  $('uiLead').textContent = (u.enabled ? '' : 'Отключён в панели. ') + (on ? 'Сейчас подключён: ' + u.servers.map(serverLabel).join(', ') : lastSeen(u.lastOnline))
+    + (u.partial ? ' · загружаю устройства…' : '');
+  const body = $('uiBody');
+  // Keep what was typed while the details were loading.
+  const old = body.querySelector('form.uform'), typed = old && old.dataset.dirty ? Object.fromEntries(
+    [...old.elements].filter((i) => i.name).map((i) => [i.name, i.type === 'checkbox' ? i.checked : i.value])) : null;
+  body.textContent = '';
   const tiles = el('div', 'tiles');
   const tile = (label, value, extra) => { const t = el('div', 'tile'); t.appendChild(el('small', null, label)); t.appendChild(el('b', null, value)); if (extra) t.appendChild(extra); tiles.appendChild(t); };
   let meter = null;
@@ -1724,15 +1865,18 @@ function renderUserInfo(u) {
   tile('Подписка обновлялась', fmtWhen(u.lastSubFetch));
   body.appendChild(tiles);
 
+  const loadingRow = () => { const r = el('div', 'muted-row'); r.appendChild(el('span', 'spin')); r.appendChild(document.createTextNode(' загружаю с главного сервера…')); return r; };
   // devices
-  const real = u.deviceList.filter((d) => !d.service);
+  const real = (u.deviceList || []).filter((d) => !d.service);
   const ds = el('div', 'sect');
-  const h = el('h3'); h.appendChild(icon('phone')); h.appendChild(document.createTextNode('Устройства: ' + real.length + (u.limitDevices ? ' из ' + u.limitDevices : '')));
-  if (u.limitDevices && real.length > u.limitDevices) h.appendChild(el('span', 'tag bad', 'больше лимита'));
+  const nDev = u.deviceList ? real.length : (u.devices ?? '…');
+  const h = el('h3'); h.appendChild(icon('phone')); h.appendChild(document.createTextNode('Устройства: ' + nDev + (u.limitDevices ? ' из ' + u.limitDevices : '')));
+  if (u.limitDevices && nDev > u.limitDevices) h.appendChild(el('span', 'tag bad', 'больше лимита'));
   ds.appendChild(h);
   const rows = el('div', 'rows');
-  if (!u.deviceList.length) rows.appendChild(el('div', 'muted-row', 'Пока ни одно приложение не сообщило об устройстве. Их передают Happ, v2RayTun и INCY при обновлении подписки.'));
-  for (const d of u.deviceList) {
+  if (!u.deviceList) rows.appendChild(loadingRow());
+  else if (!u.deviceList.length) rows.appendChild(el('div', 'muted-row', 'Пока ни одно приложение не сообщило об устройстве. Их передают Happ, v2RayTun и INCY при обновлении подписки.'));
+  for (const d of u.deviceList || []) {
     const r = el('div', d.service ? 'muted-row' : null);
     const g = el('div', 'grow');
     const title = d.service ? 'Служебный запрос 3x-ui (не устройство)' : [d.model, d.os && (d.os + (d.osVersion ? ' ' + d.osVersion : ''))].filter(Boolean).join(' · ') || 'Устройство без описания';
@@ -1752,12 +1896,13 @@ function renderUserInfo(u) {
 
   // IPs
   const is = el('div', 'sect');
-  const hi = el('h3'); hi.appendChild(icon('globe')); hi.appendChild(document.createTextNode('IP-адреса за последнее время: ' + u.ipList.length + (u.limitIp ? ' (лимит ' + u.limitIp + ')' : '')));
+  const hi = el('h3'); hi.appendChild(icon('globe')); hi.appendChild(document.createTextNode('IP-адреса за последнее время: ' + (u.ipList ? u.ipList.length : u.ips) + (u.limitIp ? ' (лимит ' + u.limitIp + ')' : '')));
   if (u.limitIp && u.ips > u.limitIp) hi.appendChild(el('span', 'tag bad', 'больше лимита'));
   is.appendChild(hi);
   const ir = el('div', 'rows');
-  if (!u.ipList.length) ir.appendChild(el('div', 'muted-row', 'Нет данных: пользователь давно не подключался.'));
-  for (const i of u.ipList) {
+  if (!u.ipList) ir.appendChild(loadingRow());
+  else if (!u.ipList.length) ir.appendChild(el('div', 'muted-row', 'Нет данных: пользователь давно не подключался.'));
+  for (const i of u.ipList || []) {
     const r = el('div'); const g = el('div', 'grow');
     g.appendChild(el('div', null, i.ip)); g.appendChild(el('div', 'sub', serverLabel(i.server) + (i.time ? ' · ' + i.time : '')));
     r.appendChild(g); ir.appendChild(r);
@@ -1777,35 +1922,28 @@ function renderUserInfo(u) {
   uf.appendChild(inp('Комментарий', 'text', 'comment', u.comment || '', 'wide', { maxLength: 200, placeholder: 'Например: телефон мамы' }));
   uf.appendChild(inp('Лимит трафика, ГБ (0 — без лимита)', 'number', 'totalGb', u.quota ? +(u.quota / 1024 ** 3).toFixed(2) : 0, null, { min: '0', step: 'any' }));
   uf.appendChild(inp('Действует до (пусто — бессрочно)', 'date', 'expiry', day(u.expiry), null));
+  uf.appendChild(inp('Устройств (0 — без лимита)', 'number', 'devices', u.limitDevices, null, { min: '0', max: '1000' }));
+  uf.appendChild(inp('IP одновременно (0 — без лимита)', 'number', 'ips', u.limitIp, null, { min: '0', max: '1000' }));
+  uf.appendChild(el('div', 'hint wide', 'Лишнее устройство не получит подписку. Лишние IP 3x-ui отключает на время. '
+    + 'Уже скопированный в приложение конфиг лимит устройств не остановит — для этого есть лимит IP.'));
   const onBox = el('label', 'check wide'); const cb = el('input'); cb.type = 'checkbox'; cb.name = 'enabled'; cb.checked = u.enabled;
   onBox.appendChild(cb); onBox.appendChild(el('span', null, 'Включён — подписка и подключения работают')); uf.appendChild(onBox);
   const usave = el('button', 'btn primary', 'Сохранить'); usave.type = 'submit'; const ub = el('div', 'wide'); ub.appendChild(usave); uf.appendChild(ub);
   const uerr = el('div', 'formerr wide'); uerr.setAttribute('role', 'alert'); uf.appendChild(uerr);
+  if (typed) { for (const [k, v] of Object.entries(typed)) { const i = uf.elements[k]; if (i) { if (i.type === 'checkbox') i.checked = v; else i.value = v; } } uf.dataset.dirty = '1'; }
+  uf.addEventListener('input', () => { uf.dataset.dirty = '1'; });
   uf.addEventListener('submit', (e) => {
     e.preventDefault();
     const d = uf.expiry.value ? new Date(uf.expiry.value + 'T23:59:59') : null;
     userAction('/api/user/edit', { name: infoUser, comment: uf.comment.value, totalGb: uf.totalGb.value || 0,
-      expiry: d ? d.getTime() : 0, enabled: uf.enabled.checked }, uerr, 'Настройки сохранены');
+      expiry: d ? d.getTime() : 0, enabled: uf.enabled.checked, devices: uf.devices.value || 0, ips: uf.ips.value || 0 }, uerr, 'Сохранено');
   });
   ss.appendChild(uf);
   body.appendChild(ss);
 
-  // limits
-  const ls = el('div', 'sect');
-  ls.appendChild(el('h3', null, 'Лимиты'));
-  const f = el('form', 'limits');
-  const field = (label, nameAttr, value) => { const d = el('div'); const l = el('label', 'f', label); const inp = el('input'); inp.type = 'number'; inp.min = '0'; inp.max = '1000'; inp.name = nameAttr; inp.value = value; l.appendChild(inp); d.appendChild(l); return d; };
-  f.appendChild(field('Устройств', 'devices', u.limitDevices));
-  f.appendChild(field('IP одновременно', 'ips', u.limitIp));
-  const save = el('button', 'btn primary', 'Сохранить'); save.type = 'submit'; f.appendChild(save);
-  ls.appendChild(f);
-  ls.appendChild(el('div', 'hint', '0 — без ограничения. Лишнее устройство не получит подписку. Лишние IP 3x-ui отключает на время. '
-    + 'Уже скопированный в приложение конфиг лимит устройств не остановит — для этого есть лимит IP.'));
-  const err = el('div', 'formerr'); err.setAttribute('role', 'alert'); ls.appendChild(err);
-  f.addEventListener('submit', (e) => { e.preventDefault(); userAction('/api/user/limits', { name: infoUser, devices: f.devices.value, ips: f.ips.value }, err, 'Лимиты сохранены'); });
-  body.appendChild(ls);
 
-  // actions
+  // dangerous actions, apart from the settings
+  const dz = el('div', 'sect danger-zone'); dz.appendChild(el('h3', null, 'Опасные действия'));
   const acts = el('div', 'uactions');
   const reset = el('button', 'btn'); reset.type = 'button'; reset.appendChild(icon('refresh')); reset.appendChild(document.createTextNode('Сбросить трафик'));
   reset.addEventListener('click', () => confirmAction('Сбросить трафик ' + infoUser + '?',
@@ -1817,11 +1955,15 @@ function renderUserInfo(u) {
     'Его подписка и все подключения перестанут работать на всех серверах. Перед удалением делается бэкап главного сервера — из него пользователя можно вернуть.',
     () => { $('dlgUserInfo').close(); if (userStats) delete userStats[who]; start('/api/user/delete', { name: who }); }, 'Удалить', true));
   acts.appendChild(reset); acts.appendChild(el('div', 'spacer')); acts.appendChild(del);
-  body.appendChild(acts);
+  dz.appendChild(acts); body.appendChild(dz);
 }
 async function userAction(path, body, errBox, done) {
   if (errBox) errBox.textContent = '';
-  try { const r = await api(path, body); renderUserInfo(r.user); if (done) toast(done); }
+  try {
+    const r = await api(path, body);
+    const f = $('uiBody').querySelector('form.uform'); if (f) delete f.dataset.dirty;  // saved: show what the server has
+    renderUserInfo(r.user); if (done) toast(done);
+  }
   catch (e) { if (errBox) errBox.textContent = e.message; else toast(e.message); }
 }
 
@@ -2066,13 +2208,13 @@ $('accessForm').addEventListener('submit', (e) => { e.preventDefault(); start('/
 $('btnMasterAccess').addEventListener('click', () => { closeMenus(); openAccess(overview.master, 'Доступ к главному серверу'); });
 $('btnFixAccess').addEventListener('click', () => openAccess(overview.master, 'Доступ к главному серверу'));
 $('btnRetry').addEventListener('click', () => start('/api/apply'));
-$('btnDomain').addEventListener('click', () => {
-  closeMenus();
+function openDomain() {
+  closeMenus(); $('dlgDomains').close();
   $('domainIp').textContent = overview.master.host;
   resetForm($('domainForm'));
   $('d_domain').value = overview.master.domain || '';
   $('dlgDomain').showModal();
-});
+}
 $('btnRole').addEventListener('click', openRole);
 $('appVer').addEventListener('click', (e) => { e.preventDefault(); openVersions(); });
 $('updPill').addEventListener('click', () => openVersions(true));
@@ -2169,37 +2311,69 @@ $('roleForm').addEventListener('submit', (e) => {
 document.querySelectorAll('#setupRoles input').forEach((r) => r.addEventListener('change', () => {
   $('s_label_box').classList.toggle('hidden', document.querySelector('#setupRoles input:checked').value === 'gateway');
 }));
-$('btnReserve').addEventListener('click', () => {
-  closeMenus();
+function openReserve() {
+  closeMenus(); $('dlgDomains').close();
   const form = $('reserveForm'); resetForm(form);
   const cur = (overview.master.reserveDomains || [])[0] || '';
   $('r_domain').value = cur; $('reserveIp').textContent = overview.master.host;
   $('reserveRemove').classList.toggle('hidden', !cur);
   $('dlgReserve').showModal();
-});
+}
 $('reserveForm').addEventListener('submit', (e) => { e.preventDefault(); start('/api/domain/reserve', formData(e.target), e.target); });
 $('reserveRemove').addEventListener('click', () => start('/api/domain/reserve', { domain: '' }, $('reserveForm')));
-$('btnAddr').addEventListener('click', () => {
-  closeMenus();
+function openAddr() {
+  closeMenus(); $('dlgDomains').close();
   const m = overview.master, form = $('addrForm'); resetForm(form);
   $('addrMain').textContent = ' (' + m.domain + ')';
   $('addrReserve').textContent = ' (' + ((m.reserveDomains || [])[0] || '') + ')';
   form.querySelector('[value=' + (m.addressMode || 'main') + ']').checked = true;
   $('dlgAddr').showModal();
-});
+}
 $('addrForm').addEventListener('submit', (e) => {
   e.preventDefault();
   const mode = (e.target.querySelector('input[name=mode]:checked') || {}).value;
   if (mode === (overview.master.addressMode || 'main')) { $('dlgAddr').close(); return; }
   start('/api/master/addresses', { mode }, e.target);
 });
-$('btnSwitch').addEventListener('click', () => {
-  closeMenus();
+function switchToReserve() {
+  closeMenus(); $('dlgDomains').close();
   const rsv = overview.master.reserveDomains[0], cur = overview.master.domain;
   confirmAction('Перейти на ' + rsv + '?',
     'Подписка и подключения «через RU» переедут на ' + rsv + ', ' + cur + ' станет резервным. Пользователям нужно открыть резервную ссылку (или обновить подписку, если ' + cur + ' ещё доступен). Подключения напрямую к нодам это не затрагивает.',
     () => start('/api/domain', { domain: rsv }), 'Перейти');
-});
+}
+// One place for everything about domains: the main one, the reserve, which of them the links use,
+// and the emergency switch — with whether each one opens from this computer right now.
+const ADDR_MODE = { main: 'только основной домен', both: 'основной и резервный — две ссылки', reserve: 'только резервный домен' };
+function domainState(d) {
+  const r = live && live.domains; if (!r || !(d in r)) return null;
+  return r[d];
+}
+function renderDomains() {
+  const m = overview.master, rsv = (m.reserveDomains || [])[0], box = $('domRows'); box.textContent = '';
+  const row = (k, v, state, btnText, fn, cls) => {
+    const r = el('div', cls || null); const g = el('div', 'grow');
+    g.appendChild(el('div', 'k', k)); const vv = el('div', 'v', v);
+    if (state === true) vv.appendChild(el('span', 'tag ok', 'открывается'));
+    else if (state === false) vv.appendChild(el('span', 'tag bad', 'не открывается'));
+    g.appendChild(vv); r.appendChild(g);
+    if (btnText) { const b = el('button', 'btn sm' + (cls ? ' primary' : ''), btnText); b.type = 'button'; b.addEventListener('click', fn); r.appendChild(b); }
+    box.appendChild(r);
+  };
+  const mainDown = m.domain && domainState(m.domain) === false, rsvUp = rsv && domainState(rsv) === true;
+  if (mainDown && rsvUp) row('Основной домен не открывается из вашей сети', 'Переведите подписку на ' + rsv + ' — пользователи откроют резервную ссылку', null,
+    'Перейти на ' + rsv, switchToReserve, 'alert-row');
+  row('Основной домен подписки', m.domain || 'не задан', m.domain ? domainState(m.domain) : null, m.domain ? 'Изменить' : 'Задать', openDomain);
+  row('Резервный домен', rsv || 'не задан — подписка держится на одном домене', rsv ? domainState(rsv) : null, rsv ? 'Изменить' : 'Добавить', openReserve);
+  if (rsv) {
+    row('Адреса подключений через RU', ADDR_MODE[m.addressMode || 'main'], null, 'Изменить', openAddr);
+    if (!(mainDown && rsvUp)) row('Если основной заблокируют', 'Резервный станет основным', null, 'Перейти на ' + rsv, switchToReserve);
+  }
+  $('domHint').textContent = !live || !live.domains ? 'Доступность появится после загрузки состояния серверов.'
+    : 'Проверка с этого компьютера: если здесь включён VPN, результат может отличаться от сети пользователей.';
+}
+$('btnDomains').addEventListener('click', () => { closeMenus(); renderDomains(); $('dlgDomains').showModal(); });
+$('domCheck').addEventListener('click', async () => { await loadLive(true); renderDomains(); });
 $('domainForm').addEventListener('submit', (e) => { e.preventDefault(); start('/api/domain', formData(e.target), e.target); });
 $('btnAddNode').addEventListener('click', () => {
   resetForm($('nodeForm')); fillFlags($('n_flag')); $('n_flag').value = 'auto';

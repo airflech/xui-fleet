@@ -58,7 +58,7 @@ function renderUsers() {
   }
   if (live.busy) return msg('Идёт операция', 'Список обновится, когда она закончится.');
   if (live.failed) { const e = el('div', 'empty err', 'Не удалось связаться с главным сервером: ' + live.failed); box.appendChild(e); return; }
-  if (live.ready === false) return msg('Главный сервер ещё не настроен', 'Нажмите «Применить» на вкладке «Серверы».');
+  if (live.ready === false) return msg('Главный сервер ещё не настроен', 'Нажмите «Исправить» на вкладке «Серверы».');
   const all = Object.entries(live.users || {}).sort((a, b) => a[0].localeCompare(b[0], 'ru'));
   const online = new Set((live.online || []).filter((n) => n in (live.users || {})));
   const seen = live.lastOnline || {};

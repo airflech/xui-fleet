@@ -21,6 +21,8 @@ async function loadLive(quiet) {
   renderServers(); renderUsers(); paintLiveAge();
   if (live.failed) { clearTimeout(liveRetry); liveRetry = setTimeout(() => loadLive(quiet), 5000); }
   else if (live.ready && !live.busy && (!quiet || Date.now() - statsAt > 120000)) { statsAt = Date.now(); loadUserStats(); }
+  if (live.ready && !live.busy && !live.failed && (!quiet || Date.now() - driftAt > DRIFT_EVERY)) loadDrift();
+  else if (live.ready === false) { drift = { changes: ['главный сервер ещё не настроен'], warnings: [] }; driftAt = Date.now(); paintSync(); }
 }
 function paintLiveAge() {
   const s = liveAt ? Math.round((Date.now() - liveAt) / 1000) : null, box = $('liveAge');
@@ -83,6 +85,45 @@ async function start(path, body, form) {
   pollJob();
   return true;
 }
+
+// ---------- are the servers as configured? ----------
+// Instead of an «Apply» button nobody can read: the page compares the settings with the servers by itself
+// (a dry run on the master, ~2 s, read-only) and says «Всё настроено» or offers «Исправить · N» with the list.
+let drift = null, driftAt = 0, driftErr = '', driftLoading = false;
+const DRIFT_EVERY = 300000;
+async function loadDrift() {
+  if (driftLoading) return;
+  driftLoading = true; paintSync();
+  try {
+    const d = await api('/api/drift');
+    if (!d.busy) { drift = d; driftErr = ''; driftAt = Date.now(); }
+  } catch (e) { driftErr = e.message; driftAt = Date.now(); }
+  driftLoading = false; paintSync();
+}
+function paintSync() {
+  const b = $('btnApply'), t = $('syncText');
+  b.classList.remove('ok', 'need', 'warn', 'checking');
+  const ago = driftAt ? Math.round((Date.now() - driftAt) / 60000) : 0;
+  const when = ago < 1 ? 'только что' : ago + ' мин назад';
+  if (driftLoading && !drift) { b.classList.add('checking'); t.textContent = 'Сверяю…'; b.title = 'Сравниваю настройки с серверами'; return; }
+  if (driftErr && !drift) { b.classList.add('warn'); t.textContent = 'Не удалось сверить'; b.title = driftErr + ' — нажмите, чтобы повторить'; return; }
+  if (!drift) { t.textContent = 'Сверить'; b.title = 'Сравнить настройки с серверами'; return; }
+  const n = drift.changes.length;
+  if (n) {
+    b.classList.add('need'); t.textContent = 'Исправить · ' + n;
+    b.title = 'Серверы отличаются от настроек (' + when + '). Нажмите, чтобы посмотреть, что изменится';
+  } else {
+    b.classList.add(driftLoading ? 'checking' : 'ok'); t.textContent = driftLoading ? 'Сверяю…' : 'Всё настроено';
+    b.title = 'Серверы совпадают с настройками (проверено ' + when + '). Нажмите, чтобы сверить ещё раз';
+  }
+}
+function syncClick() {
+  if (!drift || !drift.changes.length) { loadDrift(); return; }
+  const list = drift.changes.slice(0, 12).map((c) => '• ' + c).join('\n') + (drift.changes.length > 12 ? '\n… и ещё ' + (drift.changes.length - 12) : '');
+  confirmAction('Исправить расхождения?', 'Серверы приведутся к настройкам приложения. Что изменится:\n\n' + list
+    + '\n\nПеред изменениями делается бэкап главного сервера.', () => start('/api/apply', { fix: true }), 'Исправить');
+}
+setInterval(paintSync, 30000);
 
 function confirmAction(title, text, fn, yes, danger) {
   $('confirmTitle').textContent = title;

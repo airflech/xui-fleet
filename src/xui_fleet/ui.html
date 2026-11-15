@@ -123,7 +123,7 @@
         <div class="menu-wrap">
           <button class="btn" id="btnFleetMenu" aria-haspopup="menu">Обслуживание <svg class="i" style="width:14px"><use href="#i-chevron"/></svg></button>
         </div>
-        <button class="btn" id="btnApply" title="Проверить все серверы и привести их к настройкам"><svg class="i"><use href="#i-play"/></svg>Применить</button>
+        <button class="btn sync" id="btnApply" type="button" aria-live="polite"><span class="sdot"></span><span id="syncText">Сверяю…</span></button>
         <button class="btn primary" id="btnAddNode"><svg class="i"><use href="#i-plus"/></svg>Добавить сервер</button>
         </div>
       </div>
@@ -271,7 +271,7 @@
             серверах, с трафиком и числом клиентов. Свои входящие можно переименовать, сменить порт, выключить и удалить.</p>
           <p>Подключения с меткой xui-fleet программа поддерживает сама: порт и вкл/выкл меняются здесь (каскад и файрвол
             подстроятся), название — в «Название и подключения» сервера. Удаление выключает этот тип подключения у сервера,
-            и «Применить» его больше не создаёт. Прямое подключение только скрывается из подписок — через него идут каскады.</p>
+            и программа его больше не создаёт. Прямое подключение только скрывается из подписок — через него идут каскады.</p>
 
           <h2 id="h-remove">Удаление серверов</h2>
           <p>«⋯» сервера → «Удалить сервер», для главного — его меню → «Удалить главный сервер». «Только из xui-fleet»: сервер
@@ -302,7 +302,7 @@
 
           <h2 id="h-trouble">Если что-то не работает</h2>
           <ul><li><b>Подключение не открывает сайты</b> — обновите подписку в приложении и попробуйте следующее подключение той же страны.</li>
-            <li><b>Сервер «Недоступен»</b> — «Серверы» → «Применить»: сервис перепроверит всё и починит расхождения.</li>
+            <li><b>Сервер «Недоступен»</b> — включите его, затем «Обслуживание» → «Перенастроить все серверы»: сервис зайдёт на каждый сервер и починит расхождения.</li>
             <li><b>Проверить все подключения разом</b> — «Обслуживание» → «Проверить подключения».</li>
             <li><b>Ошибка входа на сервер</b> — «⋯» у сервера → «Адрес и доступ по SSH».</li>
             <li><b>Журнал работы приложения</b> — macOS: <code>~/Library/Logs/xui-fleet.log</code>, Windows: <code>%APPDATA%\xui-fleet\xui-fleet.log</code>, Linux: <code>~/.local/share/xui-fleet/xui-fleet.log</code>.</li></ul>
@@ -364,7 +364,7 @@
 
 <!-- floating menus -->
 <div class="menu hidden" id="fleetMenu" role="menu">
-  <button role="menuitem" id="btnPlan"><svg class="i"><use href="#i-eye"/></svg><span>Что изменит «Применить»<small>Проверка без изменений, затем — применить</small></span></button>
+  <button role="menuitem" id="btnForce"><svg class="i"><use href="#i-play"/></svg><span>Перенастроить все серверы<small>Зайти на каждый по SSH, проверить и перезапустить что нужно, проверить каскады</small></span></button>
   <button role="menuitem" id="btnCheck"><svg class="i"><use href="#i-pulse"/></svg><span>Проверить подключения<small>Трафик через каждую ссылку подписки</small></span></button>
   <button role="menuitem" id="btnUpgrade"><svg class="i"><use href="#i-up"/></svg><span>Обновить 3x-ui<small>Сначала ноды, затем главный сервер</small></span></button>
 </div>
@@ -684,6 +684,27 @@
   </div>
   <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Сохранить</button></div>
 </form></dialog>
+
+<dialog id="dlgWarp" class="wide"><div class="dlg">
+  <div class="dlg-h"><h2>Как работает WARP</h2><p>Это второй выход в интернет с вашего зарубежного сервера — через сеть Cloudflare.</p></div>
+  <div class="dlg-b">
+    <div class="warpflow">
+      <div class="row"><span class="lbl">Обычное подключение — сайты видят адрес вашего сервера</span>
+        <span class="hop">телефон</span><span class="arr">→</span><span class="hop">RU (если «через RU»)</span><span class="arr">→</span>
+        <span class="hop">зарубежный сервер</span><span class="arr">→</span><span class="hop">сайт видит адрес сервера</span></div>
+      <div class="row"><span class="lbl">Подключение с «WARP» в названии — сайты видят адрес Cloudflare</span>
+        <span class="hop">телефон</span><span class="arr">→</span><span class="hop">RU (если «через RU»)</span><span class="arr">→</span>
+        <span class="hop">зарубежный сервер</span><span class="arr">→</span><span class="hop w">☁ Cloudflare WARP</span><span class="arr">→</span><span class="hop">сайт видит адрес Cloudflare</span></div>
+    </div>
+    <ul class="plain">
+      <li><b>Зачем.</b> Некоторые сервисы не пускают адреса дата-центров и VPN: ChatGPT, стриминги, часть банков, Google с бесконечной капчей. Адреса Cloudflare они обычно принимают.</li>
+      <li><b>Где в подписке.</b> Подключения «UK · WARP» и «UK · через RU → WARP» (так же для других стран). Страна выхода остаётся той же.</li>
+      <li><b>Цена.</b> Чуть выше задержка (обычно +10–40 мс), скорость зависит от Cloudflare. Для всего остального берите обычные подключения.</li>
+      <li><b>Как это устроено.</b> Сервер сам регистрируется в бесплатном WARP и отправляет туда только трафик этих подключений. Ничего настраивать не нужно.</li>
+    </ul>
+  </div>
+  <div class="dlg-f"><div class="spacer"></div><button type="button" class="btn" data-close>Понятно</button></div>
+</div></dialog>
 
 <dialog id="dlgConfirm"><div class="dlg">
   <div class="dlg-h"><h2 id="confirmTitle"></h2><p id="confirmText"></p></div>

@@ -432,6 +432,21 @@ class Fleet:
             self.log(f"[dry-run] {name}: после установки — регистрация на мастере, inbound-ы и каскад")
         return dry
 
+    def drift(self) -> Dict[str, Any]:
+        """What differs between fleet.yaml and the servers right now — read-only and quiet, for the page's
+        status ("all set" / "N to fix"). Only the master panel is asked; servers never prepared are listed
+        as to do, without SSH (that is what fixing them does)."""
+        nodes = [n for n in self.cfg.nodes if n.enabled]
+        if not (self.cfg.master.api_url or self.state.get(self.cfg.master.name, "api_token")):
+            return {"changes": ["главный сервер ещё не настроен"], "warnings": []}
+        pending = [n.name for n in nodes if not self._access_from_state(n)]
+        with self.master_panel(provision=False) as panel:
+            access = {n.name: a for n in nodes for a in [self._access_from_state(n)] if a}
+            dry = Reconciler(panel, self.cfg, countries=self.countries(), neighbors=self.neighbors(), health=self.health(),
+                             dry_run=True, log=lambda _m: None).run(access, {n.name for n in nodes if n.name not in pending})
+        return {"changes": [f"{p}: сервер ещё не подключён — установить и подключить" for p in pending] + list(dry.changes),
+                "warnings": list(dry.warnings)}
+
     def _servers(self):
         from .geo import display_labels
         labels = display_labels(self.cfg.nodes, self.countries())

@@ -229,6 +229,13 @@ def _version(c: Call):
             **c.app.update_note()}
 
 
+@get("/api/drift", busy=True)
+def _drift(c: Call):
+    """For the status next to the server list: is everything as configured, and if not, what would change."""
+    import time
+    return dict(c.app.fleet().drift(), at=int(time.time()))
+
+
 @get("/api/master/probe", busy=True)
 def _master_probe(c: Call):
     return c.app.fleet().master_probe()
@@ -287,7 +294,8 @@ def _panel_password(c: Call):
 
 @post("/api/apply")
 def _apply(c: Call):
-    return c.run("Применение настроек", lambda log: c.app.fleet(log).apply())
+    title = "Исправление расхождений" if c.body.get("fix") else "Перенастройка всех серверов"
+    return c.run(title, lambda log: c.app.fleet(log).apply())
 
 
 @post("/api/plan")

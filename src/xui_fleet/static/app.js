@@ -304,7 +304,7 @@ $('joinForm').addEventListener('submit', async (e) => {
 });
 $('btnAddUser').addEventListener('click', () => { resetForm($('userForm')); $('dlgUser').showModal(); });
 $('btnRefresh').addEventListener('click', () => loadLive());
-$('btnApply').addEventListener('click', () => start('/api/apply'));
+$('btnApply').addEventListener('click', syncClick);
 $('btnUpgrade').addEventListener('click', () => { closeMenus(); confirmAction('Обновить 3x-ui на всех серверах?',
   'Сначала обновятся зарубежные серверы, затем главный. Подключения кратко прервутся.', () => start('/api/upgrade'), 'Обновить'); });
 

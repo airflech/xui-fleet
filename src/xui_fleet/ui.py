@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "новый облик: живая карта маршрутов на вкладке «Серверы», ночная и дневная тема"
+WHATS_NEW = "вместо «Применить» — статус «Всё настроено» / «Исправить», а на карте маршрутов видны выходы в интернет и через WARP"
 
 
 def _last_backup(fleet: Any) -> int:
@@ -332,6 +332,7 @@ class App:
                           "display": labels[n.name],
                           "flag": n.flag or "auto", "country": state.get(n.name, "country") or "", "hide": list(n.hide),
                           "direct": d.port if d.enabled else None, "cascade": bool(c.enabled),
+                          "warp": bool(cfg.set_for(n).warp) and "warp" not in n.hide,
                           "prepared": bool(state.get(n.name, "api_token")), "access": access(n)})
         tls = cfg.tls_for(cfg.master)
         st = cfg.defaults.set

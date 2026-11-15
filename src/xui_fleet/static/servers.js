@@ -94,7 +94,7 @@ function renderMap() {
   const online = ready ? (live.online || []).filter((n) => n in (live.users || {})).length : null;
   if (box.clientWidth && box.clientWidth < 560) return renderMapNarrow(box, m, nodes, ready, mi, masterOk, online);
   const W = 1000, rowH = 74, H = Math.max(170, nodes.length * rowH + 50);
-  const cy = H / 2, MX = 270, MW = 210, MH = 78, NX = 730, NW = 250, NH = 58;
+  const cy = H / 2, MX = 190, MW = 200, MH = 78, NX = 575, NW = 225, NH = 58, EX = 872;
   const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'rm', role: 'img' });
   svg.appendChild(svgEl('title', null, 'Маршруты: пользователи → главный сервер → зарубежные серверы'));
   const state = (ok) => (ok == null ? 'idle' : ok ? 'live' : 'down');
@@ -122,9 +122,19 @@ function renderMap() {
     const ok = info ? info.status === 'online' : null;
     const st = n.cascade ? state(ok) : 'off';
     const y = ny(i), x0 = MX + MW, x1 = NX;
-    svg.appendChild(svgEl('path', { d: `M ${x0} ${cy} C ${x0 + 120} ${cy}, ${x1 - 170} ${y}, ${x1} ${y}`, class: 'rm-line ' + st }));
+    svg.appendChild(svgEl('path', { d: `M ${x0} ${cy} C ${x0 + 90} ${cy}, ${x1 - 120} ${y}, ${x1} ${y}`, class: 'rm-line ' + st }));
     // the latency sits on the straight end of each line, so labels never collide near the hub
-    if (n.cascade) pill(x1 - 48, y, info ? (ok ? (info.latency || 0) + ' мс' : 'нет связи') : '…', st);
+    if (n.cascade) pill(x1 - 44, y, info ? (ok ? (info.latency || 0) + ' мс' : 'нет связи') : '…', st);
+  });
+  // node → exits: straight to the internet from the node's own address, or through Cloudflare WARP
+  const anyWarp = nodes.some((n) => n.warp);
+  const spread = Math.min(46, Math.max(30, H * 0.2));
+  const inetY = anyWarp ? cy - spread : cy, warpY = cy + spread;
+  nodes.forEach((n, i) => {
+    const info = ready && live.nodes ? live.nodes[n.name] : null;
+    const st = state(info ? info.status === 'online' : null), y = ny(i), x0 = NX + NW;
+    svg.appendChild(svgEl('path', { d: `M ${x0} ${y} C ${x0 + 40} ${y}, ${EX - 50} ${inetY}, ${EX - 16} ${inetY}`, class: 'rm-line exit ' + st }));
+    if (n.warp) svg.appendChild(svgEl('path', { d: `M ${x0} ${y} C ${x0 + 40} ${y}, ${EX - 50} ${warpY}, ${EX - 16} ${warpY}`, class: 'rm-line warp ' + (st === 'live' ? 'live' : st) }));
   });
   // master box
   const mg = svgEl('g', { class: 'rm-box master ' + inSt, tabindex: 0 });
@@ -154,6 +164,24 @@ function renderMap() {
     g.addEventListener('click', () => focusCard(n.name));
     svg.appendChild(g);
   });
+  if (nodes.length) {
+    const ig = svgEl('g', { class: 'rm-exit' });
+    ig.appendChild(svgEl('circle', { cx: EX, cy: inetY, r: 15 }));
+    ig.appendChild(svgEl('path', { d: `M ${EX - 15} ${inetY} H ${EX + 15} M ${EX} ${inetY - 15} C ${EX - 9} ${inetY - 6}, ${EX - 9} ${inetY + 6}, ${EX} ${inetY + 15} C ${EX + 9} ${inetY + 6}, ${EX + 9} ${inetY - 6}, ${EX} ${inetY - 15}`, class: 'rm-globe' }));
+    ig.appendChild(svgEl('text', { x: EX + 24, y: inetY + 4, class: 'rm-cap strong' }, 'интернет'));
+    ig.appendChild(svgEl('title', null, 'Обычный выход: сайты видят адрес зарубежного сервера'));
+    svg.appendChild(ig);
+    if (anyWarp) {
+      const wg = svgEl('g', { class: 'rm-exit warp', tabindex: 0, role: 'button' });
+      wg.appendChild(svgEl('path', { d: `M ${EX - 14} ${warpY + 8} a 7 7 0 0 1 1 -13.5 a 9.5 9.5 0 0 1 18 -2 a 7 7 0 0 1 9 7.5 a 4.5 4.5 0 0 1 -1.5 8 Z`, class: 'rm-cloud' }));
+      wg.appendChild(svgEl('text', { x: EX + 24, y: warpY + 1, class: 'rm-cap strong' }, 'Cloudflare WARP'));
+      wg.appendChild(svgEl('text', { x: EX + 24, y: warpY + 17, class: 'rm-cap link' }, 'как это работает?'));
+      wg.appendChild(svgEl('title', null, 'Выход через Cloudflare WARP — нажмите, чтобы узнать, как это работает'));
+      wg.addEventListener('click', () => $('dlgWarp').showModal());
+      wg.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('dlgWarp').showModal(); } });
+      svg.appendChild(wg);
+    }
+  }
   if (!nodes.length) {
     const y = cy, x0 = MX + MW;
     svg.appendChild(svgEl('path', { d: `M ${x0} ${y} L ${NX} ${y}`, class: 'rm-line ' + inSt }));
@@ -162,8 +190,12 @@ function renderMap() {
   box.appendChild(svg);
   mapWidth = box.clientWidth;
   const legend = el('div', 'rm-legend');
-  for (const [cls, txt] of [['live', 'маршрут работает'], ['down', 'нет связи'], ['idle', 'нет данных']]) {
+  for (const [cls, txt] of [['live', 'маршрут работает'], ['down', 'нет связи'], ['idle', 'нет данных']].concat(nodes.some((n) => n.warp) ? [['warp', 'выход через WARP']] : [])) {
     const s = el('span'); s.appendChild(el('i', cls)); s.appendChild(document.createTextNode(txt)); legend.appendChild(s);
+  }
+  if (nodes.some((n) => n.warp)) {
+    const q = el('button', 'linkbtn', 'Что такое WARP?'); q.type = 'button'; q.addEventListener('click', () => $('dlgWarp').showModal());
+    legend.insertBefore(q, legend.firstChild);
   }
   box.appendChild(legend);
 }
@@ -197,12 +229,18 @@ function renderMapNarrow(box, m, nodes, ready, mi, masterOk, online) {
     g.appendChild(svgEl('text', { x: 78, y: y + 15, class: 'rm-s' }, n.name));
     if (n.cascade) {
       const t = info ? (ok ? (info.latency || 0) + ' мс' : 'нет связи') : '…';
-      g.appendChild(svgEl('text', { x: W - 26, y: y + 5, class: 'rm-lat ' + st, 'text-anchor': 'end' }, t));
+      g.appendChild(svgEl('text', { x: W - 26, y: y - 1, class: 'rm-lat ' + st, 'text-anchor': 'end' }, t));
     }
+    if (n.warp) g.appendChild(svgEl('text', { x: W - 26, y: y + 15, class: 'rm-s warp', 'text-anchor': 'end' }, '+ WARP'));
     g.addEventListener('click', () => focusCard(n.name));
     svg.appendChild(g);
   });
   box.appendChild(svg);
+  if (nodes.some((n) => n.warp)) {
+    const legend = el('div', 'rm-legend');
+    const q = el('button', 'linkbtn', 'Что такое WARP?'); q.type = 'button'; q.addEventListener('click', () => $('dlgWarp').showModal());
+    legend.appendChild(q); box.appendChild(legend);
+  }
 }
 let mapWidth = 0;
 window.addEventListener('resize', () => {
@@ -251,7 +289,7 @@ function renderServers() {
     }
     card.appendChild(st);
     if (info && info.status !== 'online') card.appendChild(problem(humanError(info.error),
-      'Проверьте, что сервер включён, затем нажмите «Применить» — сервис перепроверит его. Подключения к другим серверам работают.'));
+      'Проверьте, что сервер включён, затем «Обслуживание» → «Перенастроить все серверы». Подключения к другим серверам работают.'));
     else if (info && info.error) card.appendChild(problem(humanError(info.error)));
 
     if (info && info.status === 'online') {
@@ -319,7 +357,7 @@ function masterCard(m) {
     if (info.uptime) st.appendChild(el('span', 'muted small', 'включён ' + uptimeText(info.uptime)));
   }
   card.appendChild(st);
-  if (info && info.xrayError) card.appendChild(problem(humanError(info.xrayError), 'Нажмите «Применить» — сервис перезапустит Xray и проверит настройки.'));
+  if (info && info.xrayError) card.appendChild(problem(humanError(info.xrayError), '«Обслуживание» → «Перенастроить все серверы» — сервис перезапустит Xray и проверит настройки.'));
   if (m.domain && domainState(m.domain) === false) {
     const r0 = (m.reserveDomains || [])[0];
     card.appendChild(problem('Подписка не открывается по ' + m.domain + ' из вашей сети. ',

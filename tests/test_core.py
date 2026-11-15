@@ -1212,10 +1212,10 @@ def test_sync_remembers_the_host_key_per_address(tmp_path, monkeypatch):
     monkeypatch.setattr(sy, "SSH", FakeSSH)
     monkeypatch.setattr(sy, "_meta_path", lambda: tmp_path / "sync.json")
     s = sy.Sync(tmp_path / "fleet.yaml")
-    for host in ("82.21.150.10", "77.105.146.10"):
+    for host in ("198.51.100.10", "203.0.113.10"):
         s.meta = {"server": {"name": "sync", "host": host}, "password": "x" * 8}
         s._ssh()
-    assert seen["names"] == ["82.21.150.10:22", "77.105.146.10:22"]
+    assert seen["names"] == ["198.51.100.10:22", "203.0.113.10:22"]
 
 
 

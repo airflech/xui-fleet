@@ -2,7 +2,7 @@
 // Classic scripts in order (see ui.html): top-level names are shared between the files.
 
 // ---------- job ----------
-const BUSY_IDS = ['btnRole', 'btnAppExport', 'btnAppImport', 'btnDomains', 'btnApply', 'btnUpgrade', 'btnAddNode', 'btnAddUser', 'btnRefresh', 'btnMasterAccess', 'btnFixAccess', 'btnRetry', 'btnPanels', 'btnBackup', 'btnMigrate', 'btnCheck', 'btnPlan'];
+const BUSY_IDS = ['btnRole', 'btnAppExport', 'btnAppImport', 'btnDomains', 'btnApply', 'btnUpgrade', 'btnAddNode', 'btnAddUser', 'btnRefresh', 'btnMasterAccess', 'btnFixAccess', 'btnRetry', 'btnPanels', 'btnBackup', 'btnMigrate', 'btnCheck', 'btnForce'];
 function setBusy(busy) {
   for (const id of BUSY_IDS) if ($(id)) $(id).disabled = busy;
   document.querySelectorAll('[data-access], [data-click]').forEach((b) => { b.disabled = busy; });
@@ -129,7 +129,11 @@ async function openPast(id) {
 }
 $('jobhistBtn').addEventListener('click', openHistory);
 $('jobback').addEventListener('click', () => (drawerMode === 'past' ? openHistory() : setDrawerMode('live')));
-$('btnPlan').addEventListener('click', () => { closeMenus(); start('/api/plan'); });
+$('btnForce').addEventListener('click', () => { closeMenus(); confirmAction('Перенастроить все серверы?',
+  'Сервис зайдёт на каждый сервер по SSH, проверит 3x-ui, подключения и пользователей, исправит всё, что отличается от настроек, '
+  + 'и проверит каскады трафиком. Обычно это минута. Если менять нечего, подключения не прерываются.\n\n'
+  + 'Нужно, если сервер был недоступен, его перезагружали или что-то меняли руками в панели 3x-ui.',
+  () => start('/api/apply'), 'Перенастроить'); });
 $('jobhide').addEventListener('click', () => { jobClosed = curJob; $('drawer').classList.add('hidden'); });
 
 async function pollJob() {

@@ -809,7 +809,7 @@ class Fleet:
         project are moved here.
         """
         from .service import backup_dir
-        target = backup_dir()
+        target = backup_dir(self.config_path)
         legacy = self.config_path.parent / ".xui-fleet" / "backups"
         if legacy.is_dir() and legacy.resolve() != target.resolve():
             target.mkdir(parents=True, exist_ok=True)

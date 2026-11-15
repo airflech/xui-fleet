@@ -43,6 +43,14 @@ def _meta_path() -> Path:
     return APP_DIR / "sync.json"
 
 
+def _meta_path_for(config_path: Path) -> Path:
+    """Sync settings of the profile this config belongs to (the default profile keeps the original place)."""
+    from .profiles import DEFAULT, data_dir, profile_of
+    if profile_of(config_path) == DEFAULT:
+        return _meta_path()
+    return data_dir(config_path) / "sync.json"
+
+
 def content_hash(config_path: Path) -> str:
     """What is synced, as one fingerprint: the config and the portable part of the state."""
     h = hashlib.sha256()
@@ -101,7 +109,7 @@ def merge3(base: Any, local: Any, remote: Any, path: str = "", conflicts: Option
 class Sync:
     def __init__(self, config_path: Path, log: Callable[[str], None] = lambda _m: None):
         self.config_path, self.log = config_path, log
-        self.path = _meta_path()
+        self.path = _meta_path_for(config_path)
         self.meta: Dict[str, Any] = {}
         if self.path.exists():
             try:
@@ -249,7 +257,7 @@ class Sync:
                 data = ssh.run(f"base64 < {REMOTE}/current.xfleet | tr -d '\\n'", check=False, timeout=300).out.strip()
                 note = self._merge_with(base64.b64decode(data))
                 h = content_hash(self.config_path)
-            blob = ab.export_bytes(self.config_path, backup_dir(), self.meta["password"], self._with_backups())
+            blob = ab.export_bytes(self.config_path, backup_dir(self.config_path), self.meta["password"], self._with_backups())
             rev = max(remote.get("rev", 0), self.meta.get("rev", 0)) + 1
             meta = {"rev": rev, "hash": h, "updated": int(time.time()), "os": platform.system(), "app": __version__}
             script = (
@@ -301,7 +309,7 @@ class Sync:
             raise SyncError("на сервере нет данных синхронизации")
         from .service import backup_dir
         try:
-            ab.import_bytes(base64.b64decode(out), self.meta["password"], self.config_path, backup_dir(),
+            ab.import_bytes(base64.b64decode(out), self.meta["password"], self.config_path, backup_dir(self.config_path),
                             replace=True, keep_suffix="before-sync")
         except ab.AppBackupError as exc:
             raise SyncError(f"не удалось открыть данные с сервера: {exc}") from exc

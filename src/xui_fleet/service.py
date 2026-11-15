@@ -34,8 +34,12 @@ def data_dir() -> Path:
 APP_DIR = data_dir()
 
 
-def backup_dir() -> Path:
-    """Master backups: kept on this computer, whatever folder the project lives in."""
+def backup_dir(config_path: Optional[Path] = None) -> Path:
+    """Master backups: kept on this computer, whatever folder the project lives in.
+    Each profile has its own; the default one (and no config given) keeps the original place."""
+    from .profiles import DEFAULT, data_dir, profile_of
+    if config_path is not None and profile_of(config_path) != DEFAULT:
+        return data_dir(config_path) / "backups"
     return Path(os.environ.get("XUI_FLEET_BACKUP_DIR") or APP_DIR / "backups").expanduser()
 PLIST = HOME / "Library" / "LaunchAgents" / f"{LABEL}.plist"
 LOG = HOME / "Library" / "Logs" / "xui-fleet.log" if sys.platform == "darwin" else APP_DIR / "xui-fleet.log"

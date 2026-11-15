@@ -30,7 +30,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "после обновления страница больше не зависает на «скачиваю версию…»"
+WHATS_NEW = "профили — несколько наборов серверов и выход из профиля (кнопка в шапке)"
 
 
 class Job:
@@ -112,13 +112,74 @@ class Job:
         return {"id": self.id, "title": self.title, "lines": list(self.lines), "running": self.running,
                 "ok": self.ok, "result": self.result}
 
+    def clear(self, forget: bool = False) -> None:
+        """Forget the last operation (it belongs to another profile, or to one that was just deleted).
+        forget: leave no file behind either (everything was wiped off this computer)."""
+        with self.lock:
+            if self.running:
+                return
+            self.title, self.lines, self.ok, self.result = "", [], None, {}
+        if forget:
+            self._path().unlink(missing_ok=True)
+        else:
+            self._save()
+
 
 class App:
     def __init__(self, config_path: Path):
-        self.path = config_path
+        from .profiles import Profiles
+        self.base = config_path  # fleet.yaml of the default profile; the others live in profiles/<id>/
+        self.profiles = Profiles(config_path)
+        # Held while the background sync works with a profile's files, and while a profile is switched or deleted.
+        self.data_lock = threading.Lock()
         self.job = Job()
         from . import service
         self.token = service.token()  # stable, so a bookmark keeps working across restarts
+
+    @property
+    def path(self) -> Path:
+        """fleet.yaml of the active profile."""
+        return self.profiles.active_config()
+
+    # ---- profiles -------------------------------------------------------
+    def profile_view(self) -> Dict[str, Any]:
+        items = self.profiles.list()
+        return {"profiles": items, "profile": next((p for p in items if p["active"]), items[0])}
+
+    def profile_change(self, action: str, body: Dict[str, Any]) -> Dict[str, Any]:
+        """Switch, create, rename or delete a profile. Never while an operation runs or sync is busy."""
+        from .profiles import ProfileError
+        if self.job.running:
+            raise RuntimeError("дождитесь окончания текущей операции")
+        if not self.data_lock.acquire(timeout=30):
+            raise RuntimeError("идёт синхронизация данных — повторите через минуту")
+        try:
+            if action == "switch":
+                self.profiles.switch(_req(body, "id"))
+            elif action == "create":
+                self.profiles.create(body.get("name"))
+            elif action == "rename":
+                self.profiles.rename(_req(body, "id"), body.get("name"))
+            elif action == "remove":
+                pid = _req(body, "id")
+                item = next((p for p in self.profiles.list() if p["id"] == pid), None)
+                if not item:
+                    raise ProfileError("такого профиля нет")
+                # The name typed by hand, as in GitHub's "delete repository": a click alone never wipes data.
+                if " ".join(str(body.get("confirm") or "").split()).lower() != item["name"].lower():
+                    raise ProfileError("для подтверждения введите название профиля точно")
+                self.profiles.remove(pid)
+            elif action == "wipe":
+                if str(body.get("confirm") or "").strip().lower() != "стереть":
+                    raise ProfileError("для подтверждения введите слово «стереть»")
+                self.profiles.wipe_all()
+            else:
+                raise ValueError("неизвестная команда")
+        finally:
+            self.data_lock.release()
+        if action != "rename":
+            self.job.clear(forget=action == "wipe")
+        return dict(self.profile_view(), ok=True)
 
     # ---- helpers --------------------------------------------------------
     def update_note(self) -> Dict[str, Any]:
@@ -149,7 +210,7 @@ class App:
     def overview(self) -> Dict[str, Any]:
         from . import __version__
         if not self.path.exists():
-            return {"configured": False, "job": self.job.view(), "app": __version__}
+            return {"configured": False, "job": self.job.view(), "app": __version__, **self.profile_view()}
         fleet = self.fleet()
         cfg, state = fleet.cfg, fleet.state
         def access(server) -> Dict[str, Any]:
@@ -175,7 +236,8 @@ class App:
             ("XHTTP", st.xhttp), ("Hysteria2", st.hysteria2), ("напрямую (TCP)", cfg.defaults.direct.enabled),
             ("WARP", st.warp)) if on]
         extras = ["маскировка под соседний сайт", "свой WARP"] + (["сайт-витрина"] if cfg.defaults.hardening.cover_site else [])
-        return {"configured": True, "job": self.job.view(), "app": __version__, "nodes": nodes, "template": template, "templateExtras": extras,
+        return {"configured": True, "job": self.job.view(), "app": __version__, **self.profile_view(),
+                "nodes": nodes, "template": template, "templateExtras": extras,
                 "countries": [[iso, geo.flag(iso), nm] for iso, nm in sorted(geo.COUNTRIES.items(), key=lambda x: x[1])], "version": cfg.panel.version,
                 "master": {"name": cfg.master.name, "host": cfg.master.host, "label": cfg.master.label,
                            "tls": tls.mode, "domain": tls.domain or "", "reserveDomains": list(tls.reserve_domains),
@@ -480,6 +542,8 @@ def make_handler(app: App):
                     raise RuntimeError("уже выполняется другая операция — дождитесь её окончания")
                 return {"ok": True}
 
+            if path.startswith("/api/profile/"):
+                return app.profile_change(path[len("/api/profile/"):], body)
             if path == "/api/setup":
                 app.setup(body)
                 return run("Настройка главного сервера", lambda log: app.fleet(log).apply())
@@ -501,7 +565,7 @@ def make_handler(app: App):
                     return {"info": ab.describe(data, body.get("password") or ""), "configured": app.path.exists()}
                 if app.job.running:
                     raise RuntimeError("дождитесь окончания текущей операции")
-                res = ab.import_bytes(data, body.get("password") or "", app.path, backup_dir(), bool(body.get("replace")))
+                res = ab.import_bytes(data, body.get("password") or "", app.path, backup_dir(app.path), bool(body.get("replace")))
                 return {"ok": True, **res}
             if path == "/api/backups/open":
                 from .service import open_folder
@@ -613,7 +677,7 @@ def serve(config_path: Path, port: int = 8787, open_browser: bool = True, servic
 
     def background_backup() -> None:  # quietly, so the page opens at once
         try:
-            if config_path.exists():
+            if app.path.exists():
                 fleet = app.fleet()
                 if fleet.state.get(fleet.cfg.master.name, "api_token"):
                     fleet.auto_backup(reason="при запуске интерфейса (прошлому бэкапу больше 12 ч)")
@@ -626,6 +690,7 @@ def serve(config_path: Path, port: int = 8787, open_browser: bool = True, servic
         from .sync import Sync, content_hash
         from . import update as upd
         last_pull, last_github, seen = 0.0, 0.0, None
+        synced_profile: Optional[Path] = None
         while True:
             if not app.job.running and time.time() - last_github > 1800:
                 last_github = time.time()
@@ -635,14 +700,18 @@ def serve(config_path: Path, port: int = 8787, open_browser: bool = True, servic
                         print(note, flush=True)
                 except Exception as exc:
                     print(f"проверка обновлений на GitHub не удалась: {exc}", flush=True)
-            try:
-                if not app.job.running:
-                    s = Sync(config_path, lambda m: print(m, flush=True))
+            # The active profile, held for the whole round: it cannot be switched or deleted under the sync.
+            if not app.job.running and app.data_lock.acquire(blocking=False):
+                cp = app.path
+                try:
+                    if cp != synced_profile:  # another profile: its own sync, checked right away
+                        synced_profile, last_pull, seen = cp, 0.0, None
+                    s = Sync(cp, lambda m: print(m, flush=True))
                     if s.enabled:
                         msg = ""
-                        changed = config_path.exists() and s.meta.get("hash") and content_hash(config_path) != s.meta["hash"]
+                        changed = cp.exists() and s.meta.get("hash") and content_hash(cp) != s.meta["hash"]
                         if changed:
-                            h = content_hash(config_path)
+                            h = content_hash(cp)
                             if seen == h:  # unchanged for one round: the edit is finished
                                 msg, seen = s.push(), None
                             else:
@@ -656,12 +725,14 @@ def serve(config_path: Path, port: int = 8787, open_browser: bool = True, servic
                                 msg = s.pull()
                         if msg:
                             print(msg, flush=True)
-            except Exception as exc:
-                try:
-                    Sync(config_path).note_error(exc)
-                except Exception:
-                    pass
-                last_pull = time.time()  # do not hammer an unreachable server
+                except Exception as exc:
+                    try:
+                        Sync(cp).note_error(exc)
+                    except Exception:
+                        pass
+                    last_pull = time.time()  # do not hammer an unreachable server
+                finally:
+                    app.data_lock.release()
             time.sleep(5)
     threading.Thread(target=sync_loop, daemon=True).start()
 

@@ -16,6 +16,7 @@ from rich.table import Table
 from . import xrayconf as xc
 from .config import append_node
 from .engine import Fleet, FleetError
+from .profiles import resolve as resolve_profile
 from .panel import PanelError
 from .reconcile import Report
 from .ssh import SSHError
@@ -67,6 +68,7 @@ users:
 
 
 def _fleet(config: Path) -> Fleet:
+    config = resolve_profile(config)
     if not config.exists():
         console.print(f"[red]Нет файла {config}. Создайте его: `xui-fleet init`[/red]")
         raise typer.Exit(2)
@@ -107,6 +109,7 @@ def _only(value: Optional[str]) -> Optional[Set[str]]:
 @app.command()
 def init(config: Path = ConfigOpt, force: bool = typer.Option(False, "--force", help="Перезаписать файл.")):
     """Создать пример fleet.yaml."""
+    config = resolve_profile(config)
     if config.exists() and not force:
         console.print(f"[yellow]{config} уже существует (--force чтобы перезаписать).[/yellow]")
         raise typer.Exit(1)
@@ -191,8 +194,9 @@ def app_export(file: Path = typer.Argument(..., help="Куда сохранит�
     """Копия приложения для переноса на другой компьютер (настройки, доступы, бэкапы мастера), под паролем."""
     from . import appbackup as ab
     from .service import backup_dir
+    config = resolve_profile(config)
     password = typer.prompt("Пароль для копии (не короче 8 символов)", hide_input=True, confirmation_prompt=True)
-    data = _run(lambda: ab.export_bytes(config, backup_dir(), password))
+    data = _run(lambda: ab.export_bytes(config, backup_dir(config), password))
     file.write_bytes(data)
     console.print(f"Сохранено: {file} ({len(data) // 1024} КБ). Пароль нужен для восстановления — без него копию не открыть.")
 
@@ -204,12 +208,13 @@ def app_import(file: Path = typer.Argument(..., exists=True, help="Файл .xfl
     """Восстановить приложение из копии (.xfleet) на этом компьютере."""
     from . import appbackup as ab
     from .service import backup_dir
+    config = resolve_profile(config)
     password = typer.prompt("Пароль копии", hide_input=True)
     data = file.read_bytes()
     info = _run(lambda: ab.describe(data, password))
     console.print(f"Копия от {time.strftime('%d.%m.%Y %H:%M', time.localtime(info['created'] or 0))}: главный сервер "
                   f"{info['master']}, ноды {', '.join(info['nodes']) or '—'}, бэкапов мастера {info['masterBackups']}")
-    res = _run(lambda: ab.import_bytes(data, password, config, backup_dir(), replace))
+    res = _run(lambda: ab.import_bytes(data, password, config, backup_dir(config), replace))
     console.print(f"Готово. Восстановлено бэкапов мастера: {res['backups']}. Запустите интерфейс — всё на месте.")
 
 
@@ -355,9 +360,9 @@ def node_add(
         cascade = {k: v for k, v in (("enabled", False if no_cascade else None), ("port", cascade_port)) if v is not None}
         if cascade:
             entry["cascade"] = cascade
-        _run(lambda: append_node(config, entry))
+        _run(lambda: append_node(fleet.config_path, entry))
         fleet.reload()
-        console.print(f"Нода {name} добавлена в {config}.")
+        console.print(f"Нода {name} добавлена в {fleet.config_path}.")
     if no_apply:
         return
     _print_report(_run(lambda: fleet.apply({name})))
@@ -374,8 +379,8 @@ def node_remove(
     if not yes and not typer.confirm(f"Удалить ноду {name} с мастера? Подключения к ней перестанут работать"):
         raise typer.Exit(1)
     report = _run(lambda: fleet.remove_node(name))
-    if _drop_node_from_yaml(config, name):
-        console.print(f"Нода {name} удалена из {config}.")
+    if _drop_node_from_yaml(fleet.config_path, name):
+        console.print(f"Нода {name} удалена из {fleet.config_path}.")
     console.print(f"[green]Готово, изменений: {len(report.changes)}[/green]")
 
 

@@ -61,6 +61,16 @@ svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none;
 .jobchip { max-width: min(340px, 52vw); min-width: 0; }
 .jobchip .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .top-in > * { flex-shrink: 0; } .top-in > .master, .top-in > .jobchip { flex-shrink: 1; }
+.profbtn { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px 0 9px; border-radius: 999px; max-width: min(220px, 40vw); min-width: 0;
+  border: 1px solid var(--line-2); background: var(--surface); color: var(--ink-2); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.profbtn:hover { border-color: var(--muted); } .profbtn .txt { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.profbtn .chev { width: 14px; height: 14px; color: var(--muted); }
+.top-in > .profbtn { flex-shrink: 1; }
+.menu-h { padding: 6px 10px 4px; font-size: 11.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+#profileMenu { min-width: 280px; max-width: min(360px, calc(100vw - 16px)); }
+.menu button .tick { visibility: hidden; color: var(--accent); } .menu button[aria-checked=true] .tick { visibility: visible; }
+.menu button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+ul.plain { margin: 0; padding-left: 18px; } ul.plain li { margin: 3px 0; }
 .jobchip.ok { color: var(--ok); } .jobchip.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }
 
 /* ---------- layout ---------- */
@@ -310,6 +320,10 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
   <symbol id="i-log" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></symbol>
   <symbol id="i-net" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="19" r="2.2"/><circle cx="19" cy="19" r="2.2"/><path d="M12 7.2v4.3M12 11.5l-5.6 5.6M12 11.5l5.6 5.6"/></symbol>
   <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.2-4 4.3-6 8-6s6.8 2 8 6"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 8l-4 4 4 4M6 12h10"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></symbol>
   <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></symbol>
 </svg>
 
@@ -326,6 +340,7 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
     </div>
     <div class="spacer"></div>
     <button class="jobchip hidden" id="jobchip" type="button" aria-controls="drawer"></button>
+    <button class="profbtn hidden" id="profileBtn" type="button" aria-haspopup="menu" title="Профиль: набор серверов на этом компьютере"><svg class="i"><use href="#i-user"/></svg><span class="txt" id="profileName"></span><svg class="i chev"><use href="#i-chevron"/></svg></button>
     <div class="hidden" id="masterMenuWrap"></div>
   </div>
 </header>
@@ -444,7 +459,7 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
     <section data-pane="help" class="hidden">
       <div class="help">
         <nav aria-label="Разделы помощи">
-          <a href="#h-start">Запуск на компьютере</a><a href="#h-sync">Несколько компьютеров</a><a href="#h-update">Обновление приложения</a><a href="#h-move">Копия приложения</a>
+          <a href="#h-start">Запуск на компьютере</a><a href="#h-sync">Несколько компьютеров</a><a href="#h-update">Обновление приложения</a><a href="#h-move">Копия приложения</a><a href="#h-profiles">Профили и выход</a>
           <a href="#h-roles">Главный сервер</a><a href="#h-add">Добавить сервер</a><a href="#h-users">Пользователи</a>
           <a href="#h-conn">Какое подключение выбрать</a><a href="#h-ru">Российские сайты</a>
           <a href="#h-domain">Если заблокируют домен</a><a href="#h-backup">Бэкапы и перенос мастера</a><a href="#h-trouble">Если что-то не работает</a>
@@ -484,6 +499,16 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
             <li>Скопируйте на новый компьютер папку xui-fleet и этот файл.</li>
             <li>Запустите там приложение и на первом экране нажмите «Восстановить из копии приложения…».</li></ol>
           <p>В копии — настройки, доступы к серверам и бэкапы главного сервера. Без пароля её не открыть, и восстановить пароль нельзя.</p>
+
+          <h2 id="h-profiles">Профили и выход</h2>
+          <p>Профиль — отдельный набор серверов со своими доступами, бэкапами и синхронизацией. Переключаются кнопкой с вашим профилем
+            в шапке, как аккаунты в мессенджере: выходить, чтобы посмотреть другую сеть, не нужно. «Новый профиль» открывает окно
+            первого запуска, текущий остаётся как есть.</p>
+          <p>«Выйти из профиля» стирает с этого компьютера всё, что программа о нём знает: настройки серверов, SSH-пароли, ключи доступа
+            к панелям, бэкапы главного сервера и пароль синхронизации. Серверы, пользователи и их подписки не меняются, копия на сервере
+            синхронизации остаётся — другие компьютеры продолжат работать. Чтобы вернуться к этим серверам, заранее сохраните копию
+            приложения или подключитесь к синхронизации заново. «Стереть всё с этого компьютера» делает то же для всех профилей сразу
+            и открывает окно первого запуска, как после установки.</p>
 
           <h2 id="h-roles">Главный сервер</h2>
           <p>Через главный сервер всегда идут подписки и управление. Кроме этого, у него может быть одна или обе роли
@@ -592,6 +617,16 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
   <button role="menuitem" id="btnSwitch" class="hidden"><svg class="i"><use href="#i-refresh"/></svg><span>Перейти на резервный домен<small>Если основной заблокирован</small></span></button>
   <hr>
   <button role="menuitem" id="btnMasterAccess"><svg class="i"><use href="#i-key"/></svg><span>Адрес и доступ по SSH</span></button>
+</div>
+<div class="menu hidden" id="profileMenu" role="menu">
+  <div class="menu-h">Профили на этом компьютере</div>
+  <div id="profileList"></div>
+  <hr>
+  <button role="menuitem" id="btnProfileNew"><svg class="i"><use href="#i-plus"/></svg><span>Новый профиль<small>Другой набор серверов — с окна первого запуска</small></span></button>
+  <button role="menuitem" id="btnProfileRename"><svg class="i"><use href="#i-edit"/></svg><span>Переименовать профиль</span></button>
+  <hr>
+  <button role="menuitem" id="btnProfileLogout" class="danger"><svg class="i"><use href="#i-logout"/></svg><span>Выйти из профиля<small>Стереть его данные с этого компьютера</small></span></button>
+  <button role="menuitem" id="btnProfileWipe" class="danger"><svg class="i"><use href="#i-trash"/></svg><span>Стереть всё с этого компьютера<small>Все профили, бэкапы и доступы</small></span></button>
 </div>
 <div class="menu hidden" id="nodeMenu" role="menu">
   <button role="menuitem" data-act="label"><span>Название и подключения</span></button>
@@ -806,6 +841,27 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
     <div class="formerr" role="alert"></div>
   </div>
   <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn danger" type="submit">Перенести</button></div>
+</form></dialog>
+
+<dialog id="dlgProfile"><form id="profileForm">
+  <div class="dlg-h"><h2 id="profileDlgTitle">Новый профиль</h2><p id="profileDlgText">Отдельный набор серверов со своими доступами, бэкапами и синхронизацией. Текущий профиль останется как есть — между ними можно переключаться в шапке.</p></div>
+  <div class="dlg-b">
+    <label class="f" for="p_name">Название</label><input type="text" id="p_name" name="name" maxlength="40" required placeholder="Например: Клиенты · Европа" autocomplete="off">
+    <div class="formerr" role="alert"></div>
+  </div>
+  <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit" id="profileDlgGo">Создать</button></div>
+</form></dialog>
+
+<dialog id="dlgLogout"><form id="logoutForm">
+  <div class="dlg-h"><h2 id="logoutTitle"></h2><p id="logoutLead"></p></div>
+  <div class="dlg-b">
+    <div class="tpl"><b>Удаляется с этого компьютера</b><ul class="plain" id="logoutGone"></ul></div>
+    <div class="tpl"><b>Не меняется</b><ul class="plain"><li>серверы, панели 3x-ui, пользователи и их подписки</li><li>копия на сервере синхронизации — другие компьютеры продолжат работать</li><li>ваши SSH-ключи и сама программа</li></ul></div>
+    <div class="vbanner" id="logoutExportBox"><span class="grow">Вернуться к этим серверам позже проще всего из копии приложения: она хранит настройки, доступы и бэкапы под вашим паролем.</span><button type="button" class="btn sm" id="logoutExport">Сохранить копию…</button></div>
+    <label class="f" for="lo_confirm" id="logoutAsk"></label><input type="text" id="lo_confirm" name="confirm" required autocomplete="off" spellcheck="false">
+    <div class="formerr" role="alert"></div>
+  </div>
+  <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn danger" type="submit" id="logoutGo" disabled></button></div>
 </form></dialog>
 
 <dialog id="dlgConfirm"><div class="dlg">
@@ -1368,6 +1424,7 @@ async function refresh() {
   try { overview = await api('/api/overview'); }
   catch (e) { $('masterBox').classList.remove('hidden'); $('masterline').textContent = 'Нет связи с xui-fleet: ' + e.message; return; }
   const configured = overview.configured;
+  renderProfiles();
   if (overview.app) { $('appVer').textContent = overview.app; $('appVer').classList.remove('hidden'); }
   const running = !!(overview.job && overview.job.running);
   $('setup').classList.toggle('hidden', configured || running);
@@ -1418,6 +1475,91 @@ function confirmAction(title, text, fn, yes, danger) {
   b.onclick = () => { $('dlgConfirm').close(); fn(); };
   $('dlgConfirm').showModal();
 }
+
+
+// ---------- profiles ----------
+function curProfile() { return (overview && overview.profile) || { id: 'default', name: 'Основной' }; }
+function renderProfiles() {
+  if (!overview || !overview.profiles) return;
+  const cur = curProfile();
+  $('profileName').textContent = cur.name;
+  $('profileBtn').classList.remove('hidden');
+  const box = $('profileList'); box.textContent = '';
+  for (const p of overview.profiles) {
+    const b = el('button'); b.setAttribute('role', 'menuitemradio'); b.setAttribute('aria-checked', String(p.active));
+    b.appendChild(icon('check', 'tick'));
+    const t = el('span', null, p.name); t.appendChild(el('small', null, p.configured ? (p.master || 'настроен') : 'не настроен — окно первого запуска'));
+    b.appendChild(t);
+    b.addEventListener('click', () => { closeMenus(); if (!p.active) profileAction('switch', { id: p.id }); });
+    box.appendChild(b);
+  }
+  $('btnProfileLogout').querySelector('span').firstChild.textContent = 'Выйти из профиля «' + cur.name + '»';
+}
+async function profileAction(action, body, form) {
+  const err = form ? form.querySelector('.formerr') : null;
+  if (err) err.textContent = '';
+  try { await api('/api/profile/' + action, body); }
+  catch (e) { if (err) err.textContent = e.message; else toast(e.message); return false; }
+  location.reload();  // a different profile: start the page over with its data
+  return true;
+}
+$('profileBtn').addEventListener('click', (e) => toggleMenu($('profileMenu'), e.currentTarget));
+function openProfileDlg(rename) {
+  const f = $('profileForm'); resetForm(f);
+  $('profileDlgTitle').textContent = rename ? 'Переименовать профиль' : 'Новый профиль';
+  $('profileDlgText').textContent = rename ? 'Название видно только на этом компьютере.'
+    : 'Отдельный набор серверов со своими доступами, бэкапами и синхронизацией. Текущий профиль останется как есть — между ними можно переключаться в шапке.';
+  $('profileDlgGo').textContent = rename ? 'Сохранить' : 'Создать';
+  if (rename) $('p_name').value = curProfile().name;
+  f.dataset.rename = rename ? '1' : '';
+  $('dlgProfile').showModal(); $('p_name').select();
+}
+$('btnProfileNew').addEventListener('click', () => { closeMenus(); openProfileDlg(false); });
+$('btnProfileRename').addEventListener('click', () => { closeMenus(); openProfileDlg(true); });
+$('profileForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const f = e.target, name = $('p_name').value.trim();
+  if (f.dataset.rename) profileAction('rename', { id: curProfile().id, name }, f);
+  else profileAction('create', { name }, f);
+});
+let logoutMode = 'remove';
+function openLogout(mode) {
+  logoutMode = mode;
+  const cur = curProfile(), all = mode === 'wipe', f = $('logoutForm');
+  resetForm(f);
+  const others = (overview.profiles || []).filter((p) => !p.active);
+  $('logoutTitle').textContent = all ? 'Стереть всё с этого компьютера?' : 'Выйти из профиля «' + cur.name + '»?';
+  $('logoutLead').textContent = all
+    ? 'Программа забудет все профили и откроется окно первого запуска, как после установки.'
+    : (others.length ? 'Профиль будет удалён, откроется профиль «' + others[0].name + '».'
+      : 'Это последний профиль: после выхода откроется окно первого запуска, как после установки.');
+  const gone = $('logoutGone'); gone.textContent = '';
+  const items = all
+    ? ['все профили: настройки серверов (fleet.yaml)', 'SSH-пароли и ключи доступа к панелям', 'бэкапы главных серверов',
+       'настройки и пароль синхронизации', 'журнал последней операции и лог программы']
+    : ['настройки серверов (fleet.yaml)', 'SSH-пароли и ключи доступа к панелям', 'бэкапы главного сервера', 'настройки и пароль синхронизации'];
+  for (const t of items) gone.appendChild(el('li', null, t));
+  $('logoutExportBox').classList.toggle('hidden', all || !(overview && overview.configured));
+  const word = all ? 'стереть' : cur.name;
+  $('logoutAsk').textContent = 'Для подтверждения введите ' + (all ? 'слово «стереть»' : 'название профиля «' + cur.name + '»');
+  $('lo_confirm').placeholder = word; f.dataset.word = word;
+  $('logoutGo').textContent = all ? 'Стереть всё' : 'Выйти и стереть';
+  $('logoutGo').disabled = true;
+  $('dlgLogout').showModal();
+}
+$('lo_confirm').addEventListener('input', () => {
+  const norm = (v) => v.replace(/\s+/g, ' ').trim().toLowerCase();
+  $('logoutGo').disabled = norm($('lo_confirm').value) !== norm($('logoutForm').dataset.word || '');
+});
+$('btnProfileLogout').addEventListener('click', () => { closeMenus(); openLogout('remove'); });
+$('btnProfileWipe').addEventListener('click', () => { closeMenus(); openLogout('wipe'); });
+$('logoutExport').addEventListener('click', () => { resetForm($('appExportForm')); $('dlgAppExport').showModal(); });
+$('logoutForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const confirm = $('lo_confirm').value;
+  if (logoutMode === 'wipe') profileAction('wipe', { confirm }, e.target);
+  else profileAction('remove', { id: curProfile().id, confirm }, e.target);
+});
 
 // ---------- wiring ----------
 document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => b.closest('dialog').close()));

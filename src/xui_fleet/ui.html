@@ -401,6 +401,7 @@
   <button role="menuitem" id="btnDomains"><svg class="i"><use href="#i-globe"/></svg><span>Домены и адреса<small id="domainsNow"></small></span></button>
   <hr>
   <button role="menuitem" id="btnMasterAccess"><svg class="i"><use href="#i-key"/></svg><span>Адрес и доступ по SSH</span></button>
+  <button role="menuitem" id="btnMasterRotate"><svg class="i"><use href="#i-refresh"/></svg><span>Сменить маскировку<small>Новые ключи подключений главного сервера</small></span></button>
   <hr>
   <button role="menuitem" id="btnMasterRemove" class="danger"><svg class="i"><use href="#i-trash"/></svg><span>Удалить главный сервер<small>Вся сеть этого профиля</small></span></button>
 </div>
@@ -421,6 +422,7 @@
 <div class="menu hidden" id="nodeMenu" role="menu">
   <button role="menuitem" data-act="label"><span>Название и подключения</span></button>
   <button role="menuitem" data-act="access"><span>Адрес и доступ по SSH</span></button>
+  <button role="menuitem" data-act="rotate"><span>Сменить маскировку<small>Если подключения к серверу начали блокировать</small></span></button>
   <hr>
   <button role="menuitem" data-act="remove" class="danger"><span>Удалить сервер</span></button>
 </div>

@@ -194,3 +194,29 @@ def test_the_page_can_ask_whether_the_panel_answers(fleet):
     fleet.panel_dead = True
     probe = fleet.master_probe()
     assert probe["alive"] is False and "не ответила" in probe["error"] and probe["lastBackup"] is None
+
+
+def test_changing_the_masking_gives_one_server_new_keys_and_leaves_the_others(fleet, monkeypatch):
+    import itertools
+    counter = itertools.count()
+    fleet.panel.new_x25519 = lambda: (lambda k: {"privateKey": f"PRIV{k}", "publicKey": f"PUB{k}"})(next(counter))
+    monkeypatch.setattr(pv, "find_reality_neighbor", lambda ssh, exclude=(): ("10.0.0.7", "shop.example") if "10.0.0.5" in exclude else None)
+    fleet.state.update("de", reality_neighbor={"ip": "10.0.0.5", "name": "old.example", "checked": 0})
+    fleet.state.update("ru", api_token="t")  # a prepared master: backups are taken
+    applied = []
+    monkeypatch.setattr(fleet, "apply", lambda only=None, **kw: applied.append(only))
+
+    def reality(tag):
+        i = next(i for i in fleet.panel.inbounds() if i["tag"] == tag)
+        rs = i["streamSettings"]["realitySettings"]
+        return rs["privateKey"], rs["settings"]["publicKey"], rs["shortIds"][0]
+    de_before, nl_before = reality("fleet-direct-de"), reality("fleet-direct-nl")
+    msg = fleet.rotate_masking("de")
+    de_after = reality("fleet-direct-de")
+    assert de_after[0] != de_before[0] and de_after[1] != de_before[1] and de_after[2] != de_before[2]
+    assert de_after[0].startswith("PRIV") and de_after[1] == "PUB" + de_after[0][4:]  # a matching pair
+    assert reality("fleet-direct-nl") == nl_before  # other servers untouched
+    assert fleet.state.get("de", "reality_neighbor")["name"] == "shop.example"  # a different site, not the old one
+    assert applied == [{"de"}]  # the master's cascade picks up the new key, the node its new site
+    assert ("backup", "перед сменой маскировки de") in fleet.ssh_log
+    assert "обновить подписку" in msg and "shop.example" in msg

@@ -73,6 +73,7 @@ $('nodeMenu').addEventListener('click', (e) => {
   const n = menuNode; closeMenus();
   if (b.dataset.act === 'label') openLabel(n);
   else if (b.dataset.act === 'access') openAccess(n, 'Доступ к серверу ' + (n.display || n.name));
+  else if (b.dataset.act === 'rotate') askRotate(n.name, splitFlag(n.display || n.name)[1] || n.name, true);
   else openRemove(n);
 });
 
@@ -161,3 +162,16 @@ $('themeBtn').addEventListener('click', () => {
   paintTheme(); toast(THEMES[next][1]);
 });
 paintTheme();
+
+// ---------- changing the masking ----------
+function askRotate(name, label, node) {
+  closeMenus();
+  confirmAction('Сменить маскировку ' + label + '?',
+    'Если подключения к этому серверу начали блокировать — дать им новую «внешность»:\n\n'
+    + '• новые ключи Reality и идентификаторы у подключений VLESS;\n'
+    + '• новый пароль обфускации у Hysteria2;\n'
+    + (node ? '• другой сайт для маскировки из подсети сервера — если найдётся (поиск до минуты).\n' : '')
+    + '\nПосле этого пользователям нужно обновить подписку (в Happ — потянуть список вниз): старые ссылки этого сервера '
+    + 'перестанут работать. Подключения других серверов не меняются. Перед сменой делается бэкап.',
+    () => start('/api/node/rotate', { name }), 'Сменить маскировку');
+}

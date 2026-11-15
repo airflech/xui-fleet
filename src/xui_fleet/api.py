@@ -353,6 +353,12 @@ def _node_remove(c: Call):
     return c.run(f"Удаление сервера {name}" + (" вместе с 3x-ui" if purge else ""), lambda log: c.app.remove_node(name, log, purge))
 
 
+@post("/api/node/rotate", needs={"name": "str", "site": "bool?"})
+def _node_rotate(c: Call):
+    name, site = c.body["name"], c.body.get("site", True) is not False
+    return c.run(f"Смена маскировки {name}", lambda log: c.app.fleet(log).rotate_masking(name, new_site=site))
+
+
 @post("/api/master/remove")
 def _master_remove(c: Call):
     master = c.app.fleet().cfg.master

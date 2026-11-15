@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "вкладка «Статистика»: доступность маршрутов и трафик по дням; щелчок по серверу на карте — график задержки"
+WHATS_NEW = "«Сменить маскировку» в меню сервера — если его подключения начали блокировать"
 
 
 def _last_backup(fleet: Any) -> int:

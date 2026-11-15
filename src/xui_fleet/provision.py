@@ -555,11 +555,12 @@ def _neighbor_rank(candidates: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
     return sorted(ok, key=lambda c: (-count[".".join(c[1].split(".")[-2:])], tuple(int(x) for x in c[0].split("."))))
 
 
-def find_reality_neighbor(ssh: SSH) -> Optional[Tuple[str, str]]:
-    """(ip, server name) of the best neighbor site, or None when the subnet has none."""
+def find_reality_neighbor(ssh: SSH, exclude: Tuple[str, ...] = ()) -> Optional[Tuple[str, str]]:
+    """(ip, server name) of the best neighbor site, or None when the subnet has none. `exclude`: IPs not to
+    pick (changing the masking asks for a different site)."""
     out = ssh.run(NEIGHBOR_SCRIPT, check=False, timeout=240).out
     found = [tuple(line.split()[:2]) for line in out.splitlines() if len(line.split()) >= 2]
-    ranked = _neighbor_rank(found)  # type: ignore[arg-type]
+    ranked = [r for r in _neighbor_rank(found) if r[0] not in exclude]  # type: ignore[arg-type]
     return ranked[0] if ranked else None
 
 

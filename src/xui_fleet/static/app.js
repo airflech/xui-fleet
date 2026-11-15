@@ -356,3 +356,4 @@ watchVersion();
     clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').classList.add('hidden'), 8000);
   } catch (e) {}
 })();
+$('btnMasterRotate').addEventListener('click', () => askRotate(overview.master.name, 'главного сервера', false));

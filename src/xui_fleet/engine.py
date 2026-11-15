@@ -432,6 +432,78 @@ class Fleet:
             self.log(f"[dry-run] {name}: после установки — регистрация на мастере, inbound-ы и каскад")
         return dry
 
+    def rotate_masking(self, name: str, new_site: bool = True) -> str:
+        """New disguise for one server's entries, when they started to get blocked: new Reality keys and short id
+        on its VLESS entries, a new salamander password on its Hysteria2 ones, and — if the subnet has one — a
+        different real site to look like. Users only need to refresh the subscription; nothing else changes."""
+        import copy
+        import secrets as _s
+        from .reconcile import _flatten_nodes
+        is_master = name == self.cfg.master.name
+        node = None if is_master else self.cfg.node(name)
+        self.backup_before(f"перед сменой маскировки {name}", max_age_hours=0)
+        done: List[str] = []
+        if node is not None and new_site:
+            explicit = (node.direct.reality.target or node.direct.reality.server_names or
+                        self.cfg.defaults.direct.reality.target or self.cfg.defaults.direct.reality.server_names)
+            if explicit:
+                self.log(f"{name}: сайт для маскировки задан в настройках — его не меняю")
+            else:
+                old = self.state.get(name, "reality_neighbor") or {}
+                self.log(f"{name}: ищу в подсети другой сайт для маскировки (до минуты)…")
+                ssh = self.ssh(node).connect()
+                try:
+                    found = pv.find_reality_neighbor(ssh, exclude=tuple(x for x in [old.get("ip")] if x))
+                finally:
+                    ssh.close()
+                if found:
+                    self.state.update(name, reality_neighbor={"ip": found[0], "name": found[1], "checked": time.time()})
+                    done.append(f"сайт для маскировки: {old.get('name') or 'по умолчанию'} → {found[1]}")
+                else:
+                    self.log(f"{name}: другого подходящего сайта в подсети нет — сайт оставляю, меняю ключи")
+        with self.master_panel(provision=False) as panel:
+            node_id = None
+            if not is_master:
+                node_id = next((n.get("id") for n in _flatten_nodes(panel.nodes()) if n.get("name") == name), None)
+                if node_id is None:
+                    raise FleetError(f"сервер {name} не подключён к главной панели — сначала «Исправить»")
+            keys_n = obfs_n = 0
+            for inb in panel.inbounds():
+                kind = xc.inbound_kind(inb.get("tag", ""))
+                if not kind or kind[0] == "warpup" and is_master:
+                    continue
+                mine = (inb.get("nodeId") == node_id) if not is_master else (not inb.get("nodeId"))
+                if not mine:
+                    continue
+                cur = copy.deepcopy(inb)
+                stream = cur.get("streamSettings") or {}
+                if stream.get("security") == "reality":
+                    keys = panel.new_x25519()
+                    rs = stream["realitySettings"]
+                    rs["privateKey"] = keys["privateKey"]
+                    rs.setdefault("settings", {})["publicKey"] = keys["publicKey"]
+                    rs["shortIds"] = [_s.token_hex(8)]
+                    keys_n += 1
+                elif cur.get("protocol") == "hysteria":
+                    for m in ((stream.get("finalmask") or {}).get("udp") or []):
+                        if m.get("type") == "salamander":
+                            m.setdefault("settings", {})["password"] = _s.token_hex(8)
+                            obfs_n += 1
+                else:
+                    continue
+                panel.update_inbound(inb["id"], cur)
+            if keys_n:
+                done.append(f"новые ключи Reality у {keys_n} подключений")
+            if obfs_n:
+                done.append(f"новый пароль обфускации у {obfs_n} подключений Hysteria2")
+        for line in done:
+            self.log(f"{name}: {line}")
+        # The node's site goes into its entries, the master's cascades pick up the new keys.
+        self.reload()
+        self.apply(None if is_master else {name}, skip_provision=True)
+        return (f"Маскировка {name} сменена: " + "; ".join(done) + ". Пользователям нужно обновить подписку "
+                "(в Happ — потянуть список вниз); подключения других серверов не изменились.") if done else "Менять было нечего"
+
     def drift(self) -> Dict[str, Any]:
         """What differs between fleet.yaml and the servers right now — read-only and quiet, for the page's
         status ("all set" / "N to fix"). Only the master panel is asked; servers never prepared are listed

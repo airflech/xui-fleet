@@ -37,11 +37,13 @@ function paletteItems(q) {
       const info = live && live.nodes ? live.nodes[n.name] : null;
       add('Серверы', text || n.name, n.name + (info ? ' · ' + (info.status === 'online' ? info.latency + ' мс' : 'нет связи') : ''),
         () => { showTab('servers'); focusCard(n.name); }, 'сервер нода ' + n.host);
+      add('Серверы', 'График маршрута: ' + (text || n.name), 'доступность и задержка', () => openRoute(n.name), 'график задержка доступность маршрут');
+      if (q) add('Серверы', 'Сменить маскировку: ' + (text || n.name), 'если начали блокировать', () => askRotate(n.name, text || n.name, true), 'маскировка ключи блокировка заблокировали');
     }
   }
   // tabs
   for (const [tab, title] of [['servers', 'Серверы'], ['users', 'Пользователи'], ['inbounds', 'Входящие'], ['panels', 'Панели 3x-ui'],
-    ['backups', 'Бэкапы'], ['help', 'Помощь']]) add('Вкладки', title, 'перейти', () => showTab(tab), 'вкладка открыть');
+    ['backups', 'Бэкапы'], ['stats', 'Статистика'], ['help', 'Помощь']]) add('Вкладки', title, 'перейти', () => showTab(tab), 'вкладка открыть');
   // actions
   for (const [title, sub, run, keys] of [
     ['Добавить пользователя', '', () => { showTab('users'); click('btnAddUser')(); }, 'новый создать'],

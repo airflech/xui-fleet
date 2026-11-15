@@ -832,7 +832,14 @@ class Reconciler:
         if not facing:
             return
         bridge = self.cfg.clients.bridge_email
+        check = self.cfg.clients.check_email
         clients = {c.get("email"): c for c in map(_client_view, self.panel.clients())}
+        if check not in clients:
+            payload = {"email": check, "flow": xc.VISION, "enable": True, "subId": secrets.token_hex(8),
+                       "comment": "служебный: проверка подключений xui-fleet"}
+            self._do(f"мастер: создаю служебного клиента {check} для проверки подключений",
+                     lambda p=payload: self.panel.add_client(p, facing))
+            clients[check] = {"email": check, "inboundIds": list(facing)}
         for user in self.cfg.users:
             if user.name in clients:
                 continue
@@ -841,7 +848,7 @@ class Reconciler:
             self._do(f"мастер: создаю пользователя {user.name}",
                      lambda p=payload: self.panel.add_client(p, facing))
             clients[user.name] = {"email": user.name, "inboundIds": list(facing)}
-        declared = {u.name for u in self.cfg.users}
+        declared = {u.name for u in self.cfg.users} | {check}
         facing_set = set(facing)
         groups: Dict[tuple, List[str]] = {}
         for email, client in clients.items():
@@ -904,9 +911,9 @@ class Reconciler:
         base = self.subscription_base()
         if base.startswith("http://"):
             self._warn("подписки отдаются по HTTP без шифрования: задайте master.tls (domain или ip)")
-        bridge = self.cfg.clients.bridge_email
+        service = self.cfg.clients.service_emails
         for client in map(_client_view, self.panel.clients()):
-            if client.get("email") != bridge and client.get("subId"):
+            if client.get("email") not in service and client.get("subId"):
                 self.report.subscriptions[client["email"]] = base + client["subId"]
 
     # ---- hygiene --------------------------------------------------------

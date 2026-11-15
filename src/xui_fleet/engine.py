@@ -22,6 +22,9 @@ from .xrayconf import cascade_tag as xc_cascade, direct_tag as xc_direct
 Log = Callable[[str], None]
 
 
+
+BEFORE_CHANGE_HOURS = 0.25  # a restore point before every change; a series of quick edits shares one
+
 class FleetError(RuntimeError):
     pass
 
@@ -319,9 +322,8 @@ class Fleet:
         nodes = [n for n in self.cfg.nodes if n.enabled and (only is None or n.name in only)]
         if dry_run:
             return self._plan(nodes, only)
-        if self.state.get(self.cfg.master.name, "api_token") and not self.cfg.master.api_url:
-            self.auto_backup(reason="перед: " + (self.purpose or (
-                f"изменением {', '.join(sorted(only))}" if only else "применением настроек")))
+        self.backup_before("перед: " + (self.purpose or (
+            f"изменением {', '.join(sorted(only))}" if only else "применением настроек")))
         with self.master_panel(provision=not skip_provision) as panel:
             if skip_provision:
                 access = {n.name: a for n in nodes for a in [self._access_from_state(n)] if a}
@@ -537,6 +539,7 @@ class Fleet:
         master = self.cfg.master
         tls = self.cfg.tls_for(master)
         old = tls.domain if tls.mode == "domain" else None
+        self.backup_before(f"перед сменой домена на {domain}")
         ssh = self.ssh(master).connect()
         try:
             domain = self._check_domain(ssh, domain)
@@ -576,6 +579,7 @@ class Fleet:
         tls = self.cfg.tls_for(master)
         if tls.mode != "domain" or not tls.domain:
             raise FleetError("сначала задайте основной домен подписки")
+        self.backup_before("перед изменением резервного домена")
         ssh = self.ssh(master).connect()
         try:
             if domain.strip():
@@ -755,8 +759,17 @@ class Fleet:
         """Real traffic through every link of one user's subscription, run from the master."""
         report = Report()
         with self.master_panel(provision=False) as panel:
+            check = self.cfg.clients.check_email
+            if email is None and not any(c.get("email") == check for c in panel.clients()):
+                # made by `apply`; created here too, so the check never borrows a real user's subscription
+                Reconciler(panel, self.cfg, countries=self.countries(), neighbors=self.neighbors(), health=self.health(),
+                           log=self.log)._ensure_users({}, {})
             clients = [c for c in panel.clients() if c.get("subId") and c["email"] != self.cfg.clients.bridge_email]
-            user = next((c for c in clients if c["email"] == email), clients[0] if clients else None)
+            user = next((c for c in clients if c["email"] == (email or check)), None)
+            if user is None and email is None:
+                user = next((c for c in clients if c["email"] != check), None)
+                if user:
+                    self.log(f"⚠ служебного клиента {check} нет — проверяю по подписке {user['email']}")
             if user is None:
                 raise FleetError("нет ни одного пользователя с подпиской")
             s = panel.settings()
@@ -783,7 +796,8 @@ class Fleet:
                 hosts = {node_host.get(i["nodeId"])} if i.get("nodeId") else master_hosts | {i.get("shareAddr")}
                 for h in hosts:
                     names[(h, int(i["port"]), proto)] = i["remark"]
-            self.log(f"проверяю {len(outs or [])} подключений пользователя {user['email']} с главного сервера "
+            whose = "служебной подписки" if user["email"] == check else f"пользователя {user['email']}"
+            self.log(f"проверяю {len(outs or [])} подключений {whose} с главного сервера "
                      f"(из российского дата-центра; домашние сети и мобильные операторы могут вести себя иначе)")
             for n, o in enumerate(outs or []):
                 st = o.get("settings") or {}
@@ -862,6 +876,12 @@ class Fleet:
         self.log(f"бэкап главного сервера: {path.name} — подключений {counts['inbounds']}, клиентов {counts['clients']}, "
                  f"нод {counts['nodes']}, файлов {len(files)}")
         return bk.list_backups(self.backup_dir)[0]
+
+    def backup_before(self, reason: str, max_age_hours: float = BEFORE_CHANGE_HOURS) -> None:
+        """A restore point before a change to the master: always for deletions and resets (max_age_hours=0),
+        otherwise unless one was made in the last 15 minutes (a series of edits shares one)."""
+        if self.state.get(self.cfg.master.name, "api_token") and not self.cfg.master.api_url:
+            self.auto_backup(max_age_hours=max_age_hours, reason=reason)
 
     def auto_backup(self, max_age_hours: float = 12, reason: str = "автоматически") -> None:
         """Before changes and on start: a fresh backup unless a recent one exists. Never blocks the work."""
@@ -1105,8 +1125,8 @@ class Fleet:
             clients = panel.clients_with_traffic()
             names = stats.server_names(panel.nodes(), self.cfg.master.name)
             online, ips = panel.onlines_by_server(), panel.ips_by_server()
-            bridge = self.cfg.clients.bridge_email
-            emails = [c["email"] for c in clients if c.get("email") and c["email"] != bridge]
+            service = self.cfg.clients.service_emails
+            emails = [c["email"] for c in clients if c.get("email") and c["email"] not in service]
 
             def count(email: str) -> Optional[int]:
                 try:
@@ -1114,7 +1134,7 @@ class Fleet:
                 except PanelError:
                     return None  # a panel without device tracking: shown as "—", never as 0
             devices = dict(zip(emails, parallel(emails, count, 30, lambda _e: None)))
-            return stats.summarize(clients, names, online, ips, devices, hidden=[bridge])
+            return stats.summarize(clients, names, online, ips, devices, hidden=service)
 
     def user_detail(self, name: str) -> Dict[str, Any]:
         """One user: the list row plus every device and recent IP with its server."""
@@ -1137,6 +1157,7 @@ class Fleet:
         """Limits live in the panel (fleet.yaml only seeds new users), so `apply` never undoes them."""
         from . import stats
         fields = {"limitHwid": stats.validate_limit(devices, "устройств"), "limitIp": stats.validate_limit(ips, "IP-адресов")}
+        self.backup_before(f"перед изменением лимитов {name}")
         with self.master_panel(provision=False) as panel:
             panel.update_client(name, fields)
         self.log(f"{name}: устройств — {fields['limitHwid'] or 'без ограничения'}, IP — {fields['limitIp'] or 'без ограничения'}")
@@ -1146,19 +1167,21 @@ class Fleet:
         from . import stats
         from .config import update_user_entry
         fields = stats.user_fields(body)
+        self.backup_before(f"перед изменением пользователя {name}")
         with self.master_panel(provision=False) as panel:
             panel.update_client(name, fields)
         update_user_entry(self.config_path, name, fields["comment"], round(fields["totalGB"] / 1024 ** 3, 3))
 
     def reset_user_traffic(self, name: str) -> None:
+        self.backup_before(f"перед сбросом трафика {name}", max_age_hours=0)
         with self.master_panel(provision=False) as panel:
             panel.reset_traffic(name)
 
     def delete_user(self, name: str) -> Report:
         """Delete everywhere: the panel (every connection, the subscription) and fleet.yaml."""
         from .config import remove_user_entry
-        if name == self.cfg.clients.bridge_email:
-            raise FleetError("это служебный клиент каскада — без него каскады перестанут работать")
+        if name in self.cfg.clients.service_emails:
+            raise FleetError("это служебный клиент xui-fleet (каскады и проверка подключений) — его удалять нельзя")
         report = Report()
         self.auto_backup(max_age_hours=0, reason=f"перед удалением пользователя {name}")
         with self.master_panel(provision=False) as panel:
@@ -1196,6 +1219,7 @@ class Fleet:
         """Name, port, on/off of one inbound. Returns the server to re-apply (xui-fleet's own entries:
         the cascade and the firewall follow a new port), or None."""
         from .config import set_direct_port
+        self.backup_before("перед изменением входящего")
         with self.master_panel(provision=False) as panel:
             cur = next((i for i in panel.inbounds() if i.get("id") == inbound_id), None)
             if cur is None:

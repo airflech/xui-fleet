@@ -5,7 +5,7 @@ A backup is one tar.gz on this computer:
   files/<abs path>       server files the database depends on: the domain certificate it
                          points at, the node-token key and /etc/default/x-ui when present
   meta.json              when, from which server, panel port/path, what is inside
-Only the newest KEEP backups are kept.
+The newest KEEP backups are kept, plus one per day for DAILY_DAYS days.
 """
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 KEEP = 10
+DAILY_DAYS = 30  # plus one per day for a month: ~40 files of ~120 KB
 PREFIX = "master-"
 
 
@@ -80,10 +81,17 @@ def write_bundle(directory: Path, db: bytes, files: Dict[str, bytes], meta: Dict
     return path
 
 
-def rotate(directory: Path, keep: int = KEEP) -> List[Path]:
-    """Delete all but the newest `keep` backups. Returns what was removed."""
+def rotate(directory: Path, keep: int = KEEP, days: int = DAILY_DAYS) -> List[Path]:
+    """Keep the newest `keep` backups plus the newest of each of the last `days` days (by the name's date),
+    so a burst of changes never pushes out yesterday's state. Returns what was removed."""
     backups = sorted(directory.glob(f"{PREFIX}*.tar.gz"), key=lambda p: p.name, reverse=True)
-    removed = backups[keep:]
+    kept, seen_days = set(backups[:keep]), set()
+    for p in backups:
+        day = p.name[len(PREFIX):len(PREFIX) + 8]
+        if day not in seen_days and len(seen_days) < days:
+            seen_days.add(day)
+            kept.add(p)
+    removed = [p for p in backups if p not in kept]
     for p in removed:
         p.unlink()
     return removed

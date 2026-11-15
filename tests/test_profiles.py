@@ -185,3 +185,40 @@ def test_the_interface_asks_for_the_profile_name_and_never_wipes_during_an_opera
     view = app.overview()
     assert view["configured"] is False and [p["id"] for p in view["profiles"]] == ["default"]
     assert json.loads(json.dumps(view))  # the page gets plain JSON
+
+
+def test_a_setting_that_fails_to_apply_is_not_kept(home, monkeypatch):
+    """The app never shows a setting the servers do not have: fleet.yaml comes back when applying fails."""
+    import threading
+    import time
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+    from xui_fleet.ui import App, make_handler
+    program, data = home
+    yaml = ("version: 1\nmaster:\n  name: ru\n  host: 1.1.1.1\n  tls:\n    mode: domain\n    domain: a.example\n"
+            "    reserve_domains: [b.example]\nnodes: []\nusers: []\n")
+    (program / "fleet.yaml").write_text(yaml, encoding="utf-8")
+    app = App(program / "fleet.yaml")
+
+    class Broken:
+        def apply(self, *a, **kw):
+            assert "address_mode: both" in (program / "fleet.yaml").read_text()  # applied with the new setting
+            raise RuntimeError("мастер недоступен")
+    monkeypatch.setattr(app, "fleet", lambda log=None: Broken())
+    server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(app))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{server.server_port}/api/master/addresses", method="POST",
+                                     data=b'{"mode": "both"}', headers={"X-Fleet-Token": app.token,
+                                                                        "Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=5).read()
+        for _ in range(100):
+            if not app.job.running:
+                break
+            time.sleep(0.05)
+    finally:
+        server.shutdown()
+    view = app.job.view()
+    assert view["ok"] is False and any("вернул прежнюю" in line for line in view["lines"])
+    assert (program / "fleet.yaml").read_text() == yaml
+    assert view["age"] is not None and view["age"] >= 0  # the header knows how long ago it ended

@@ -1247,3 +1247,28 @@ def test_reserve_domain_through_3xui_hosts_switches_without_touching_entries():
     doc["master"]["tls"]["address_mode"] = "both"
     Reconciler(panel, FleetConfig.model_validate(doc)).run(_stale(_access(["de"])))
     assert Reconciler(panel, FleetConfig.model_validate(doc)).run(_stale(_access(["de"]))).changes == []  # idempotent when on
+
+
+def test_backups_keep_the_newest_and_one_per_day(tmp_path):
+    from xui_fleet import backup as bk
+    names = [f"master-202611{d:02d}-{h:02d}0000.tar.gz" for d in range(1, 16) for h in (9, 12, 18)]
+    for n in names:
+        (tmp_path / n).write_bytes(b"x")
+    bk.rotate(tmp_path, keep=10, days=30)
+    left = sorted(p.name for p in tmp_path.glob("master-*"))
+    newest = sorted(names, reverse=True)[:10]
+    assert set(newest) <= set(left)  # a burst of changes keeps its recent restore points
+    days = {n[7:15] for n in left}
+    assert len(days) == 15  # and every day before it keeps its last state
+    assert all(f"master-202611{d:02d}-180000.tar.gz" in left for d in range(1, 16))
+    assert len(left) == 10 + 11  # 10 newest span days 12..15; days 1..11 keep one each
+
+
+def test_link_check_uses_its_own_service_client():
+    panel = FakePanel()
+    cfg = _cfg([{"name": "de", "host": "de.example"}])
+    report = Reconciler(panel, cfg).run(_access(["de"]))
+    tags = {i["tag"]: i for i in panel.inbounds()}
+    assert sorted(panel._clients["fleet-check"]["inboundIds"]) == sorted(i["id"] for i in tags.values())
+    assert "fleet-check" not in report.subscriptions and "alice" in report.subscriptions
+    assert cfg.clients.service_emails == {"fleet-bridge", "fleet-check"}

@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Set
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -245,6 +245,13 @@ class ClientsConfig(Strict):
     # inbounds, so users created in the panel UI get new nodes automatically.
     sync_all: bool = True
     bridge_email: str = "fleet-bridge"
+    # Service user whose subscription the link check uses, so test traffic from the master never lands in a
+    # real user's devices, IPs and "last connected".
+    check_email: str = "fleet-check"
+
+    @property
+    def service_emails(self) -> Set[str]:
+        return {self.bridge_email, self.check_email}
 
 
 class RoutingConfig(Strict):

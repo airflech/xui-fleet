@@ -44,6 +44,7 @@ class Job:
         self.running = False
         self.ok: Optional[bool] = None
         self.result: Dict[str, Any] = {}
+        self.finished = 0.0  # when the last operation ended (the header shows it quietly after a minute)
         self._load()
 
     # The app restarts itself after an update: the finished operation must survive that, or the page
@@ -58,6 +59,8 @@ class Job:
             d = json.loads(self._path().read_text(encoding="utf-8"))
             self.id, self.title, self.lines = int(d["id"]), d.get("title", ""), list(d.get("lines") or [])
             self.ok, self.result = d.get("ok"), d.get("result") or {}
+            # written by an older version without the time: the file's own time is when it ended
+            self.finished = float(d.get("finished") or self._path().stat().st_mtime)
         except Exception:
             pass
 
@@ -65,7 +68,8 @@ class Job:
         try:
             self._path().parent.mkdir(parents=True, exist_ok=True)
             self._path().write_text(json.dumps({"id": self.id, "title": self.title, "lines": self.lines[-300:],
-                                                "ok": self.ok, "result": self.result}, ensure_ascii=False), encoding="utf-8")
+                                                "ok": self.ok, "result": self.result, "finished": self.finished},
+                                               ensure_ascii=False), encoding="utf-8")
         except Exception:
             pass
 
@@ -102,6 +106,7 @@ class Job:
                 self.lines.append(f"Ошибка: {exc}")
                 self.ok = False
             finally:
+                self.finished = time.time()
                 self._save()
                 self.running = False
 
@@ -110,7 +115,8 @@ class Job:
 
     def view(self) -> Dict[str, Any]:
         return {"id": self.id, "title": self.title, "lines": list(self.lines), "running": self.running,
-                "ok": self.ok, "result": self.result}
+                "ok": self.ok, "result": self.result,
+                "age": int(time.time() - self.finished) if self.finished and not self.running else None}
 
     def clear(self, forget: bool = False) -> None:
         """Forget the last operation (it belongs to another profile, or to one that was just deleted).
@@ -574,6 +580,26 @@ def make_handler(app: App):
                     raise RuntimeError("уже выполняется другая операция — дождитесь её окончания")
                 return {"ok": True}
 
+            def run_change(title: str, change: Callable[[], Any], work: Callable[[Callable[[str], None]], Any]) -> Dict[str, Any]:
+                """A setting is written to fleet.yaml and then applied. If applying fails, the old file comes
+                back: the app never shows a setting the servers do not have."""
+                if app.job.running:
+                    raise RuntimeError("уже выполняется другая операция — дождитесь её окончания")
+                before = app.path.read_text(encoding="utf-8")
+                change()
+                after = app.path.read_text(encoding="utf-8")
+
+                def guarded(log: Callable[[str], None]) -> Any:
+                    try:
+                        return work(log)
+                    except Exception:
+                        if app.path.read_text(encoding="utf-8") == after:  # untouched since (e.g. by sync)
+                            app.path.write_text(before, encoding="utf-8")
+                            log("настройка не сохранена: применить её не удалось, вернул прежнюю. "
+                                "Если часть изменений успела дойти до серверов, «Применить» вернёт их к прежним настройкам.")
+                        raise
+                return run(title, guarded)
+
             if path.startswith("/api/profile/"):
                 return app.profile_change(path[len("/api/profile/"):], body)
             if path == "/api/setup":
@@ -622,24 +648,22 @@ def make_handler(app: App):
             if path == "/api/master/addresses":
                 from .config import set_address_mode
                 mode = _req(body, "mode")
-                if app.job.running:
-                    raise RuntimeError("уже выполняется другая операция — дождитесь её окончания")
-                set_address_mode(app.path, mode)
                 title = {"main": "Основной домен", "both": "Основной и резервный домены", "reserve": "Только резервный домен"}.get(mode, mode)
-                return run(f"Адреса подключений: {title.lower()}", lambda log: app.fleet(log).apply(skip_provision=True))
+                return run_change(f"Адреса подключений: {title.lower()}", lambda: set_address_mode(app.path, mode),
+                                  lambda log: app.fleet(log).apply(skip_provision=True))
             if path == "/api/domain/reserve":
                 domain = (body.get("domain") or "").strip()
                 return run(f"Резервный домен {domain}" if domain else "Удаление резервного домена",
                            lambda log: app.fleet(log).set_reserve_domain(domain))
             if path == "/api/master/role":
                 from .config import set_master_role
-                if app.job.running:
-                    raise RuntimeError("уже выполняется другая операция — дождитесь её окончания")
                 if not body.get("vpn") and not body.get("cascades"):
                     raise ValueError("главный сервер должен выполнять хотя бы одну роль")
                 hide = [k for k in ("direct", "xhttp", "hy2", "warp") if body.get("show_" + k) is False]
-                set_master_role(app.path, bool(body.get("vpn")), bool(body.get("cascades")), body.get("label"), body.get("flag"), hide)
-                return run("Роль главного сервера", lambda log: app.fleet(log).apply())
+                return run_change("Роль главного сервера",
+                                  lambda: set_master_role(app.path, bool(body.get("vpn")), bool(body.get("cascades")),
+                                                          body.get("label"), body.get("flag"), hide),
+                                  lambda log: app.fleet(log).apply())
             if path == "/api/versions/settings":
                 from . import update as upd
                 changes = {}
@@ -673,9 +697,9 @@ def make_handler(app: App):
                 name = _req(body, "name")
                 hide = [k for k in ("direct", "xhttp", "hy2", "warp", "cascade", "cascade_xhttp", "cascade_hy2", "cascade_warp")
                         if body.get("show_" + k) is False]
-                set_node_label(app.path, name, body.get("label"), body.get("flag"), hide)
-                return run(f"Название сервера {name}",
-                           lambda log: app.fleet(log).apply({name}, skip_provision=True))
+                return run_change(f"Название сервера {name}",
+                                  lambda: set_node_label(app.path, name, body.get("label"), body.get("flag"), hide),
+                                  lambda log: app.fleet(log).apply({name}, skip_provision=True))
             if path == "/api/node":
                 if app.job.running:
                     raise RuntimeError("уже выполняется другая операция — дождитесь её окончания")

@@ -98,6 +98,8 @@ ul.plain { margin: 0; padding-left: 18px; } ul.plain li { margin: 3px 0; }
 .uactions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
 .limits { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }
 @media (max-width: 560px) { .limits { grid-template-columns: 1fr 1fr; } .limits .btn { grid-column: 1 / -1; } }
+.jobchip.quiet { color: var(--muted); padding: 0 10px; } .jobchip.quiet .txt { font-size: 12px; }
+.live-age { font-size: 12px; color: var(--muted); white-space: nowrap; } @media (max-width: 640px) { .live-age { display: none; } }
 .jobchip.ok { color: var(--ok); } .jobchip.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }
 
 /* ---------- layout ---------- */
@@ -439,6 +441,7 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
         <h1>Серверы</h1>
         <div class="spacer"></div>
         <div class="toolbar">
+        <span class="live-age" id="liveAge" aria-live="off"></span>
         <button class="btn ghost icon" id="btnRefresh" title="Обновить состояние" aria-label="Обновить состояние"><svg class="i"><use href="#i-refresh"/></svg></button>
         <div class="menu-wrap">
           <button class="btn" id="btnFleetMenu" aria-haspopup="menu">Обслуживание <svg class="i" style="width:14px"><use href="#i-chevron"/></svg></button>
@@ -602,11 +605,12 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
             а у подключений «через RU» российские сайты открываются прямо с главного сервера.</p>
 
           <h2 id="h-domain">Если заблокируют домен</h2>
-          <ol><li>Заранее: карточка «Главный сервер» → «⋯» → «Резервный домен», и раздайте пользователям резервные ссылки (кнопка «Резерв»).</li>
-            <li>При блокировке: «⋯» → «Перейти на резервный домен». Пользователи открывают резервную ссылку. Подключения напрямую к зарубежным серверам блокировка домена не затрагивает.</li></ol>
+          <ol><li>Заранее: карточка «Главный сервер» → «⋯» → «Резервный домен», и раздайте пользователям резервные ссылки (кнопка «Резерв» у пользователя) — подписка будет открываться по обоим доменам.</li>
+            <li>Там же «Адреса подключений через RU» → «Основной и резервный»: у каждого подключения через RU в подписке будет вторая ссылка через резервный домен («· резерв»). Пользователям ничего делать не нужно — достаточно обновить подписку.</li>
+            <li>Если заблокировали основной домен: «⋯» → «Перейти на …» — резервный станет основным. Пользователи открывают резервную ссылку на подписку. Подключения напрямую к зарубежным серверам блокировка домена не затрагивает.</li></ol>
 
           <h2 id="h-backup">Бэкапы и перенос главного сервера</h2>
-          <p>Бэкап главной панели делается сам перед изменениями; хранятся последние 10 (вкладка «Бэкапы», с причиной создания).
+          <p>Бэкап главной панели делается сам перед изменениями (серия правок за 15 минут — один бэкап, перед удалением — всегда); хранятся 10 последних и по одному за каждый из 30 дней (вкладка «Бэкапы», с причиной создания).
             Если главный сервер заблокируют: «Бэкапы» → «Перенести…» — на новый сервер ставится 3x-ui и восстанавливается всё; затем смените A-запись домена.</p>
 
           <h2 id="h-trouble">Если что-то не работает</h2>
@@ -626,7 +630,7 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
         <div class="spacer"></div>
         <button class="btn ghost" id="btnBackupOpen"><svg class="i"><use href="#i-folder"/></svg>Открыть папку</button>
         <button class="btn primary" id="btnBackup">Сделать бэкап</button>
-        <div class="lead">Хранятся последние 10: база 3x-ui целиком и сертификат домена. Бэкап делается сам перед каждым изменением.</div>
+        <div class="lead">База 3x-ui целиком и сертификат домена. Бэкап делается сам перед изменениями (серия правок за 15 минут — один бэкап, перед удалением — всегда). Хранятся 10 последних и по одному за каждый из 30 дней.</div>
       </div>
       <div class="section-t" style="margin-top:6px">Главный сервер</div>
       <div class="panel"><div class="list timeline" id="backupRows"></div></div>
@@ -862,7 +866,7 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
 </form></dialog>
 
 <dialog id="dlgVersions" class="wide"><div class="dlg">
-  <div class="dlg-h"><h2>Версии приложения</h2><p>Обновления приходят сами. Здесь можно поставить конкретную версию, в том числе пререлиз, или вернуться на предыдущую.</p></div>
+  <div class="dlg-h"><h2>Версии приложения</h2><p>Новая версия предлагается в шапке, а ставится сама, только если включено «Обновлять автоматически». Здесь можно поставить конкретную версию, в том числе пререлиз, или вернуться на предыдущую.</p></div>
   <div class="dlg-b">
     <div class="vsum" id="verSummary"></div>
     <div id="verBanner"></div>
@@ -1495,12 +1499,9 @@ function renderJob(job) {
     // Cleared on a profile switch or exit: there is no operation to show (not an error).
     chip.classList.add('hidden'); $('drawer').classList.add('hidden'); setBusy(false); return;
   }
-  chip.classList.remove('hidden', 'ok', 'bad');
-  chip.textContent = '';
-  if (job.running) chip.appendChild(el('span', 'spin'));
-  else { chip.classList.add(job.ok ? 'ok' : 'bad'); chip.appendChild(icon(job.ok ? 'check' : 'x')); }
-  chip.appendChild(el('span', 'txt', job.running ? job.title + '…' : (job.ok ? 'Готово' : 'Ошибка') + ': ' + job.title));
-  chip.title = job.title;
+  jobShown = job;
+  if (!job.running && job.age != null) jobEnded[job.id] = jobEnded[job.id] || Date.now() - job.age * 1000;
+  paintChip();
   const t = $('jobtitle'); t.textContent = job.title + (job.running ? '…' : job.ok ? ' — готово' : ' — ошибка');
   const ic = $('jobicon'); ic.textContent = '';
   if (job.running) ic.appendChild(el('span', 'spin')); else ic.appendChild(el('span', 'dot ' + (job.ok ? 'ok' : 'bad')));
@@ -1508,7 +1509,36 @@ function renderJob(job) {
   if (job.running && jobClosed !== job.id) $('drawer').classList.remove('hidden');
   setBusy(job.running);
 }
-$('jobchip').addEventListener('click', () => { const d = $('drawer'); d.classList.toggle('hidden'); if (d.classList.contains('hidden')) jobClosed = curJob; else jobClosed = 0; });
+// The header chip is the state of the operation now. A finished one stays in full for a minute (an error —
+// until its log was opened), then shrinks to a quiet "journal" button: it is history, not the current state.
+let jobShown = null; const jobEnded = {};
+function errSeen(id) { try { return localStorage.getItem('xf-err-seen') === String(id); } catch (e) { return false; } }
+function paintChip() {
+  const job = jobShown, chip = $('jobchip');
+  if (!job || (!job.running && !job.title)) return;
+  chip.classList.remove('hidden', 'ok', 'bad', 'quiet');
+  chip.textContent = '';
+  const ended = jobEnded[job.id], mins = ended ? Math.floor((Date.now() - ended) / 60000) : 0;
+  const quiet = !job.running && ended && Date.now() - ended > 60000 && (job.ok || errSeen(job.id));
+  if (job.running) { chip.appendChild(el('span', 'spin')); chip.appendChild(el('span', 'txt', job.title + '…')); }
+  else if (quiet) {
+    chip.classList.add('quiet'); chip.appendChild(icon('log'));
+    chip.appendChild(el('span', 'txt', 'Журнал'));
+    chip.title = 'Последняя операция: «' + job.title + '» — ' + (job.ok ? 'готово' : 'ошибка') + ', ' +
+      (mins < 60 ? mins + ' мин назад' : Math.floor(mins / 60) + ' ч назад');
+    return;
+  } else {
+    chip.classList.add(job.ok ? 'ok' : 'bad'); chip.appendChild(icon(job.ok ? 'check' : 'x'));
+    chip.appendChild(el('span', 'txt', (job.ok ? 'Готово' : 'Ошибка') + ': ' + job.title));
+  }
+  chip.title = job.title;
+}
+setInterval(paintChip, 15000);
+$('jobchip').addEventListener('click', () => {
+  const d = $('drawer'); d.classList.toggle('hidden');
+  if (d.classList.contains('hidden')) jobClosed = curJob; else jobClosed = 0;
+  if (jobShown && !jobShown.running && !jobShown.ok) { try { localStorage.setItem('xf-err-seen', String(jobShown.id)); } catch (e) {} }
+});
 $('jobhide').addEventListener('click', () => { jobClosed = curJob; $('drawer').classList.add('hidden'); });
 
 async function pollJob() {
@@ -1531,19 +1561,40 @@ async function pollJob() {
 }
 
 // ---------- data ----------
-let liveRetry;
-async function loadLive() {
+let liveRetry, liveAt = 0, statsAt = 0, liveLoading = false;
+// quiet: a background refresh — the cards keep their numbers until the new ones arrive (no skeletons).
+async function loadLive(quiet) {
   clearTimeout(liveRetry);
-  live = null;
-  renderServers(); renderUsers();
+  if (quiet && liveLoading) return;
+  liveLoading = true;
+  if (!quiet) { live = null; renderServers(); renderUsers(); }
   const btn = $('btnRefresh'); btn.disabled = true;
-  try { live = await api('/api/live'); }
-  catch (e) { live = { ready: true, nodes: {}, users: {}, failed: e.message }; }
+  let got;
+  try { got = await api('/api/live'); }
+  catch (e) { got = { ready: true, nodes: {}, users: {}, failed: e.message }; }
+  liveLoading = false;
   btn.disabled = false;
-  renderServers(); renderUsers();
-  if (live.failed) { clearTimeout(liveRetry); liveRetry = setTimeout(loadLive, 5000); }
-  else if (live.ready && !live.busy) loadUserStats();
+  if (quiet && got.failed && live && !live.failed) { paintLiveAge(); return; }  // keep the last good numbers
+  live = got;
+  if (!live.failed && live.ready && !live.busy) liveAt = Date.now();
+  renderServers(); renderUsers(); paintLiveAge();
+  if (live.failed) { clearTimeout(liveRetry); liveRetry = setTimeout(() => loadLive(quiet), 5000); }
+  else if (live.ready && !live.busy && (!quiet || Date.now() - statsAt > 120000)) { statsAt = Date.now(); loadUserStats(); }
 }
+function paintLiveAge() {
+  const s = liveAt ? Math.round((Date.now() - liveAt) / 1000) : null, box = $('liveAge');
+  box.textContent = s == null ? '' : s < 10 ? 'обновлено только что' : s < 60 ? 'обновлено ' + s + ' с назад'
+    : 'обновлено ' + Math.floor(s / 60) + ' мин назад';
+  $('btnRefresh').title = 'Обновить состояние' + (box.textContent ? ' (' + box.textContent + ')' : '');
+}
+// Online, CPU, memory follow the servers by themselves while the window is in front.
+const LIVE_EVERY = 45000;
+function liveDue() {
+  return overview && overview.configured && !(overview.job && overview.job.running) && !liveLoading
+    && document.visibilityState === 'visible' && !document.querySelector('dialog[open]');
+}
+setInterval(() => { paintLiveAge(); if (liveDue() && Date.now() - liveAt >= LIVE_EVERY) loadLive(true); }, 5000);
+document.addEventListener('visibilitychange', () => { if (liveDue() && Date.now() - liveAt >= LIVE_EVERY) loadLive(true); });
 
 async function refresh() {
   try { overview = await api('/api/overview'); }
@@ -1819,7 +1870,9 @@ function renderInbounds() {
       if (!i.service) {
         const eb = el('button', 'btn sm'); eb.appendChild(icon('edit')); eb.appendChild(document.createTextNode('Изменить'));
         eb.addEventListener('click', () => openInbound(i)); r.appendChild(eb);
-        const db = el('button', 'btn ghost sm danger icon'); db.appendChild(icon('trash')); db.title = 'Удалить'; db.setAttribute('aria-label', 'Удалить');
+        const db = el('button', 'btn ghost sm danger icon'); db.appendChild(icon('trash'));
+        const dt = !i.managed ? 'Удалить' : i.kind === 'direct' ? 'Скрыть из подписок' : 'Выключить у сервера (не будет создано снова)';
+        db.title = dt; db.setAttribute('aria-label', dt);
         db.addEventListener('click', () => deleteInbound(i)); r.appendChild(db);
       }
       list.appendChild(r);
@@ -2271,7 +2324,7 @@ $('joinForm').addEventListener('submit', async (e) => {
   btn.disabled = false; btn.textContent = 'Подключить';
 });
 $('btnAddUser').addEventListener('click', () => { resetForm($('userForm')); $('dlgUser').showModal(); });
-$('btnRefresh').addEventListener('click', loadLive);
+$('btnRefresh').addEventListener('click', () => loadLive());
 $('btnApply').addEventListener('click', () => start('/api/apply'));
 $('btnUpgrade').addEventListener('click', () => { closeMenus(); confirmAction('Обновить 3x-ui на всех серверах?',
   'Сначала обновятся зарубежные серверы, затем главный. Подключения кратко прервутся.', () => start('/api/upgrade'), 'Обновить'); });

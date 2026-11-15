@@ -46,14 +46,18 @@ def fleet(tmp_path, monkeypatch):
     ssh_log, broken = [], set()
 
     @contextlib.contextmanager
-    def master_panel(provision=True):
+    def master_panel(provision=True, wait=90):
+        if f.panel_dead:
+            raise RuntimeError(f"панель не ответила за {wait}с: GET /server/status: EOF")
+        f.waits.append(wait)
         yield panel
     monkeypatch.setattr(f, "master_panel", master_panel)
     monkeypatch.setattr(f, "auto_backup", lambda **kw: ssh_log.append(("backup", kw.get("reason"))))
+    monkeypatch.setattr(f, "backup_master", lambda reason: ssh_log.append(("backup", reason)))
     monkeypatch.setattr(f, "ssh", lambda server: FakeSSH(server.name, ssh_log, server.name in broken))
     for name in ("countries", "neighbors", "health"):
         monkeypatch.setattr(f, name, lambda: {})
-    f.panel, f.ssh_log, f.broken = panel, ssh_log, broken
+    f.panel, f.ssh_log, f.broken, f.panel_dead, f.waits = panel, ssh_log, broken, False, []
     return f
 
 
@@ -148,3 +152,45 @@ def test_inbounds_a_node_reports_back_during_removal_are_removed_again():
     rec.remove_node("de")
     assert [i["tag"] for i in panel.inbounds()] == [] or all(not i["tag"].endswith("-de") for i in panel.inbounds())
     assert not rec.report.warnings
+
+
+def test_a_master_whose_panel_is_already_gone_is_removed_at_once_without_a_backup(fleet):
+    fleet.panel_dead = True
+    lines = []
+    fleet.log = lines.append
+    report = fleet.remove_master(purge=True, without_backup=True)  # the user agreed to go on without one
+    assert ("backup", "перед удалением главного сервера") not in fleet.ssh_log  # nothing to back up
+    assert [e[0] for e in fleet.ssh_log if e[0] != "backup"] == ["ru"]  # still cleaned over SSH
+    assert any("не отвечает" in line and "без бэкапа" in line for line in lines)
+    assert report.changes == ["ru: 3x-ui удалён с сервера"]
+
+
+def test_the_master_panel_is_checked_briefly_before_a_long_wait(fleet):
+    fleet.remove_master(purge=False)
+    assert fleet.waits == [15] and ("backup", "перед удалением главного сервера") in fleet.ssh_log
+
+
+def test_without_the_users_consent_nothing_is_removed_when_no_backup_can_be_made(fleet):
+    from xui_fleet.engine import FleetError
+    fleet.panel_dead = True
+    with pytest.raises(FleetError, match="без бэкапа ничего не удаляю"):
+        fleet.remove_master(purge=True)
+    assert [e for e in fleet.ssh_log if e[0] != "backup"] == []  # the server was not touched
+
+
+def test_a_failed_backup_on_a_live_panel_also_needs_consent(fleet, monkeypatch):
+    from xui_fleet.engine import FleetError
+
+    def broken(reason):
+        raise RuntimeError("диск переполнен")
+    monkeypatch.setattr(fleet, "backup_master", broken)
+    with pytest.raises(FleetError, match="бэкап не удался"):
+        fleet.remove_master(purge=True)
+    assert fleet.remove_master(purge=True, without_backup=True).changes == ["ru: 3x-ui удалён с сервера"]
+
+
+def test_the_page_can_ask_whether_the_panel_answers(fleet):
+    assert fleet.master_probe()["alive"] is True
+    fleet.panel_dead = True
+    probe = fleet.master_probe()
+    assert probe["alive"] is False and "не ответила" in probe["error"] and probe["lastBackup"] is None

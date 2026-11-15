@@ -586,7 +586,7 @@ dialog.wide { width: min(720px, calc(100vw - 24px)); }
           <p>«⋯» сервера → «Удалить сервер», для главного — его меню → «Удалить главный сервер». «Только из xui-fleet»: сервер
             убирается из сети, 3x-ui на нём работает дальше. «Полностью, вместе с 3x-ui»: с сервера по SSH удаляются 3x-ui с базой,
             сайт-витрина, сертификаты и правила файрвола для его портов; SSH-доступ и nginx остаются. Перед удалением всегда
-            делается бэкап главного сервера. После удаления главного профиль открывается с окна первого запуска, бэкап остаётся.</p>
+            делается бэкап главного сервера; если панель не отвечает и бэкап сделать нельзя, программа спросит, удалять ли без него. После удаления главного профиль открывается с окна первого запуска, бэкап остаётся.</p>
 
           <h2 id="h-conn">Какое подключение выбрать</h2>
           <p>Подписка сгруппирована по странам, внутри — сначала лучшие подключения. Обычно достаточно первого в списке.</p>
@@ -1873,9 +1873,25 @@ $('btnMasterRemove').addEventListener('click', () => { closeMenus(); openRemove(
 $('removeForm').addEventListener('submit', (e) => {
   e.preventDefault();
   const f = e.target, purge = f.purge.value === '1';
-  if (removeTarget) start('/api/node/remove', { name: removeTarget.name, purge }, f);
-  else start('/api/master/remove', { purge, purgeNodes: f.purgeNodes.checked, syncData: f.syncData.checked, confirm: $('rm_confirm').value }, f);
+  if (removeTarget) return start('/api/node/remove', { name: removeTarget.name, purge }, f);
+  const body = { purge, purgeNodes: f.purgeNodes.checked, syncData: f.syncData.checked, confirm: $('rm_confirm').value };
+  checkMasterThenRemove(body, f);
 });
+async function checkMasterThenRemove(body, f) {
+  // The backup is what brings the network back: when the panel does not answer there is none, so ask first.
+  const go = $('rmGo'), label = go.textContent, err = f.querySelector('.formerr');
+  err.textContent = ''; go.disabled = true; go.textContent = 'Проверяю главную панель…';
+  let probe;
+  try { probe = await api('/api/master/probe'); } catch (e) { probe = { alive: false, error: e.message }; }
+  go.textContent = label; syncRemove();
+  if (probe.busy) { err.textContent = 'Идёт другая операция — дождитесь её окончания.'; return; }
+  if (probe.alive) return start('/api/master/remove', body, f);
+  const last = probe.lastBackup ? 'Последний бэкап на этом компьютере — от ' + fmtWhen(probe.lastBackup * 1000) + ': из него можно восстановить сеть в том виде, какой она была тогда.'
+    : 'Сохранённых бэкапов этой сети на компьютере нет: пользователей и подключения потом не восстановить.';
+  confirmAction('Удалить без бэкапа?',
+    'Главная панель не отвечает (' + (probe.error || 'нет ответа') + '), поэтому бэкап перед удалением сделать нельзя. ' + last,
+    () => start('/api/master/remove', Object.assign({ withoutBackup: true }, body), f), 'Удалить без бэкапа', true);
+}
 
 // ---------- profiles ----------
 function curProfile() { return (overview && overview.profile) || { id: 'default', name: 'Основной' }; }

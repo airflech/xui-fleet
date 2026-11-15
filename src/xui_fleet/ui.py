@@ -30,7 +30,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "вкладка «Входящие», редактирование и удаление пользователей, удаление сервера вместе с 3x-ui"
+WHATS_NEW = "удаление главного сервера без бэкапа — только после вашего подтверждения; без долгого ожидания мёртвой панели"
 
 
 class Job:
@@ -361,7 +361,8 @@ class App:
     def remove_master(self, body: Dict[str, Any], log: Callable[[str], None]) -> Report:
         """Delete the master: the whole network of this profile. The profile then shows the first-run screen."""
         report = self.fleet(log).remove_master(purge=bool(body.get("purge")), purge_nodes=bool(body.get("purgeNodes")),
-                                               sync_data=bool(body.get("syncData")))
+                                               sync_data=bool(body.get("syncData")),
+                                               without_backup=bool(body.get("withoutBackup")))
         with self.data_lock:  # the background sync must not bring the settings back
             self.profiles.forget_network(self.profiles.active_id())
         log("настройки сети и доступы стёрты с этого компьютера, бэкапы главного сервера сохранены")
@@ -459,6 +460,10 @@ def make_handler(app: App):
                     return (self._send(200, v.encode(), "text/plain") if url.path == "/api/ping"
                             else self._send(200, {"version": v, "app": __import__("xui_fleet").__version__,
                                                   "whatsNew": WHATS_NEW, "data": app.data_mark(), **app.update_note()}))
+                if url.path == "/api/master/probe":
+                    if app.job.running:
+                        return self._send(200, {"busy": True})
+                    return self._send(200, app.fleet().master_probe())
                 if url.path == "/api/inbounds":
                     if app.job.running:
                         return self._send(200, {"busy": True})

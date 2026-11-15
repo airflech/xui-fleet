@@ -26,6 +26,11 @@ class FleetError(RuntimeError):
     pass
 
 
+def _short(exc: Exception) -> str:
+    text = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
+    return text if len(text) <= 160 else text[:157] + "…"
+
+
 def parallel(items: List[Any], fn: Callable[[Any], Any], limit: float, on_timeout: Callable[[Any], Any]) -> List[Any]:
     """Run fn over items at the same time; one slow or dead server never holds up the others.
 
@@ -173,7 +178,7 @@ class Fleet:
         return SSH(server.name, server.host, cfg, self.state)
 
     @contextmanager
-    def master_panel(self, provision: bool = True) -> Iterator[Panel]:
+    def master_panel(self, provision: bool = True, wait: int = 90) -> Iterator[Panel]:
         """Yield an API client for the master, provisioning it first when asked."""
         master = self.cfg.master
         with ExitStack() as stack:
@@ -198,7 +203,7 @@ class Fleet:
                 local = stack.enter_context(ssh.forward(int(port)))
                 panel = Panel(f"{scheme}://127.0.0.1:{local}{base}", token or "")
             stack.callback(panel.close)
-            panel.wait_ready(90)
+            panel.wait_ready(wait)
             yield panel
 
     # ---- node provisioning ----------------------------------------------
@@ -982,7 +987,7 @@ class Fleet:
         """Take a node out of the network. purge: also remove 3x-ui and everything xui-fleet put on it."""
         node = self.cfg.node(name)
         self.auto_backup(max_age_hours=0, reason=f"перед удалением сервера {name}")
-        with self.master_panel(provision=False) as panel:
+        with self.master_panel(provision=False, wait=30) as panel:
             ports = self._server_ports(panel, name) if purge else []
             rec = Reconciler(panel, self.cfg, countries=self.countries(), neighbors=self.neighbors(), health=self.health(), log=self.log)
             rec.remove_node(name)
@@ -991,21 +996,48 @@ class Fleet:
         self.state.forget(name)
         return rec.report
 
-    def remove_master(self, purge: bool = False, purge_nodes: bool = False, sync_data: bool = False) -> Report:
+    def master_probe(self, wait: int = 15) -> Dict[str, Any]:
+        """Does the master panel answer? Asked before deleting the master: without it there is no backup."""
+        latest = self.backups()
+        out: Dict[str, Any] = {"alive": False, "error": "", "lastBackup": latest[0].created if latest else None}
+        try:
+            with self.master_panel(provision=False, wait=wait):
+                out["alive"] = True
+        except Exception as exc:
+            out["error"] = _short(exc)
+        return out
+
+    def remove_master(self, purge: bool = False, purge_nodes: bool = False, sync_data: bool = False,
+                      without_backup: bool = False) -> Report:
         """Take down the whole network of this profile. The master's backup is made first (it holds every
-        user), so the network can be brought back with «Перенос главного сервера»."""
+        user), so the network can be brought back with «Перенос главного сервера». When no backup can be
+        made, nothing is touched unless the user agreed to go on without one (without_backup)."""
         report = Report()
-        self.auto_backup(max_age_hours=0, reason="перед удалением главного сервера")
+        ports: Dict[str, List[int]] = {}
+        alive = False
+        try:  # a short check first: the panel may be long gone, and waiting 90 s for it twice looks like a hang
+            self.log("проверяю, отвечает ли главная панель…")
+            with self.master_panel(provision=False, wait=15) as panel:
+                alive = True
+                for server in [self.cfg.master] + (list(self.cfg.nodes) if purge_nodes else []):
+                    ports[server.name] = self._server_ports(panel, server.name)
+        except Exception as exc:
+            problem = f"главная панель не отвечает ({_short(exc)})"
+        else:
+            problem = ""
+            try:
+                self.backup_master("перед удалением главного сервера")
+            except Exception as exc:
+                problem = f"бэкап не удался ({_short(exc)})"
+        if problem:
+            if not without_backup:
+                raise FleetError(f"{problem} — без бэкапа ничего не удаляю. Подтвердите удаление без бэкапа или "
+                                 "сначала верните панель.")
+            self.log(f"⚠ {problem} — удаляю без бэкапа, как вы подтвердили"
+                     + ("; на сервере — по SSH то, что известно из настроек" if purge else ""))
         if not purge:
             self.log("серверы не меняются: 3x-ui на них продолжает работать, пользователи — подключаться")
             return report
-        ports: Dict[str, List[int]] = {}
-        try:
-            with self.master_panel(provision=False) as panel:
-                for server in [self.cfg.master] + (list(self.cfg.nodes) if purge_nodes else []):
-                    ports[server.name] = self._server_ports(panel, server.name)
-        except Exception as exc:  # the panel may already be gone: remove what is known from fleet.yaml
-            self.log(f"главная панель не ответила ({exc}) — порты возьму из настроек")
         if purge_nodes:
             for node in self.cfg.nodes:
                 self._purge(node, ports.get(node.name) or [], report)

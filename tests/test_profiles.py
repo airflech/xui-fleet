@@ -222,3 +222,25 @@ def test_a_setting_that_fails_to_apply_is_not_kept(home, monkeypatch):
     assert view["ok"] is False and any("вернул прежнюю" in line for line in view["lines"])
     assert (program / "fleet.yaml").read_text() == yaml
     assert view["age"] is not None and view["age"] >= 0  # the header knows how long ago it ended
+
+
+def test_operations_are_kept_per_profile_and_go_with_it(home):
+    import time
+    from xui_fleet.ui import Job
+    job = Job()
+    for title, scope in (("первая", "/a/fleet.yaml"), ("вторая", "/b/fleet.yaml"), ("третья", "/a/fleet.yaml")):
+        assert job.start(title, lambda log, t=title: log("делаю " + t), scope=scope)
+        while job.running:
+            time.sleep(0.01)
+    hist = job.history("/a/fleet.yaml")
+    assert [h["title"] for h in hist] == ["третья", "первая"] and all(h["ok"] for h in hist)
+    one = job.past(hist[1]["id"], "/a/fleet.yaml")
+    assert one["lines"][0] == "делаю первая"
+    assert job.past(hist[1]["id"], "/b/fleet.yaml") is None  # another profile does not see it
+    again = Job()  # after a restart the numbers go on, history stays
+    assert again.start("четвёртая", lambda log: None, scope="/b/fleet.yaml")
+    while again.running:
+        time.sleep(0.01)
+    assert again.id == hist[0]["id"] + 1
+    again.forget("/a/fleet.yaml")
+    assert again.history("/a/fleet.yaml") == [] and len(again.history("/b/fleet.yaml")) == 2

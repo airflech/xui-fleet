@@ -23,10 +23,20 @@ jobs:
       - run: pip install --root-user-action=ignore -q -e ".[dev]"
       - run: python -m pytest -q
 
+  ui:
+    # The page in a real browser (Chromium): every script loads, tabs and dialogs open without errors.
+    runs-on: ubuntu-latest
+    container: python:3.12
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install --root-user-action=ignore -q -e ".[dev]" playwright
+      - run: python -m playwright install --with-deps chromium
+      - run: python -m pytest -q tests/test_ui_smoke.py
+
   release:
     # A tag v1.2.3 publishes the installer for that version; the app updates itself from here.
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: test
+    needs: [test, ui]
     runs-on: ubuntu-latest
     permissions:
       contents: write

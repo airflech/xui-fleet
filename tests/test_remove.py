@@ -220,3 +220,26 @@ def test_changing_the_masking_gives_one_server_new_keys_and_leaves_the_others(fl
     assert applied == [{"de"}]  # the master's cascade picks up the new key, the node its new site
     assert ("backup", "перед сменой маскировки de") in fleet.ssh_log
     assert "обновить подписку" in msg and "shop.example" in msg
+
+
+def test_a_warp_measurement_is_followed_by_an_xray_restart_even_when_the_entry_stays(fleet, monkeypatch):
+    """Measuring entry points runs WARP with the server's own identity; Cloudflare then serves the test process and
+    the running Xray stays cut off until it restarts — so it is restarted even when nothing in the template changed."""
+    from xui_fleet import xrayconf as xc
+    tag = xc.warp_tag(fleet.cfg.master.name)
+    fleet.panel.add_inbound({"tag": tag, "port": 2083, "protocol": "hysteria", "settings": {"clients": []}, "streamSettings": {}})
+    warp = {"tag": "warp", "protocol": "wireguard", "settings": {"secretKey": "k", "address": ["172.16.0.2/32"], "mtu": 1280,
+                                                                   "peers": [{"publicKey": "p", "endpoint": "162.159.192.1:2408"}]}}
+    fleet.panel.template.setdefault("outbounds", []).append(warp)
+    fleet.panel.template.setdefault("routing", {}).setdefault("rules", []).append({"type": "field", "inboundTag": [tag], "outboundTag": "warp"})
+    restarts = []
+    fleet.panel.restart_xray = lambda: restarts.append(1)
+    monkeypatch.setattr(pv, "pick_warp_endpoint", lambda ssh, w, candidates=None: ("162.159.192.1:2408", {"162.159.192.1:2408": 0.2}, {"162.159.192.1:2408": "ARN"}))
+    monkeypatch.setattr(pv, "warp_added_ms", lambda ssh, w, ep: 12)
+    fleet._master_ssh = object()
+    fleet.ensure_master_warp(fleet.panel)
+    assert fleet.state.get(fleet.cfg.master.name, "warp_endpoint")["colo"] == "ARN"
+    assert restarts  # measured → restarted, though the entry is the same
+    restarts.clear()
+    fleet.ensure_master_warp(fleet.panel)  # the next time within a day: nothing measured, nothing restarted
+    assert restarts == []

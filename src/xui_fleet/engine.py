@@ -89,6 +89,9 @@ class Fleet:
         self.log = log
         self._master_ssh: Optional[SSH] = None
         self._warp_bad: Dict[str, bool] = {}
+        # Servers whose WARP was just measured with their own identity: the test process takes over the identity's
+        # session at Cloudflare and the running Xray does not get it back by itself — it must be restarted.
+        self._warp_measured: Set[str] = set()
         self.purpose = ""  # what the user started (shown as the reason of the automatic backup)
 
     def countries(self) -> Dict[str, str]:
@@ -139,6 +142,10 @@ class Fleet:
             panel.save_xray_template(merged)
             panel.restart_xray()
             self.log(f"главный сервер: WARP-маршрут для {', '.join(sorted(tags))}")
+        elif self.cfg.master.name in self._warp_measured:
+            panel.restart_xray()
+            self.log("главный сервер: перезапускаю Xray после замера WARP — замер занимал соединение с Cloudflare")
+        self._warp_measured.discard(self.cfg.master.name)
         return None
 
     def neighbors(self) -> Dict[str, tuple]:
@@ -952,6 +959,10 @@ class Fleet:
                         node_panel.save_xray_template(merged)
                         node_panel.restart_xray()
                         self.log(f"{node.name}: WARP-маршрут для {', '.join(sorted(tags))}")
+                    elif node.name in self._warp_measured:
+                        node_panel.restart_xray()
+                        self.log(f"{node.name}: перезапускаю Xray после замера WARP — замер занимал соединение с Cloudflare")
+                    self._warp_measured.discard(node.name)
                 finally:
                     node_panel.close()
         finally:
@@ -966,8 +977,10 @@ class Fleet:
         # "colo" is new: an entry chosen before it was known may lead out through Russia — choose again now.
         if saved.get("endpoint") and "colo" in saved and time.time() - saved.get("at", 0) < self.WARP_RECHECK:
             if "added_ms" not in saved:  # measured by an older version: add the delay figure once
+                self._warp_measured.add(node.name)
                 self.state.update(node.name, warp_endpoint=dict(saved, added_ms=self._warp_added(node, ssh, warp, saved["endpoint"])))
             return saved["endpoint"]
+        self._warp_measured.add(node.name)
         best, scores, colos = pv.pick_warp_endpoint(ssh, warp)
         self._warp_bad[node.name] = not best or scores[best] > 1.5
         if not best:

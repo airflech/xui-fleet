@@ -66,11 +66,15 @@ async function openVersions(fresh) {
   cell('Последняя стабильная', d.latest);
   cell('Последний пререлиз', d.latestPre, d.latestPre ? 'для проверки новых функций' : '');
   list.textContent = '';
-  if (!d.releases.length) { list.appendChild(el('div', 'empty', d.error ? 'Список недоступен' : 'Релизов пока нет')); return; }
+  // The stable channel lists stable versions only (and the installed one, whatever it is).
+  const shown = d.channel === 'prerelease' ? d.releases : d.releases.filter((r) => !r.prerelease || r.version === d.current);
+  const hidden = d.releases.length - shown.length;
+  if (!shown.length) { list.appendChild(el('div', 'empty', d.error ? 'Список недоступен' : 'Релизов пока нет')); return; }
   const cmp = (a, b) => { const p = (v) => { const m = v.match(/(\d+)\.(\d+)\.(\d+)(?:[-.]?(alpha|beta|rc|a|b)\.?(\d*))?/) || [];
     const pre = { a: 0, alpha: 0, b: 1, beta: 1, rc: 2 }; return [+m[1] || 0, +m[2] || 0, +m[3] || 0, m[4] ? pre[m[4]] : 3, +m[5] || 0]; };
     const x = p(a), y = p(b); for (let i = 0; i < 5; i++) if (x[i] !== y[i]) return x[i] - y[i]; return 0; };
-  for (const r of d.releases) {
+  if (hidden) list.appendChild(el('div', 'muted small', 'Пререлизов скрыто: ' + hidden + '. Чтобы их видеть и получать, выберите «Включая пререлизы».'));
+  for (const r of shown) {
     const row = el('div', 'vrow'), top = el('div', 'top');
     top.appendChild(el('b', null, r.version));
     if (r.version === d.current) top.appendChild(el('span', 'tag ok', 'установлена'));
@@ -169,7 +173,7 @@ function switchToReserve() {
   closeMenus(); $('dlgDomains').close();
   const rsv = overview.master.reserveDomains[0], cur = overview.master.domain;
   confirmAction('Перейти на ' + rsv + '?',
-    'Подписка и подключения «через RU» переедут на ' + rsv + ', ' + cur + ' станет резервным. Пользователям нужно открыть резервную ссылку (или обновить подписку, если ' + cur + ' ещё доступен). Подключения напрямую к нодам это не затрагивает.',
+    'Подписка и подключения «через ' + hub() + '» переедут на ' + rsv + ', ' + cur + ' станет резервным. Пользователям нужно открыть резервную ссылку (или обновить подписку, если ' + cur + ' ещё доступен). Подключения напрямую к нодам это не затрагивает.',
     () => start('/api/domain', { domain: rsv }), 'Перейти');
 }
 // One place for everything about domains: the main one, the reserve, which of them the links use,
@@ -198,7 +202,7 @@ function renderDomains() {
   row('Название VPN в приложениях', m.vpnName || 'не задано — приложения показывают адрес', null, m.vpnName ? 'Изменить' : 'Задать', openVpnName);
   row('Приложения, которые получают подписку', APPS_MODE[appsMode()], null, 'Изменить', openApps);
   if (rsv) {
-    row('Адреса подключений через RU', ADDR_MODE[m.addressMode || 'main'], null, 'Изменить', openAddr);
+    row('Адреса подключений через ' + hub(), ADDR_MODE[m.addressMode || 'main'], null, 'Изменить', openAddr);
     if (!(mainDown && rsvUp)) row('Если основной заблокируют', 'Резервный станет основным', null, 'Перейти на ' + rsv, switchToReserve);
   }
   $('domHint').textContent = !live || !live.domains ? 'Доступность появится после загрузки состояния серверов.'
@@ -461,7 +465,7 @@ function renderSetupMap() {
   svg.appendChild(mg);  // drawn last: on top of the lines
   box.appendChild(svg);
   $('setupCap').textContent = {
-    gateway: 'Пользователи подключаются к серверу в России, а в интернет выходят через ваши зарубежные серверы. Их вы добавите после установки — кнопкой «Добавить сервер».',
+    gateway: 'Пользователи подключаются к этому серверу, а в интернет выходят через ваши зарубежные серверы (каскад) — например, когда этот сервер в вашей стране, а прямой доступ за рубеж блокируют. Их вы добавите после установки — кнопкой «Добавить сервер».',
     vpn: 'Пользователи подключаются прямо к этому серверу и выходят в интернет с его адреса. Зарубежные серверы можно добавить позже.',
     both: 'У сервера свои подключения с выходом в интернет, и он же — вход для каскадов на зарубежные серверы.',
   }[role] + (host ? '' : ' Схема заполнится, когда вы укажете адрес.');

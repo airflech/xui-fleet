@@ -3,8 +3,8 @@
 
 // ---------- inbounds ----------
 let inbounds = null;
-const KIND = { direct: 'прямое TCP', xhttp: 'XHTTP', hy2: 'Hysteria2', warp: 'WARP', cascade: 'каскад через RU (TCP)',
-  rhy2: 'каскад через RU (Hysteria2)', rxh: 'каскад через RU (XHTTP)', rwarp: 'каскад RU → WARP', warpup: 'служебный вход RU → WARP' };
+const KIND = { direct: 'прямое TCP', xhttp: 'XHTTP', hy2: 'Hysteria2', warp: 'WARP', cascade: 'каскад через главный (TCP)',
+  rhy2: 'каскад через главный (Hysteria2)', rxh: 'каскад через главный (XHTTP)', rwarp: 'каскад → WARP', warpup: 'служебный вход каскада → WARP' };
 async function loadInbounds() {
   const box = $('inboundRows'); box.textContent = '';
   const wait = el('div', 'panel'); const e = el('div', 'empty'); e.appendChild(el('span', 'spin')); e.appendChild(document.createTextNode('  Загружаю с главного сервера…')); wait.appendChild(e); box.appendChild(wait);

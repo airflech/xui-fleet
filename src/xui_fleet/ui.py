@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "название VPN в приложениях; запасной адрес подписки для Happ и кнопка с ним для INCY; INCY сам переезжает на новый домен"
+WHATS_NEW = "карта маршрутов показывает задержку каждого участка, прямой путь и WARP, красным — что не работает; строится по реальным подключениям"
 
 
 def _last_backup(fleet: Any) -> int:
@@ -42,6 +42,111 @@ def _last_backup(fleet: Any) -> int:
         return int(max(p.stat().st_mtime for p in files)) if files else 0
     except OSError:
         return 0
+
+
+def tcp_rtt(host: str, ports: List[int], tries: int = 3, timeout: float = 2.0) -> Optional[int]:
+    """Round trip from this computer to a server, ms: the median time to open a TCP connection (one round trip),
+    on the first of `ports` that answers. None if none does."""
+    import socket
+    import statistics
+    import time as _t
+    for port in ports:
+        times = []
+        for _ in range(tries):
+            start = _t.perf_counter()
+            try:
+                socket.create_connection((host, port), timeout=timeout).close()
+            except OSError:
+                break
+            times.append((_t.perf_counter() - start) * 1000)
+        if times:
+            return round(statistics.median(times))
+    return None
+
+
+# Windows prints "время=17мс TTL=56" / "time<1ms TTL=56" (TTL in capitals, any language), Linux/macOS
+# "icmp_seq=1 ttl=56 time=15.2 ms" — case matters, or Linux's "seq=1 ttl=" would read as a time.
+PING_TIMES = __import__("re").compile(rb"[=<](\d+(?:[.,]\d+)?)\s?\S{0,4}?\s+TTL=|time[=<]\s?(\d+(?:\.\d+)?)\s?ms")
+
+
+def parse_ping(out: bytes) -> List[float]:
+    """Reply times from `ping` output, ms: Windows in any language ("время=17мс TTL=56", "time<1ms TTL=56")
+    and Linux/macOS ("time=15.2 ms")."""
+    return [float((a or b).replace(b",", b".")) for a, b in PING_TIMES.findall(out)]
+
+
+def icmp_rtt(host: str, count: int = 3) -> Optional[int]:
+    """Network round trip to `host`, ms, by the system ping (what the person would see themselves); None when
+    the host does not answer pings."""
+    import statistics
+    import subprocess
+    import sys as _sys
+    args = (["ping", "-n", str(count), "-w", "1000", host] if _sys.platform == "win32"
+            else ["ping", "-c", str(count), "-i", "0.2", "-W", "1", host])
+    try:
+        out = subprocess.run(args, capture_output=True, timeout=count * 1.5 + 3,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    times = parse_ping(out)
+    return round(statistics.median(times)) if times else None
+
+
+CASCADE_KINDS = ("cascade", "rxh", "rhy2", "rwarp")  # on the master, leading to a node: via RU
+DIRECT_KINDS = ("direct", "xhttp", "hy2", "warp")    # on a server itself (a node, or the master as a VPN)
+
+
+def real_routes(master: str, nodes: List[Dict[str, Any]], inbounds: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Which ways in users really have, from the entries on the panel — what the map draws, whatever the settings
+    say: an entry counts when it is switched on and goes into subscriptions. Per node: cascade (via RU), direct,
+    warp (any WARP entry, direct or via RU); for the master: vpn (its own entries, traffic leaves from it) and
+    warp. A node that has entries of none of these kinds is not offered to users at all."""
+    from . import xrayconf as xc
+    names = {n.get("id"): n.get("name") for n in nodes}
+    out: Dict[str, Any] = {"master": {"vpn": False, "warp": False}, "nodes": {}}
+
+    def node(name: str) -> Dict[str, bool]:
+        return out["nodes"].setdefault(name, {"cascade": False, "direct": False, "warp": False})
+    for i in inbounds:
+        kind = xc.inbound_kind(str(i.get("tag", "")))
+        if not kind or i.get("enable") is False or i.get("excludeFromSub"):
+            continue
+        k, owner = kind
+        on_node = names.get(i.get("nodeId")) if i.get("nodeId") else None
+        if k in CASCADE_KINDS and not i.get("nodeId"):
+            node(owner)["cascade"] = True
+            if k == "rwarp":
+                node(owner)["warp"] = True
+        elif k in DIRECT_KINDS and on_node:
+            node(on_node)["direct"] = True
+            if k == "warp":
+                node(on_node)["warp"] = True
+        elif k in DIRECT_KINDS and not i.get("nodeId") and owner == master:
+            out["master"]["vpn"] = True
+            if k == "warp":
+                out["master"]["warp"] = True
+    for n in nodes:  # every registered node gets a row, even with nothing offered
+        node(n.get("name"))
+    return out
+
+
+def route_rtts(cfg: Any) -> Dict[str, Any]:
+    """From this computer (where the person is): to the RU master and straight to every foreign server, by ping —
+    the time to open a TCP connection runs several ms higher (equipment on the way inspects new connections) and
+    is only the fallback for a server that ignores pings. Measured in parallel, a few seconds."""
+    from concurrent.futures import ThreadPoolExecutor
+    targets = {"__master": (cfg.master.host, [443, cfg.ssh_for(cfg.master).port or 22])}
+    for n in cfg.nodes:
+        d = cfg.direct_for(n)
+        targets[n.name] = (n.host, [p for p in (d.port if d.enabled else None, 443, cfg.ssh_for(n).port or 22) if p])
+
+    def one(t):
+        host, ports = t
+        got = icmp_rtt(host)
+        return got if got is not None else tcp_rtt(host, ports)
+    with ThreadPoolExecutor(max(1, len(targets))) as pool:
+        got = dict(zip(targets, pool.map(one, targets.values())))
+    return {"master": got.pop("__master"), "nodes": got}
 
 
 def domain_reachability(tls: Any, users: Dict[str, str]) -> Dict[str, bool]:
@@ -338,6 +443,8 @@ class App:
                           "flag": n.flag or "auto", "country": state.get(n.name, "country") or "", "hide": list(n.hide),
                           "direct": d.port if d.enabled else None, "cascade": bool(c.enabled),
                           "warp": bool(cfg.set_for(n).warp) and "warp" not in n.hide,
+                          # what WARP adds to each round trip from this server (measured daily), ms or None
+                          "warpMs": (state.get(n.name, "warp_endpoint") or {}).get("added_ms"),
                           "prepared": bool(state.get(n.name, "api_token")), "access": access(n)})
         tls = cfg.tls_for(cfg.master)
         st = cfg.defaults.set
@@ -391,8 +498,12 @@ class App:
                   "panel": ms.get("panelVersion", ""), "ip": (ms.get("publicIP") or {}).get("ipv4", "")}
         users = fleet.subscriptions()
         return {"ready": True, "nodes": rows, "users": users, "master": master,
+                "routes": real_routes(fleet.cfg.master.name, nodes, inbounds),
                 "online": activity["online"], "lastOnline": activity["lastOnline"],
-                "domains": domain_reachability(fleet.cfg.tls_for(fleet.cfg.master), users)}
+                "domains": domain_reachability(fleet.cfg.tls_for(fleet.cfg.master), users),
+                "rtt": dict(route_rtts(fleet.cfg), fromMaster=getattr(fleet, "master_rtts", {}) or {}),
+                # WARP on each server, from the background check every 5 minutes (real traffic from the master)
+                "warp": __import__("xui_fleet.history", fromlist=["History"]).History(self.path).last_warp()}
 
     # ---- write ----------------------------------------------------------
     def setup(self, body: Dict[str, Any]) -> None:

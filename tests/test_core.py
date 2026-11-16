@@ -1557,3 +1557,127 @@ def test_vpn_name_goes_to_the_panel_title(tmp_path):
     assert panel.settings()["subTitle"] == "set in the panel"  # no name in the settings: the panel's own stays
     with pytest.raises(ValidationError):
         FleetConfig.model_validate({"master": {"name": "ru", "host": "9.9.9.9"}, "clients": {"vpn_name": "x" * 41}})
+
+
+def test_warp_added_delay_is_half_the_handshake_difference():
+    from xui_fleet import provision as pv
+
+    class FakeSSH:
+        def __init__(self, out):
+            self.out, self.script = out, ""
+
+        def run(self, script, check=True, timeout=0, env=None):
+            self.script = script
+            return type("R", (), {"out": self.out})()
+    # through WARP: the first request pays for the tunnel handshake and is left out
+    ssh = FakeSSH("w:204:0.900 w:204:0.100 w:204:0.104 w:204:0.098 d:204:0.040 d:204:0.044 d:204:0.042 d:204:0.050")
+    assert pv.warp_added_ms(ssh, {"protocol": "wireguard", "settings": {"peers": [{}]}}, "188.114.96.1:2408") == 29
+    assert '"endpoint": "188.114.96.1:2408"' in ssh.script and "socks5h://127.0.0.1:39995" in ssh.script
+    assert pv.warp_added_ms(FakeSSH("w:000:0 w:000:0 d:204:0.04 d:204:0.04"), {"settings": {"peers": [{}]}}, "") is None
+    assert pv.warp_added_ms(FakeSSH("w:204:0.5 w:204:0.01 w:204:0.01 d:204:0.05 d:204:0.05"), {"settings": {"peers": [{}]}}, "") == 0
+
+
+def test_master_rtts_parse_the_connect_times(tmp_path):
+    from xui_fleet.engine import Fleet
+    from xui_fleet.state import State
+
+    class FakeSSH:
+        script = ""
+
+        def run(self, script, check=True, timeout=0, env=None):
+            FakeSSH.script = script
+            return type("R", (), {"out": "uk ping 15.232\nde tcp 0.045 0.061 0.049\nfr tcp 0.000 0.000 0.000\n"})()
+    fleet = Fleet.__new__(Fleet)
+    fleet.cfg = FleetConfig.model_validate({"master": {"name": "ru", "host": "9.9.9.9"},
+                                            "nodes": [{"name": "uk", "host": "198.51.100.1"}, {"name": "de", "host": "198.51.100.2"},
+                                                      {"name": "fr", "host": "198.51.100.3"}]})
+    fleet._master_ssh = FakeSSH()
+    assert fleet._master_rtts() == {"uk": 15, "de": 49}  # ping where it answers, else TCP; unreachable: no figure
+    assert "ping -c 4" in FakeSSH.script and "telnet://198.51.100.1:443" in FakeSSH.script
+    fleet._master_ssh = None
+    assert fleet._master_rtts() == {}
+
+
+def test_ping_output_in_any_language():
+    from xui_fleet.ui import parse_ping
+    ru = "Ответ от 1.2.3.4: число байт=32 время=17мс TTL=56\r\nОтвет от 1.2.3.4: число байт=32 время<1мс TTL=56".encode("cp866")
+    en = b"Reply from 1.2.3.4: bytes=32 time=17ms TTL=56\r\nReply from 1.2.3.4: bytes=32 time<1ms TTL=56"
+    lin = b"64 bytes from 1.2.3.4: icmp_seq=1 ttl=56 time=15.2 ms\n64 bytes from 1.2.3.4: icmp_seq=2 ttl=56 time=15.4 ms"
+    assert parse_ping(ru) == [17.0, 1.0] and parse_ping(en) == [17.0, 1.0] and parse_ping(lin) == [15.2, 15.4]
+    assert parse_ping("Превышен интервал ожидания для запроса.".encode("cp866")) == []
+
+
+def test_last_warp_check_is_read_back_while_fresh(tmp_path, monkeypatch):
+    import time as _t
+    from xui_fleet import history as hs
+    from xui_fleet import service
+    monkeypatch.setattr(service, "APP_DIR", tmp_path)
+    h = hs.History(tmp_path / "fleet.yaml")
+    assert h.last_warp() == {}
+    now = int(_t.time())
+    h.add_health({"t": now - 700, "n": {"uk": 15}, "m": 1, "w": {"uk": 120, "de": 90}})
+    h.add_health({"t": now - 300, "n": {"uk": 15}, "m": 1, "w": {"uk": None}})
+    h.add_health({"t": now - 10, "n": {"uk": 15}, "m": 1})  # this round had no WARP check
+    assert h.last_warp() == {"at": now - 300, "nodes": {"uk": None}}
+    assert h.last_warp(max_age=60) == {}  # too old: unknown, not "down"
+
+
+def test_history_takes_the_masters_ping_and_the_warp_check(tmp_path, monkeypatch):
+    from xui_fleet import history as hs
+    from xui_fleet import service
+    monkeypatch.setattr(service, "APP_DIR", tmp_path)
+
+    class FakeFleet:
+        master_status = {"xray": {"state": "running"}}
+        master_rtts = {"uk": 15}
+
+        def status(self):
+            return [{"name": "uk", "status": "online", "latencyMs": 40}, {"name": "de", "status": "online", "latencyMs": 44},
+                    {"name": "fr", "status": "offline"}], []
+
+        def probe_warp(self):
+            return {"uk": 120, "de": None}
+    monkeypatch.setattr(hs, "TRAFFIC_EVERY", 10**11)  # only the health sample is due
+    h = hs.History(tmp_path / "fleet.yaml")
+    assert hs.record(FakeFleet(), h, now=10**10) == ["health"]
+    row = hs._read(h.dir / "health.jsonl", 0)[-1]
+    assert row["n"] == {"uk": 15, "de": 44, "fr": None}  # ping where measured, the panel's figure otherwise
+    assert row["w"] == {"uk": 120, "de": None}
+
+
+def test_map_routes_come_from_the_real_entries():
+    from xui_fleet.ui import real_routes
+    nodes = [{"id": 1, "name": "uk"}, {"id": 2, "name": "de"}, {"id": 3, "name": "fr"}]
+    inb = [
+        {"tag": "fleet-rxh-uk", "enable": True}, {"tag": "fleet-xhttp-uk", "nodeId": 1, "enable": True},
+        {"tag": "fleet-warp-uk", "nodeId": 1, "enable": True},
+        # de: via RU switched off, direct hidden from subscriptions, its WARP only via RU
+        {"tag": "fleet-rhy2-de", "enable": False}, {"tag": "fleet-direct-de", "nodeId": 2, "excludeFromSub": True},
+        {"tag": "fleet-hy2-de", "nodeId": 2, "enable": True}, {"tag": "fleet-rwarp-de", "enable": True},
+        {"tag": "fleet-warpup-de", "nodeId": 2, "enable": True},  # internal: not a way in
+        # the master is a VPN itself
+        {"tag": "fleet-direct-ru", "enable": True}, {"tag": "fleet-warp-ru", "enable": True},
+        {"tag": "someone-elses", "enable": True},
+    ]
+    r = real_routes("ru", nodes, inb)
+    assert r["nodes"]["uk"] == {"cascade": True, "direct": True, "warp": True}
+    assert r["nodes"]["de"] == {"cascade": True, "direct": True, "warp": True}  # rwarp is a way via RU too
+    assert r["nodes"]["fr"] == {"cascade": False, "direct": False, "warp": False}  # set up, nothing offered
+    assert r["master"] == {"vpn": True, "warp": True}
+    only_hidden = real_routes("ru", nodes[:1], [{"tag": "fleet-rxh-uk", "excludeFromSub": True}, {"tag": "fleet-hy2-uk", "nodeId": 1, "enable": False}])
+    assert only_hidden["nodes"]["uk"] == {"cascade": False, "direct": False, "warp": False} and not only_hidden["master"]["vpn"]
+
+
+def test_cascade_entry_names_follow_the_masters_name():
+    """The master need not be in Russia: "через RU" only when it is called RU (the default label keeps the names
+    users already have)."""
+    assert xc.remark_cascade_xhttp("🇬🇧 UK") == "🇬🇧 UK · через RU (XHTTP)"
+    assert xc.remark_cascade_xhttp("🇬🇧 UK", "NL") == "🇬🇧 UK · через NL (XHTTP)"
+    assert xc.remark_cascade_warp("🇩🇪 Germany", "Дом") == "🇩🇪 Germany · через Дом → WARP"
+    panel = FakePanel()
+    cfg = FleetConfig.model_validate({"master": {"name": "hub", "host": "9.9.9.9", "label": "NL",
+                                                 "tls": {"mode": "domain", "domain": "a.example"}},
+                                      "nodes": [{"name": "de", "host": "de.example"}], "users": [{"name": "alice"}]})
+    Reconciler(panel, cfg).run(_access(["de"]))
+    names = [i["remark"] for i in panel.inbounds() if not i.get("nodeId")]
+    assert names and all("через RU" not in r for r in names) and any("через NL" in r for r in names)

@@ -337,7 +337,7 @@ def node_add(
     password_env: Optional[str] = typer.Option(None, "--password-env", help="Имя переменной окружения с SSH-паролем."),
     port: Optional[int] = typer.Option(None, "--port", help="Порт прямого входа на ноде (по умолчанию 443)."),
     cascade_port: Optional[int] = typer.Option(None, "--cascade-port", help="Порт каскадного входа на RU."),
-    no_cascade: bool = typer.Option(False, "--no-cascade", help="Без каскада через RU."),
+    no_cascade: bool = typer.Option(False, "--no-cascade", help="Без каскада через главный сервер."),
     no_direct: bool = typer.Option(False, "--no-direct", help="Не выдавать пользователям прямое подключение."),
     no_apply: bool = typer.Option(False, "--no-apply", help="Только записать в конфиг."),
     config: Path = ConfigOpt,

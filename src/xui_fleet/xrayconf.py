@@ -70,8 +70,8 @@ def remark_warp(label: str) -> str:
     return f"{label} · WARP"
 
 
-def remark_cascade_warp(label: str) -> str:
-    return f"{label} · через RU → WARP"
+def remark_cascade_warp(label: str, hub: str = "RU") -> str:
+    return f"{label} · через {hub} → WARP"
 
 
 def rxh_tag(node: str) -> str:
@@ -79,20 +79,21 @@ def rxh_tag(node: str) -> str:
     return f"{PREFIX}rxh-{node}"
 
 
-def remark_cascade_xhttp(label: str) -> str:
-    return f"{label} · через RU (XHTTP)"
+def remark_cascade_xhttp(label: str, hub: str = "RU") -> str:
+    return f"{label} · через {hub} (XHTTP)"
 
 
-def remark_cascade_hy2(label: str) -> str:
-    return f"{label} · через RU (Hysteria2)"
+def remark_cascade_hy2(label: str, hub: str = "RU") -> str:
+    return f"{label} · через {hub} (Hysteria2)"
 
 
 def remark_direct(label: str) -> str:
     return label
 
 
-def remark_cascade(label: str) -> str:
-    return f"{label} · через RU"
+def remark_cascade(label: str, hub: str = "RU") -> str:
+    """`hub`: the master's own name (master.label) — "RU" only when it is called so; the master can be anywhere."""
+    return f"{label} · через {hub}"
 
 
 def remark_xhttp(label: str) -> str:

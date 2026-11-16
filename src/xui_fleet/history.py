@@ -1,10 +1,11 @@
 """History of the network, kept on this computer: route health every 5 minutes, traffic counters every hour.
 
 Samples are taken by the running app (see ui.serve), so the history has gaps while the app is closed —
-the page says so. Health is measured by the main panel, i.e. from the Russian network: latency RU → node.
+the page says so. Health is measured from the main server (wherever it is): latency master → node.
 
 Files, one folder per profile (keyed by its fleet.yaml path):
-    health.jsonl   {"t": epoch, "n": {node: latency_ms | null (down)}, "m": 1 | 0 (master Xray running)}
+    health.jsonl   {"t": epoch, "n": {node: latency_ms | null (down)}, "m": 1 | 0 (master Xray running),
+                    "w": {node: ms | null} (real traffic through the node's WARP from the master; absent: not checked)}
     traffic.jsonl  {"t": epoch, "u": {user: bytes total}, "r": {node: {"ru": bytes via RU, "d": bytes direct}}}
 Counters are cumulative (as 3x-ui keeps them); per-day amounts are the differences between samples, and a
 counter that went down (reset in the panel) counts from zero.
@@ -133,6 +134,13 @@ class History:
         rows = _read(self.dir / f"{kind}.jsonl", time.time() - 2 * 86400)
         return rows[-1]["t"] if rows else 0
 
+    def last_warp(self, max_age: float = 3 * HEALTH_EVERY) -> Dict[str, Any]:
+        """The latest WARP check if it is recent: {"at": epoch, "nodes": {server: ms | None}}, or {}."""
+        for row in reversed(_read(self.dir / "health.jsonl", time.time() - max_age)):
+            if "w" in row:
+                return {"at": row["t"], "nodes": row["w"]}
+        return {}
+
     def forget(self) -> None:
         for p in self.dir.glob("*.jsonl"):
             p.unlink(missing_ok=True)
@@ -208,7 +216,17 @@ def record(fleet: Any, hist: History, now: Optional[float] = None) -> List[str]:
         return done
     if want_health:
         nodes, _inb = fleet.status()
-        hist.add_health(health_sample(nodes, getattr(fleet, "master_status", {}) or {}))
+        row = health_sample(nodes, getattr(fleet, "master_status", {}) or {})
+        # the network delay measured on the master (ping), where it has one: the panel's figure is an HTTP call
+        rtts = getattr(fleet, "master_rtts", {}) or {}
+        row["n"] = {k: (rtts.get(k, v) if v is not None else None) for k, v in row["n"].items()}
+        try:  # does WARP carry traffic on each server: {server: ms | null}
+            warp = fleet.probe_warp()
+            if warp:
+                row["w"] = warp
+        except Exception:
+            pass  # a gap in the WARP history, not in the rest
+        hist.add_health(row)
         done.append("health")
     if want_traffic:
         with fleet.master_panel(provision=False) as panel:

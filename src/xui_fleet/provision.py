@@ -782,6 +782,37 @@ def pick_warp_endpoint(ssh: SSH, warp: Dict[str, Any], candidates: Optional[List
     return (best if best and scores[best] < 99 else ""), scores
 
 
+def warp_added_ms(ssh: SSH, warp: Dict[str, Any], endpoint: str) -> Optional[int]:
+    """How much WARP adds to every round trip from this server, in ms: an HTTPS handshake (TCP + TLS, two round
+    trips) to the same site through WARP and directly, medians of three; half the difference. None if either
+    side failed."""
+    import copy
+    import json as _json
+    import statistics
+    o = copy.deepcopy(warp)
+    o["tag"] = "t"
+    if endpoint:
+        o.setdefault("settings", {}).setdefault("peers", [{}])[0]["endpoint"] = endpoint
+    cfg = {"log": {"loglevel": "none"}, "inbounds": [{"listen": "127.0.0.1", "port": 39995, "protocol": "socks"}], "outbounds": [o]}
+    probe = ("for i in 1 2 3 4; do curl -s -m 6 {via} -o /dev/null -w '{tag}:%{{http_code}}:%{{time_appconnect}} ' "
+             "https://www.gstatic.com/generate_204; done\n")
+    out = ssh.run(
+        "cat > /tmp/xf-warp2.json <<'XFEOF'\n" + _json.dumps(cfg) + "\nXFEOF\n"
+        "cd /usr/local/x-ui/bin && (./xray-linux-amd64 run -c /tmp/xf-warp2.json >/dev/null 2>&1 & echo $! > /tmp/xf-warp2.pid); sleep 2\n"
+        + probe.format(via="-x socks5h://127.0.0.1:39995", tag="w") + probe.format(via="", tag="d") +
+        "kill $(cat /tmp/xf-warp2.pid) 2>/dev/null; rm -f /tmp/xf-warp2.json /tmp/xf-warp2.pid\n", check=False, timeout=90).out.split()
+    times: Dict[str, List[float]] = {"w": [], "d": []}
+    for item in out:
+        parts = item.split(":")
+        if len(parts) == 3 and parts[1] == "204" and parts[0] in times:
+            times[parts[0]].append(float(parts[2]))
+    # the first request through a fresh tunnel pays for the WireGuard handshake: leave it out
+    w, d = times["w"][1:], times["d"]
+    if len(w) < 2 or len(d) < 2:
+        return None
+    return max(0, round((statistics.median(w) - statistics.median(d)) / 2 * 1000))
+
+
 # ---- removal ------------------------------------------------------------
 _DOMAIN = re.compile(r"^[A-Za-z0-9.-]{1,253}$")
 

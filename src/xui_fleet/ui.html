@@ -77,7 +77,7 @@
           <div class="step-b">
             <div class="roles" id="setupRoles">
               <label class="role"><input type="radio" name="role" value="gateway" checked><span><b>Вход для зарубежных серверов</b>
-                Сервер в России: пользователи подключаются к нему, а трафик уходит через ваши зарубежные серверы (каскад). Так работает обход блокировок «белых списков».</span></label>
+                Пользователи подключаются к этому серверу, а трафик уходит через ваши зарубежные серверы (каскад) — например, когда он стоит в вашей стране, а прямой доступ за рубеж блокируют. Так работает обход блокировок «белых списков».</span></label>
               <label class="role"><input type="radio" name="role" value="vpn"><span><b>Сам VPN-сервер</b>
                 Один сервер — и есть ваш VPN: пользователи подключаются к нему напрямую. Зарубежные серверы можно добавить позже.</span></label>
               <label class="role"><input type="radio" name="role" value="both"><span><b>И то и другое</b>
@@ -231,7 +231,7 @@
         </div>
         <div class="lead" id="statSince"></div>
       </div>
-      <div class="panel"><div class="panel-h"><b>Доступность маршрутов</b><span class="muted small">замеры с главного сервера — то есть из российской сети</span></div>
+      <div class="panel"><div class="panel-h"><b>Доступность маршрутов</b><span class="muted small">замеры с главного сервера — из его сети</span></div>
         <div class="panel-b"><div class="atable" id="statAvail"></div></div></div>
       <div class="panel"><div class="panel-h"><b>Трафик по дням</b><span class="muted small">по серверам выхода</span></div>
         <div class="panel-b"><div id="statDaily"></div><div class="atable" id="statRoutes" style="margin-top:14px"></div></div></div>
@@ -297,7 +297,7 @@
           <p>Через главный сервер всегда идут подписки и управление. Кроме этого, у него может быть одна или обе роли
             (карточка «Главный сервер» → «⋯» → «Роль и подключения»):</p>
           <table><tr><th>Роль</th><th>Когда выбирать</th></tr>
-            <tr><td><b>Каскады</b></td><td>Сервер в России. Пользователи подключаются к нему, а трафик уходит через ваши зарубежные серверы — так работает даже там, где зарубежные IP заблокированы.</td></tr>
+            <tr><td><b>Каскады</b></td><td>Промежуточный сервер (например, в вашей стране). Пользователи подключаются к нему, а трафик уходит через ваши зарубежные серверы — так работает даже там, где зарубежные IP заблокированы.</td></tr>
             <tr><td><b>Сам VPN-сервер</b></td><td>У вас один сервер (обычно за рубежом), и он — ваш VPN. Пользователи получают его собственный набор подключений.</td></tr></table>
 
           <h2 id="h-add">Добавить сервер</h2>
@@ -335,18 +335,18 @@
           <h2 id="h-conn">Какое подключение выбрать</h2>
           <p>Подписка сгруппирована по странам, внутри — сначала лучшие подключения. Обычно достаточно первого в списке.</p>
           <table><tr><th>Подключение</th><th>Когда</th></tr>
-            <tr><td>через RU (XHTTP)</td><td>Основное. Работает почти везде, в том числе в мобильных сетях с «белыми списками».</td></tr>
+            <tr><td>через главный (XHTTP)</td><td>Основное. Работает почти везде, в том числе в мобильных сетях с «белыми списками».</td></tr>
             <tr><td>XHTTP</td><td>Напрямую к зарубежному серверу, быстрее, если его IP не заблокирован.</td></tr>
             <tr><td>Hysteria2</td><td>Быстрое подключение по UDP. Если не работает — ваша сеть режет UDP, берите XHTTP.</td></tr>
             <tr><td>WARP</td><td>Выход в интернет с адреса Cloudflare — для сайтов, которые не пускают VPN.</td></tr></table>
 
           <h2 id="h-ru">Российские сайты</h2>
           <p>Банки, Госуслуги и маркетплейсы работают мимо VPN: в Happ это делает профиль «RU напрямую», который приходит вместе с подпиской,
-            а у подключений «через RU» российские сайты открываются прямо с главного сервера.</p>
+            а у подключений через главный сервер российские сайты открываются прямо с него (если он в России).</p>
 
           <h2 id="h-domain">Если заблокируют домен</h2>
           <ol><li>Заранее: карточка «Главный сервер» → «⋯» → «Резервный домен», и раздайте пользователям резервные ссылки (кнопка «Резерв» у пользователя) — подписка будет открываться по обоим доменам.</li>
-            <li>Там же «Адреса подключений через RU» → «Основной и резервный»: у каждого подключения через RU в подписке будет вторая ссылка через резервный домен («· резерв»). Пользователям ничего делать не нужно — достаточно обновить подписку.</li>
+            <li>Там же «Адреса подключений через главный» → «Основной и резервный»: у каждого подключения через главный сервер в подписке будет вторая ссылка через резервный домен («· резерв»). Пользователям ничего делать не нужно — достаточно обновить подписку.</li>
             <li>Если заблокировали основной домен: «⋯» → «Перейти на …» — резервный станет основным. Пользователи открывают резервную ссылку на подписку. Подключения напрямую к зарубежным серверам блокировка домена не затрагивает.</li></ol>
 
           <h2 id="h-backup">Бэкапы и перенос главного сервера</h2>
@@ -380,7 +380,7 @@
       <div class="panel" style="margin-top:14px">
         <div class="panel-b" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
           <div style="flex:1;min-width:240px"><h2>Перенос главного сервера</h2>
-            <div class="muted small">Если RU-сервер заблокирован: на новый сервер ставится 3x-ui и восстанавливается всё из бэкапа. Старый не трогается.</div></div>
+            <div class="muted small">Если главный сервер заблокирован: на новый сервер ставится 3x-ui и восстанавливается всё из бэкапа. Старый не трогается.</div></div>
           <button class="btn danger" id="btnMigrate">Перенести…</button>
         </div>
       </div>
@@ -456,7 +456,7 @@
 </div>
 
 <dialog id="dlgNode"><form id="nodeForm">
-  <div class="dlg-h"><h2>Новый зарубежный сервер</h2><p>Установка 3x-ui, подключение к главной панели и каскад через RU — автоматически.</p></div>
+  <div class="dlg-h"><h2>Новый зарубежный сервер</h2><p>Установка 3x-ui, подключение к главной панели и каскад через главный сервер — автоматически.</p></div>
   <div class="dlg-b">
     <div class="grid2">
       <div><label class="f" for="n_host">IP-адрес или домен</label><input type="text" id="n_host" name="host" required placeholder="198.51.100.20"></div>
@@ -472,7 +472,7 @@
       <summary>Дополнительно</summary>
       <label class="f" for="n_port">Порт прямого подключения</label>
       <input type="number" id="n_port" name="port" placeholder="443" min="1" max="65535">
-      <label class="check"><input type="checkbox" name="noCascade"> Без каскада через RU</label>
+      <label class="check"><input type="checkbox" name="noCascade"> Без каскада через главный сервер</label>
       <label class="check"><input type="checkbox" name="noDirect"> Не выдавать прямое подключение</label>
       <label class="f" for="n_paddr">Адрес панели для главного сервера, если отличается</label>
       <input type="text" id="n_paddr" name="panelAddress">
@@ -518,7 +518,7 @@
 </form></dialog>
 
 <dialog id="dlgAddr"><form id="addrForm">
-  <div class="dlg-h"><h2>Адреса подключений через RU</h2><p>Какой домен стоит в ссылках подписки у подключений через главный сервер.
+  <div class="dlg-h"><h2>Адреса подключений через главный сервер</h2><p>Какой домен стоит в ссылках подписки у подключений через главный сервер.
     Переключается хостами 3x-ui: сами подключения и их ключи не меняются, пользователям достаточно обновить подписку.</p></div>
   <div class="dlg-b">
     <div class="roles">
@@ -609,7 +609,7 @@
   <div class="dlg-h"><h2>Главный сервер</h2><p>Что он делает для пользователей. Подписки и управление всегда идут через него.</p></div>
   <div class="dlg-b">
     <label class="check"><input type="checkbox" name="vpn"> <span><b>Сам VPN-сервер</b> — пользователи подключаются к нему, интернет выходит с него</span></label>
-    <label class="check"><input type="checkbox" name="cascades"> <span><b>Каскады</b> — подключения «через RU» ведут на зарубежные серверы</span></label>
+    <label class="check"><input type="checkbox" name="cascades"> <span><b>Каскады</b> — подключения через этот сервер ведут на зарубежные серверы</span></label>
     <div id="roleOwn">
       <div class="grid2">
         <div><label class="f" for="o_label">Название в приложениях</label><input type="text" id="o_label" name="label" placeholder="по стране"></div>
@@ -682,7 +682,7 @@
     <div class="hint" style="margin-top:2px">Снятая галочка убирает подключение у пользователей; на сервере оно продолжает работать.</div>
     <div class="grid2" style="margin-top:6px">
       <div>
-        <div class="group-title">Через RU</div>
+        <div class="group-title">Через главный сервер</div>
         <label class="check"><input type="checkbox" name="show_cascade_xhttp"> XHTTP</label>
         <label class="check"><input type="checkbox" name="show_cascade_hy2"> Hysteria2</label>
         <label class="check"><input type="checkbox" name="show_cascade"> TCP</label>
@@ -776,15 +776,15 @@
   <div class="dlg-b">
     <div class="warpflow">
       <div class="row"><span class="lbl">Обычное подключение — сайты видят адрес вашего сервера</span>
-        <span class="hop">телефон</span><span class="arr">→</span><span class="hop">RU (если «через RU»)</span><span class="arr">→</span>
+        <span class="hop">телефон</span><span class="arr">→</span><span class="hop">главный (если каскад)</span><span class="arr">→</span>
         <span class="hop">зарубежный сервер</span><span class="arr">→</span><span class="hop">сайт видит адрес сервера</span></div>
       <div class="row"><span class="lbl">Подключение с «WARP» в названии — сайты видят адрес Cloudflare</span>
-        <span class="hop">телефон</span><span class="arr">→</span><span class="hop">RU (если «через RU»)</span><span class="arr">→</span>
+        <span class="hop">телефон</span><span class="arr">→</span><span class="hop">главный (если каскад)</span><span class="arr">→</span>
         <span class="hop">зарубежный сервер</span><span class="arr">→</span><span class="hop w">☁ Cloudflare WARP</span><span class="arr">→</span><span class="hop">сайт видит адрес Cloudflare</span></div>
     </div>
     <ul class="plain">
       <li><b>Зачем.</b> Некоторые сервисы не пускают адреса дата-центров и VPN: ChatGPT, стриминги, часть банков, Google с бесконечной капчей. Адреса Cloudflare они обычно принимают.</li>
-      <li><b>Где в подписке.</b> Подключения «UK · WARP» и «UK · через RU → WARP» (так же для других стран). Страна выхода остаётся той же.</li>
+      <li><b>Где в подписке.</b> Подключения «UK · WARP» и «UK · через … → WARP» (вместо … — название главного сервера) (так же для других стран). Страна выхода остаётся той же.</li>
       <li><b>Цена.</b> Чуть выше задержка (обычно +10–40 мс), скорость зависит от Cloudflare. Для всего остального берите обычные подключения.</li>
       <li><b>Как это устроено.</b> Сервер сам регистрируется в бесплатном WARP и отправляет туда только трафик этих подключений. Ничего настраивать не нужно.</li>
     </ul>
@@ -807,8 +807,8 @@
       <button type="button" data-rthours="168" aria-pressed="false">7 дней</button>
     </div>
     <div class="tiles" id="rtTiles"></div>
-    <div class="sect"><h3>Задержка RU → сервер, мс</h3><div id="rtChart"></div>
-      <div class="hint">Красные полосы — маршрут не отвечал. Замеры делает главный сервер, то есть это задержка из российской сети.</div></div>
+    <div class="sect"><h3>Задержка главный → сервер, мс</h3><div id="rtChart"></div>
+      <div class="hint">Красные полосы — маршрут не отвечал. Замеры делает главный сервер — это задержка из его сети.</div></div>
   </div>
   <div class="dlg-f"><button type="button" class="btn" id="rtCard">Показать карточку</button><div class="spacer"></div><button type="button" class="btn" data-close>Закрыть</button></div>
 </div></dialog>

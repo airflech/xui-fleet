@@ -23,6 +23,22 @@ Log = Callable[[str], None]
 
 
 
+def parse_master_rtts(out: str) -> Dict[str, int]:
+    """Lines "<node> ping <avg ms>" or "<node> tcp <seconds> <seconds> …" from _master_rtts → {node: ms}."""
+    import statistics
+    got: Dict[str, int] = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        name, kind, vals = parts[0], parts[1], parts[2:]
+        nums = [float(v) for v in vals if v.replace(".", "", 1).isdigit() and float(v) > 0]
+        if not nums:
+            continue
+        got[name] = round(nums[0]) if kind == "ping" else round(statistics.median(nums) * 1000)
+    return got
+
+
 def public_sub_port(s: Dict[str, Any]) -> int:
     """The port users fetch subscriptions on. Behind the app gate (nginx) 3x-ui itself listens on 127.0.0.1 and
     the public address is its subURI."""
@@ -299,13 +315,13 @@ class Fleet:
                 failed[name] = (
                     f"{name}: с главного сервера {self.cfg.master.host} не открывается ни одно соединение к "
                     f"{acc.address}:{acc.port} (0 из 6), хотя сам сервер в порядке. Скорее всего, IP {acc.address} "
-                    f"фильтруется в России: через него не будет работать ни управление, ни каскад. "
+                    f"фильтруется по пути от главного сервера: через него не будет работать ни управление, ни каскад. "
                     f"Нужен другой IP или другой зарубежный сервер."
                 )
                 self.log("[ошибка] " + failed[name])
                 access.pop(name)
             elif ok < 6:
-                warnings.append(f"{name}: связь RU → {acc.address} нестабильна ({ok} из 6 соединений) — "
+                warnings.append(f"{name}: связь {(self.cfg.master.label or 'главный').strip()} → {acc.address} нестабильна ({ok} из 6 соединений) — "
                                 f"возможна фильтрация IP в России, каскад может работать с перебоями")
                 self.log(f"⚠ {warnings[-1]}")
         return warnings
@@ -786,7 +802,7 @@ class Fleet:
                 if self._master_ssh is not None:
                     self.ensure_sub_gate(panel, self._master_ssh)
         if mode_before != self.cfg.tls_for(master).address_mode:
-            self.log(f"адреса подключений через RU: теперь основной домен {domain} — режим «только резервный» снят, "
+            self.log(f"адреса подключений через главный сервер: теперь основной домен {domain} — режим «только резервный» снят, "
                      f"иначе ссылки вели бы на прежний домен")
         code = self._sub_answers([domain])[domain]
         if code != "200":
@@ -827,7 +843,7 @@ class Fleet:
         if not reserves:
             if mode_before != "main":
                 # the hosts of the removed domain still carry the links: back to the main domain right away
-                self.log(f"адреса подключений через RU: снова основной домен {tls.domain}")
+                self.log(f"адреса подключений через главный сервер: снова основной домен {tls.domain}")
                 self.apply(skip_provision=True)
             return "Резервный домен убран"
         answers = self._sub_answers([tls.domain, domain])
@@ -948,6 +964,8 @@ class Fleet:
         """Best Cloudflare entry point for this server, measured once a day (the routes change)."""
         saved = self.state.get(node.name, "warp_endpoint") or {}
         if saved.get("endpoint") and time.time() - saved.get("at", 0) < self.WARP_RECHECK:
+            if "added_ms" not in saved:  # measured by an older version: add the delay figure once
+                self.state.update(node.name, warp_endpoint=dict(saved, added_ms=self._warp_added(node, ssh, warp, saved["endpoint"])))
             return saved["endpoint"]
         best, scores = pv.pick_warp_endpoint(ssh, warp)
         self._warp_bad[node.name] = not best or scores[best] > 1.5
@@ -957,8 +975,19 @@ class Fleet:
         shown = ", ".join(f"{ep} {t:.2f} с" if t < 99 else f"{ep} ✗" for ep, t in sorted(scores.items(), key=lambda x: x[1]))
         if best != saved.get("endpoint"):
             self.log(f"{node.name}: WARP через {best} (замер: {shown})")
-        self.state.update(node.name, warp_endpoint={"endpoint": best, "at": time.time(), "scores": scores})
+        self.state.update(node.name, warp_endpoint={"endpoint": best, "at": time.time(), "scores": scores,
+                                                    "added_ms": self._warp_added(node, ssh, warp, best)})
         return best
+
+    def _warp_added(self, node, ssh: SSH, warp: Dict[str, Any], endpoint: str) -> Optional[int]:
+        """The delay WARP adds on this server (shown on the route map); None if it could not be measured."""
+        try:
+            ms = pv.warp_added_ms(ssh, warp, endpoint)
+        except Exception:  # a figure for the map: never fail the WARP setup over it
+            return None
+        if ms is not None:
+            self.log(f"{node.name}: WARP добавляет к задержке около {ms} мс")
+        return ms
 
     def _import_warp(self, imp, ssh: SSH, node_name: str, backup) -> None:
         from . import migrate as mg
@@ -1032,7 +1061,7 @@ class Fleet:
                     names[(h, int(i["port"]), proto)] = i["remark"]
             whose = "служебной подписки" if user["email"] == check else f"пользователя {user['email']}"
             self.log(f"проверяю {len(outs or [])} подключений {whose} с главного сервера "
-                     f"(из российского дата-центра; домашние сети и мобильные операторы могут вести себя иначе)")
+                     f"(из сети главного сервера; домашние сети и мобильные операторы могут вести себя иначе)")
             for n, o in enumerate(outs or []):
                 st = o.get("settings") or {}
                 h = (st.get("vnext") or st.get("servers") or [st])[0]
@@ -1057,6 +1086,59 @@ class Fleet:
                     self.log("  ❌ " + msg)
                     report.warnings.append(msg)
         return report
+
+    def probe_warp(self) -> Dict[str, Optional[int]]:
+        """Does WARP work on each server right now? Real traffic from the master through each server's WARP entry
+        (the service user's subscription, like the link check): {server: delay ms, or None if it failed}.
+        Servers without a WARP entry are left out."""
+        from .xrayconf import inbound_kind
+        got: Dict[str, Optional[int]] = {}
+        with self.master_panel(provision=False) as panel:
+            check = self.cfg.clients.check_email
+            user = next((c for c in panel.clients() if c.get("email") == check and c.get("subId")), None)
+            if user is None:
+                return got
+            s = panel.settings()
+            tls = self.cfg.tls_for(self.cfg.master)
+            host = tls.domain if tls.mode == "domain" and tls.domain else self.cfg.master.host
+            try:
+                parsed = panel.post("/xray/outbound-subs/parse",
+                                    form={"url": f"https://{host}:{public_sub_port(s)}{s.get('subPath', '/sub/')}{user['subId']}"})
+            except PanelError:
+                return got
+            outs = parsed.get("outbounds") if isinstance(parsed, dict) else parsed
+            node_host = {n["id"]: n.get("address") for n in panel.nodes()}
+            cfg_host = {n.name: n.host for n in self.cfg.nodes}
+            node_host.update({n["id"]: cfg_host.get(n["name"], n.get("address")) for n in panel.nodes()})
+            # The server's own WARP entry (master → server → Cloudflare); if that one is hidden from subscriptions,
+            # the entry via RU → WARP tells the same about the server's WARP.
+            master_hosts = {self.cfg.master.host, tls.domain, *tls.reserve_domains}
+            warp_at: Dict[tuple, Tuple[int, str]] = {}
+            for i in panel.inbounds():
+                kind = inbound_kind(str(i.get("tag", "")))
+                if not kind or kind[0] not in ("warp", "rwarp"):
+                    continue
+                proto = "hysteria" if i["protocol"] == "hysteria" else "vless"
+                hosts = {node_host.get(i["nodeId"])} if i.get("nodeId") else master_hosts | {i.get("shareAddr")}
+                for hh in hosts:
+                    warp_at[(hh, int(i["port"]), proto)] = (0 if kind[0] == "warp" else 1, kind[1])
+            order = []
+            for n, o in enumerate(outs or []):
+                st = o.get("settings") or {}
+                h = (st.get("vnext") or st.get("servers") or [st])[0]
+                key = (h.get("address"), int(h.get("port") or 0), "hysteria" if o.get("protocol") == "hysteria" else "vless")
+                if key in warp_at:
+                    order.append((warp_at[key], n, o))
+            for (_rank, name), n, o in sorted(order, key=lambda x: x[0]):
+                if name in got and got[name] is not None:
+                    continue
+                o["tag"] = f"warp-probe-{n}"
+                try:
+                    result = panel.test_outbound(o)
+                except PanelError:
+                    result = {}
+                got[name] = int(result.get("delay") or 0) if result.get("success") else None
+        return got
 
     # ---- backups and moving the master ----------------------------------
     @property
@@ -1530,7 +1612,30 @@ class Fleet:
                                       "lastOnline": panel.post("/clients/lastOnline") or {}}
             except PanelError:
                 self.last_activity = {"online": [], "lastOnline": {}}
+            self.master_rtts = self._master_rtts()
             return nodes, inbounds
+
+    def _master_rtts(self) -> Dict[str, int]:
+        """RU master → each foreign server, ms, measured on the master over the SSH connection already open: ping
+        (average of four), or the time to open a TCP connection for a server that ignores pings. The panel's own
+        node latency is the time of an HTTP call to the node's panel, well above the network delay and jumpy."""
+        if self._master_ssh is None:
+            return {}
+        import shlex
+        lines = []
+        for n in self.cfg.nodes:
+            d = self.cfg.direct_for(n)
+            port = d.port if d.enabled else (self.cfg.ssh_for(n).port or 22)
+            name, host = shlex.quote(n.name), shlex.quote(n.host)
+            lines.append(f"( p=$(ping -c 4 -i 0.2 -W 1 -q {host} 2>/dev/null | awk -F/ '/^(rtt|round-trip)/{{print $5}}'); "
+                         f"if [ -n \"$p\" ]; then echo {name} ping $p; else echo {name} tcp $(for i in 1 2 3; do "
+                         f"curl -s -o /dev/null -m 2 -w '%{{time_connect}} ' telnet://{host}:{int(port)} </dev/null; done); fi ) &")
+        lines.append("wait")
+        try:
+            out = self._master_ssh.run("\n".join(lines), check=False, timeout=30).out
+        except Exception:  # a figure for the map: never fail the status over it
+            return {}
+        return parse_master_rtts(out)
 
     def upgrade(self, only: Optional[Set[str]] = None) -> Dict[str, str]:
         """Nodes first, the master last: a node must never be older than its master."""

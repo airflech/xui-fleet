@@ -47,7 +47,7 @@ function latencyChart(box, points, long) {
   const max = Math.max(50, Math.ceil(Math.max(...vals, 1) * 1.15 / 25) * 25);
   const X = (t) => L + (W - L - R) * (t - t0) / span, Y = (v) => T + (H - T - B) * (1 - v / max);
   const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'chart', role: 'img' });
-  svg.appendChild(svgEl('title', null, 'Задержка RU → сервер, мс'));
+  svg.appendChild(svgEl('title', null, 'Задержка ' + hub() + ' → сервер, мс'));
   for (const v of [0, max / 2, max]) {  // recessive grid, one axis
     svg.appendChild(svgEl('line', { x1: L, x2: W - R, y1: Y(v), y2: Y(v), class: 'grid' }));
     svg.appendChild(svgEl('text', { x: L - 6, y: Y(v) + 4, class: 'axis', 'text-anchor': 'end' }, Math.round(v)));
@@ -155,7 +155,7 @@ async function loadStats() {
   for (const n of nodes) {
     const a = h24 && h24.nodes[n.name], b = h7 && h7.nodes[n.name];
     const r = el('div', 'arow click'); r.title = 'График задержки';
-    const nm = el('span', 'nm'); const sw = el('i'); sw.style.background = serverColor(n.name); nm.appendChild(sw); nm.appendChild(document.createTextNode('RU → ' + serverText(n.name))); r.appendChild(nm);
+    const nm = el('span', 'nm'); const sw = el('i'); sw.style.background = serverColor(n.name); nm.appendChild(sw); nm.appendChild(document.createTextNode(hub() + ' → ' + serverText(n.name))); r.appendChild(nm);
     const pct = (x) => (x == null ? '—' : x.toFixed(x >= 99.95 ? 0 : 1) + '%');
     for (const [v, bad] of [[a && a.uptime, a && a.uptime < 99], [b && b.uptime, b && b.uptime < 99]]) r.appendChild(el('span', bad ? 'num bad' : 'num', pct(v)));
     r.appendChild(el('span', 'num', a && a.median != null ? a.median + ' мс' : '—'));
@@ -196,7 +196,7 @@ let routeNode = null, routeHours = 24;
 async function openRoute(name) {
   routeNode = name;
   const n = ((overview && overview.nodes) || []).find((x) => x.name === name);
-  $('rtTitle').textContent = 'RU → ' + serverText(name);
+  $('rtTitle').textContent = hub() + ' → ' + serverText(name);
   $('rtLead').textContent = n ? n.name + ' · ' + n.host + (n.warp ? ' · выходы: интернет и Cloudflare WARP' : '') : '';
   if (!$('dlgRoute').open) $('dlgRoute').showModal();
   const [h, tr] = await Promise.all([api('/api/history/health?hours=' + routeHours).catch(() => null),

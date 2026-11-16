@@ -274,9 +274,9 @@ class Reconciler:
             if result.get("success"):
                 egress = (result.get("egress") or {})
                 where = f", выход {egress.get('ipv4')} ({egress.get('country')})" if egress.get("ipv4") else ""
-                self.log(f"{name}: каскад RU → {name} работает ({result.get('delay')} мс{where})")
+                self.log(f"{name}: каскад {self._hub} → {name} работает ({result.get('delay')} мс{where})")
             else:
-                self._warn(f"{name}: каскад RU → {name} не прошёл проверку: {result.get('error') or 'нет ответа'}")
+                self._warn(f"{name}: каскад {self._hub} → {name} не прошёл проверку: {result.get('error') or 'нет ответа'}")
 
     def _verify_nodes(self, node_ids: Dict[str, int]) -> None:
         """Fail loudly when the master cannot actually reach a node it should manage."""
@@ -504,15 +504,15 @@ class Reconciler:
             needed = want.cascade_warp and self.cfg.cascade_for(node).enabled and node_id != LOCAL
             if not needed:
                 if cur is not None:
-                    self._do(f"{node.name}: цепочка RU → WARP выключена, удаляю {tag}", lambda i=cur["id"]: self.panel.delete_inbound(i))
+                    self._do(f"{node.name}: цепочка {self._hub} → WARP выключена, удаляю {tag}", lambda i=cur["id"]: self.panel.delete_inbound(i))
             elif cur is None:
                 port = _first_free(ports, taken_tcp)
                 keys = self._keys()
-                payload = xc.build_inbound(tag=tag, remark=f"{label} · служебный вход RU → WARP", port=port,
+                payload = xc.build_inbound(tag=tag, remark=f"{label} · служебный вход {self._hub} → WARP", port=port,
                                            profile=xc.get_profile("vless-reality-tcp"), target=target, server_names=names,
                                            fingerprint=fp, private_key=keys["privateKey"], public_key=keys["publicKey"],
                                            node_id=_nid(node_id), exclude_from_sub=True, sort_index=9001)
-                self._do(f"{node.name}: создаю служебный вход для цепочки RU → WARP ({port}/tcp)", lambda p=payload: self.panel.add_inbound(p))
+                self._do(f"{node.name}: создаю служебный вход для цепочки {self._hub} → WARP ({port}/tcp)", lambda p=payload: self.panel.add_inbound(p))
             else:
                 self._refresh_entry(node, cur, cur.get("remark") or "", 9001, True, False)
 
@@ -561,7 +561,7 @@ class Reconciler:
                 continue
             if cur is not None:
                 if not self._sync_master_domain(cur):
-                    self._sync_remark(cur, remark_of(self._label(node)), self._sort(node, kind), hide_key in node.hide)
+                    self._sync_remark(cur, remark_of(self._label(node), self._hub), self._sort(node, kind), hide_key in node.hide)
                 continue
             if tls.mode != "domain" or not tls.domain:
                 self.log(f"{node.name}: для каскада по Hysteria2 нужен домен главного сервера (кнопка «Домен подписки»)")
@@ -569,12 +569,12 @@ class Reconciler:
             port = _first_free([443, 8443, 2053, 2083, 9443] + list(range(20443, 60000, 1000)), udp_taken)
             udp_taken.add(port)
             d = f"/root/cert/{tls.domain}"
-            payload = xc.build_hysteria_inbound(tag=tag, remark=remark_of(self._label(node)), port=port,
+            payload = xc.build_hysteria_inbound(tag=tag, remark=remark_of(self._label(node), self._hub), port=port,
                                                 node_id=None, host=tls.domain, cert_file=f"{d}/fullchain.pem",
                                                 key_file=f"{d}/privkey.pem", sort_index=self._sort(node, kind),
                                                 share_addr=tls.domain)
             payload["excludeFromSub"] = hide_key in node.hide
-            self._do(f"мастер: создаю {'цепочку RU → ' + node.name + ' → WARP' if kind == 'rwarp' else 'каскад по Hysteria2'} {tag} ({port}/udp)",
+            self._do(f"мастер: создаю {'цепочку ' + self._hub + ' → ' + node.name + ' → WARP' if kind == 'rwarp' else 'каскад по Hysteria2'} {tag} ({port}/udp)",
                      lambda p=payload: self.panel.add_inbound(p))
             self._new_rhy2.add(tag)
 
@@ -596,7 +596,7 @@ class Reconciler:
                     self._do(f"мастер: каскад по XHTTP для {node.name} выключен, удаляю {tag}",
                              lambda i=cur["id"]: self.panel.delete_inbound(i))
                 continue
-            remark, sort = xc.remark_cascade_xhttp(self._label(node)), self._sort(node, "rxh")
+            remark, sort = xc.remark_cascade_xhttp(self._label(node), self._hub), self._sort(node, "rxh")
             hidden = "cascade_xhttp" in node.hide
             if cur is not None:
                 if not self._sync_master_domain(cur):
@@ -643,6 +643,11 @@ class Reconciler:
                     c["certificateFile"], c["keyFile"] = f"/root/cert/{d}/fullchain.pem", f"/root/cert/{d}/privkey.pem"
         self._do(f"мастер: «{cur.get('remark')}» переходит на домен {d}", lambda: self.panel.update_inbound(cur["id"], updated))
         return True
+
+    @property
+    def _hub(self) -> str:
+        """The master's own name in entry names and messages ("через RU" only when it is called RU)."""
+        return (self.cfg.master.label or "").strip() or "главный"
 
     def _master_names(self) -> List[str]:
         tls = self.cfg.tls_for(self.cfg.master)
@@ -695,10 +700,10 @@ class Reconciler:
                 continue
             state = "выключены" if w["disabled"] else "включены"
             if gid:
-                self._do(f"мастер: хосты {w['address']} для подключений через RU — {state}",
+                self._do(f"мастер: хосты {w['address']} для подключений через {self._hub} — {state}",
                          lambda g=gid, p=dict(payload, groupId=gid): self.panel.post(f"/hosts/update/{g}", json_body=p))
             else:
-                self._do(f"мастер: создаю хосты {w['address']} для подключений через RU ({state})",
+                self._do(f"мастер: создаю хосты {w['address']} для подключений через {self._hub} ({state})",
                          lambda p=payload: self.panel.post("/hosts/add", json_body=p))
 
     def _ensure_cascade_inbounds(self, nodes: List[NodeConfig]) -> Dict[str, Dict[str, Any]]:
@@ -727,7 +732,7 @@ class Reconciler:
                 self._warn(f"{node.name}: порт каскада {port} на мастере уже занят другим inbound, пропускаю")
                 continue
             local_ports.add(port)
-            want = dict(remark=xc.remark_cascade(self._label(node)), port=port, target=target,
+            want = dict(remark=xc.remark_cascade(self._label(node), self._hub), port=port, target=target,
                         server_names=names, exclude_from_sub="cascade" in node.hide,
                         sort_index=self._sort(node, "cascade"),
                         share_addr=self.cfg.tls_for(self.cfg.master).domain or self.cfg.master.host)

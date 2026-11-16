@@ -16,7 +16,7 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 from . import __version__
 from . import appbackup as ab
@@ -207,6 +207,25 @@ def _name(pyproject: bytes) -> str:
 _cache: dict = {}
 
 
+def github_refusal(status: int, headers: Any) -> str:
+    """Why GitHub did not give the list, for a person. Without an account GitHub answers at most 60 requests
+    an hour from one IP address (every program on this network counts), then 403/429 until the limit resets."""
+    import time
+    get = (lambda k: headers.get(k) or headers.get(k.lower()) or "") if hasattr(headers, "get") else (lambda k: "")
+    remaining, reset, retry = str(get("X-RateLimit-Remaining")), str(get("X-RateLimit-Reset")), str(get("Retry-After"))
+    if status in (403, 429) and (remaining == "0" or retry):
+        when = ""
+        if reset.isdigit():
+            when = " Лимит сбросится в " + time.strftime("%H:%M", time.localtime(int(reset)))
+            mins = max(1, round((int(reset) - time.time()) / 60))
+            when += f" (через {mins} мин)."
+        elif retry.isdigit():
+            when = f" Повторите через {max(1, round(int(retry) / 60))} мин."
+        return ("GitHub временно не отвечает этому компьютеру: исчерпан лимит запросов без входа в аккаунт "
+                "(60 в час с одного IP-адреса, считаются все программы в этой сети)." + when)
+    return f"GitHub ответил {status}"
+
+
 def releases(repo: str = "", fresh: bool = False) -> List[dict]:
     """All published versions, newest first: version, prerelease, date, notes, page, zip/sha asset links."""
     import time
@@ -222,7 +241,7 @@ def releases(repo: str = "", fresh: bool = False) -> List[dict]:
     r = httpx.get(f"https://api.github.com/repos/{repo}/releases?per_page=50", timeout=15,
                   headers={"Accept": "application/vnd.github+json", "User-Agent": "xui-fleet-updater"})
     if r.status_code != 200:
-        raise UpdateError(f"GitHub ответил {r.status_code}")
+        raise UpdateError(github_refusal(r.status_code, getattr(r, "headers", None) or {}))
     out = []
     for rel in r.json():
         if rel.get("draft"):

@@ -582,7 +582,8 @@ class Fleet:
 
         public = int(gate.get("port") or (public_sub_port(s) if behind else s.get("subPort") or 2096))
         facts = pv.sub_gate_facts(ssh)
-        internal = int(gate.get("internal") or facts["free"])
+        # Already behind nginx (e.g. set up from another computer whose state is not here): keep 3x-ui where it is.
+        internal = int(gate.get("internal") or (s.get("subPort") if behind else 0) or facts["free"])
         tls = self.cfg.tls_for(master)
         cert, key = str(s.get("subCertFile") or ""), str(s.get("subKeyFile") or "")
         host = s.get("subDomain") or (tls.domain if tls.mode == "domain" and tls.domain else master.host)

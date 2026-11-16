@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "подписку можно отдавать только Happ и INCY — остальные приложения увидят, что не поддерживаются; INCY получает профиль «RU напрямую»"
+WHATS_NEW = "окно версий объясняет, когда GitHub временно не отвечает (лимит запросов) и когда можно повторить"
 
 
 def _last_backup(fleet: Any) -> int:

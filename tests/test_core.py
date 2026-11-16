@@ -1480,3 +1480,33 @@ def test_sub_gate_rolls_back_when_nginx_cannot_take_the_port(tmp_path, monkeypat
     with pytest.raises(Exception):
         fleet.ensure_sub_gate(panel, ssh=None)
     assert panel.settings() == before and ("remove",) in calls and fleet.state.get("ru", "sub_gate") is None
+
+
+def test_github_rate_limit_is_explained(monkeypatch):
+    import time as _t
+    import httpx
+    from xui_fleet import update as upd
+    reset = int(_t.time()) + 600
+    fake = type("R", (), {"status_code": 403, "headers": httpx.Headers({"x-ratelimit-remaining": "0", "x-ratelimit-reset": str(reset)})})()
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: fake)
+    upd._cache.clear()
+    with pytest.raises(upd.UpdateError) as e:
+        upd.releases("owner/repo", fresh=True)
+    msg = str(e.value)
+    assert "лимит запросов" in msg and _t.strftime("%H:%M", _t.localtime(reset)) in msg and "через 10 мин" in msg
+    assert upd.github_refusal(404, {}) == "GitHub ответил 404"
+    assert upd.github_refusal(403, {}) == "GitHub ответил 403"  # a plain refusal is not called a rate limit
+    assert "Повторите через 2 мин" in upd.github_refusal(429, {"Retry-After": "120"})
+
+
+def test_sub_gate_taken_over_without_moving_3xui_again(tmp_path, monkeypatch):
+    """The gate was set up elsewhere (this computer has no record of it): 3x-ui stays on its port, no restart."""
+    panel = FakePanel()
+    panel._settings = {"subEnable": True, "subPort": 12096, "subListen": "127.0.0.1", "subURI": "https://a.example:2096/s/",
+                       "subPath": "/s/", "subCertFile": "/c", "subKeyFile": "/k"}
+    fleet, calls = _gate_fleet(tmp_path, ["happ", "incy"], monkeypatch)
+    monkeypatch.setattr("xui_fleet.provision.sub_gate_facts", lambda ssh: {"ips": [], "ipv6": False, "free": 12097})
+    panel.calls = []
+    fleet.ensure_sub_gate(panel, ssh=None)
+    assert panel.settings()["subPort"] == 12096 and "update_settings" not in panel.calls
+    assert fleet.state.get("ru", "sub_gate") == {"port": 2096, "internal": 12096, "uri": "https://a.example:2096/s/", "apps": ["happ", "incy"]}

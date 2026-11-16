@@ -1618,7 +1618,7 @@ def test_last_warp_check_is_read_back_while_fresh(tmp_path, monkeypatch):
     h.add_health({"t": now - 700, "n": {"uk": 15}, "m": 1, "w": {"uk": 120, "de": 90}})
     h.add_health({"t": now - 300, "n": {"uk": 15}, "m": 1, "w": {"uk": None}})
     h.add_health({"t": now - 10, "n": {"uk": 15}, "m": 1})  # this round had no WARP check
-    assert h.last_warp() == {"at": now - 300, "nodes": {"uk": None}}
+    assert h.last_warp() == {"at": now - 300, "nodes": {"uk": None}, "added": {}}
     assert h.last_warp(max_age=60) == {}  # too old: unknown, not "down"
 
 
@@ -1636,13 +1636,21 @@ def test_history_takes_the_masters_ping_and_the_warp_check(tmp_path, monkeypatch
                     {"name": "fr", "status": "offline"}], []
 
         def probe_warp(self):
+            self.warp_added = {"uk": 9}
             return {"uk": 120, "de": None}
-    monkeypatch.setattr(hs, "TRAFFIC_EVERY", 10**11)  # only the health sample is due
+    monkeypatch.setattr(hs, "TRAFFIC_EVERY", 10**11)  # only health and WARP are due
     h = hs.History(tmp_path / "fleet.yaml")
-    assert hs.record(FakeFleet(), h, now=10**10) == ["health"]
+    import time as _t
+    now = _t.time()
+    assert hs.record(FakeFleet(), h, now=now) == ["health", "warp"]
     row = hs._read(h.dir / "health.jsonl", 0)[-1]
     assert row["n"] == {"uk": 15, "de": 44, "fr": None}  # ping where measured, the panel's figure otherwise
-    assert row["w"] == {"uk": 120, "de": None}
+    w = hs._read(h.dir / "warp.jsonl", 0)[-1]
+    assert w["w"] == {"uk": 120, "de": None} and w["wa"] == {"uk": 9}
+    assert h.last_warp(max_age=10**11)["added"] == {"uk": 9}
+    # health just taken, WARP never checked (e.g. history from an older version): WARP is due at once
+    (h.dir / "warp.jsonl").unlink()
+    assert hs.record(FakeFleet(), h, now=now + 30) == ["warp"]
 
 
 def test_map_routes_come_from_the_real_entries():
@@ -1681,3 +1689,32 @@ def test_cascade_entry_names_follow_the_masters_name():
     Reconciler(panel, cfg).run(_access(["de"]))
     names = [i["remark"] for i in panel.inbounds() if not i.get("nodeId")]
     assert names and all("через RU" not in r for r in names) and any("через NL" in r for r in names)
+
+
+def test_warp_leg_is_the_ping_to_cloudflare(tmp_path, monkeypatch):
+    from xui_fleet.engine import Fleet
+    from xui_fleet.state import State
+
+    class FakeSSH:
+        def __init__(self, out):
+            self.out = out
+
+        def connect(self):
+            return self
+
+        def run(self, script, check=True, timeout=0, env=None):
+            assert "ping -c 10" in script and "162.159.195.1" in script and ":2408" not in script
+            return type("R", (), {"out": self.out})()
+
+        def close(self):
+            pass
+    fleet = Fleet.__new__(Fleet)
+    fleet.cfg = FleetConfig.model_validate({"master": {"name": "ru", "host": "9.9.9.9"},
+                                            "nodes": [{"name": "uk", "host": "198.51.100.1"}, {"name": "de", "host": "198.51.100.2"},
+                                                      {"name": "fr", "host": "198.51.100.3"}]})
+    fleet.state = State(tmp_path / "state.json")
+    fleet.state.update("uk", warp_endpoint={"endpoint": "162.159.195.1:2408"})
+    fleet.state.update("de", warp_endpoint={"endpoint": "162.159.195.1:2408"})  # no ping reply there
+    replies = {"uk": "5.02\n12.4\n1.95\n2.33\n30.5\n1.24\n3.86\n", "de": ""}  # spikes do not move the median (3.86 → 4)
+    fleet.ssh = lambda node: FakeSSH(replies[node.name])
+    assert fleet.warp_pings(list(fleet.cfg.nodes)) == {"uk": 4}  # fr: entry unknown; de: no reply → left out

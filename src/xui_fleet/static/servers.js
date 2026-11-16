@@ -324,7 +324,7 @@ function renderMap() {
   });
   for (const [px, py, text, n, bad] of warpPills) pill(px, py, text, bad ? 'down' : 'warp', bad
     ? 'WARP на ' + n.name + ' не пропустил трафик при последней проверке (раз в 5 минут, с главного сервера)'
-    : 'WARP добавляет ' + n.warpMs + ' мс на ' + n.name + ' (замер на сервере раз в сутки)');
+    : 'WARP добавляет ' + n.warpMs + ' мс на ' + n.name + ' (ping с сервера до Cloudflare, раз в 5 минут)');
   if (nodes.length) {
     const ig = svgEl('g', { class: 'rm-exit' });
     ig.appendChild(svgEl('circle', { cx: EX, cy: inetY, r: 15 }));
@@ -443,7 +443,9 @@ function hub() {
 // on the map, marked, so it does not just vanish.
 function realMap(ready) {
   const m = overview.master, routes = ready && live.routes;
-  const nodes = (overview.nodes || []).map((n) => {
+  // what WARP adds: from the 5-minute check (the same request with and without WARP), else the daily measurement
+  const added = ready && live.warp && live.warp.added ? live.warp.added : {};
+  const nodes = (overview.nodes || []).map((n) => (added[n.name] != null ? Object.assign({}, n, { warpMs: added[n.name] }) : n)).map((n) => {
     if (!routes) return n;
     const r = routes.nodes[n.name] || { cascade: false, direct: false, warp: false };
     return Object.assign({}, n, { cascade: r.cascade, direct: r.direct ? n.direct || 443 : null, warp: r.warp, offered: r.cascade || r.direct });
@@ -525,8 +527,10 @@ function renderRouteDelays(box, nodes, ready) {
       const d = via - direct;
       chip(hub() + ' добавляет', sign(d), d > 25 ? 'warn' : 'ok', 'Насколько путь через ' + hub() + ' дольше прямого (отрицательное — быстрее)');
     }
-    if (n.warp && l.warp !== 'down' && !(n.cascade && via != null && n.warpMs != null)) chip('WARP добавляет', n.warpMs == null ? 'ещё не измерено' : sign(n.warpMs), 'warp',
-      'Сверх выбранного пути, если подключение идёт через WARP. Замер на сервере раз в сутки.');
+    if (n.warp && l.warp !== 'down' && !(n.cascade && via != null && n.warpMs != null)) chip('WARP добавляет', n.warpMs != null ? sign(n.warpMs)
+      // no check yet (the app has just started): it is running now, the figure comes with the next refresh
+      : live.warp && live.warp.at ? 'не измерено' : 'проверяю…', 'warp',
+      'Сверх выбранного пути, если подключение идёт через WARP: ping с сервера до Cloudflare, раз в 5 минут.');
     wrap.appendChild(row);
   }
   box.appendChild(wrap);
@@ -537,7 +541,7 @@ function warpDelays(nodes) {
   if (!ms.length) return { text: '', detail: '' };
   const vals = ms.map((n) => n.warpMs), lo = Math.min(...vals), hi = Math.max(...vals);
   const detail = 'Добавляет к задержке: ' + ms.map((n) => (splitFlag(n.display || n.label || n.name)[1] || n.name) + ' +' + n.warpMs + ' мс').join(', ')
-    + ' (замер на сервере раз в сутки)';
+    + ' (ping с сервера до Cloudflare, раз в 5 минут)';
   return { text: lo === hi ? '+' + lo + ' мс' : lo === 0 ? 'до +' + hi + ' мс' : '+' + lo + '–' + hi + ' мс', detail };
 }
 let mapWidth = 0;

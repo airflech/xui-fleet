@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "карта маршрутов показывает задержку каждого участка, прямой путь и WARP, красным — что не работает; строится по реальным подключениям"
+WHATS_NEW = "задержка WARP — ping с сервера до Cloudflare раз в 5 минут; проверка WARP сразу после запуска, без ожидания"
 
 
 def _last_backup(fleet: Any) -> int:

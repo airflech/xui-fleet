@@ -1090,9 +1090,14 @@ class Fleet:
     def probe_warp(self) -> Dict[str, Optional[int]]:
         """Does WARP work on each server right now? Real traffic from the master through each server's WARP entry
         (the service user's subscription, like the link check): {server: delay ms, or None if it failed}.
-        Servers without a WARP entry are left out."""
+        Servers without a WARP entry are left out.
+
+        Alongside, the same request through an entry of the same server without WARP (same protocol, same way in:
+        direct for the server's WARP entry, via the master for the one via the master): the difference is what WARP
+        adds, kept in self.warp_added {server: ms} — measured every time, no SSH, no settings needed."""
         from .xrayconf import inbound_kind
         got: Dict[str, Optional[int]] = {}
+        self.warp_added: Dict[str, int] = {}
         with self.master_panel(provision=False) as panel:
             check = self.cfg.clients.check_email
             user = next((c for c in panel.clients() if c.get("email") == check and c.get("subId")), None)
@@ -1111,34 +1116,85 @@ class Fleet:
             cfg_host = {n.name: n.host for n in self.cfg.nodes}
             node_host.update({n["id"]: cfg_host.get(n["name"], n.get("address")) for n in panel.nodes()})
             # The server's own WARP entry (master → server → Cloudflare); if that one is hidden from subscriptions,
-            # the entry via RU → WARP tells the same about the server's WARP.
+            # the entry via the master → WARP tells the same about the server's WARP.
             master_hosts = {self.cfg.master.host, tls.domain, *tls.reserve_domains}
-            warp_at: Dict[tuple, Tuple[int, str]] = {}
+            entry_at: Dict[tuple, Tuple[str, str]] = {}  # (address, port, protocol) → (kind, server)
             for i in panel.inbounds():
                 kind = inbound_kind(str(i.get("tag", "")))
-                if not kind or kind[0] not in ("warp", "rwarp"):
+                if not kind:
                     continue
                 proto = "hysteria" if i["protocol"] == "hysteria" else "vless"
                 hosts = {node_host.get(i["nodeId"])} if i.get("nodeId") else master_hosts | {i.get("shareAddr")}
                 for hh in hosts:
-                    warp_at[(hh, int(i["port"]), proto)] = (0 if kind[0] == "warp" else 1, kind[1])
-            order = []
+                    entry_at[(hh, int(i["port"]), proto)] = (kind[0], kind[1])
+            # baseline for each WARP way in: the plain entries of the same server and the same way in
+            base_kinds = {"warp": ("direct", "xhttp", "hy2"), "rwarp": ("cascade", "rxh", "rhy2")}
+            found: Dict[str, Dict[str, list]] = {}
             for n, o in enumerate(outs or []):
                 st = o.get("settings") or {}
                 h = (st.get("vnext") or st.get("servers") or [st])[0]
-                key = (h.get("address"), int(h.get("port") or 0), "hysteria" if o.get("protocol") == "hysteria" else "vless")
-                if key in warp_at:
-                    order.append((warp_at[key], n, o))
-            for (_rank, name), n, o in sorted(order, key=lambda x: x[0]):
-                if name in got and got[name] is not None:
-                    continue
-                o["tag"] = f"warp-probe-{n}"
-                try:
-                    result = panel.test_outbound(o)
-                except PanelError:
-                    result = {}
-                got[name] = int(result.get("delay") or 0) if result.get("success") else None
+                proto = "hysteria" if o.get("protocol") == "hysteria" else "vless"
+                hit = entry_at.get((h.get("address"), int(h.get("port") or 0), proto))
+                if hit:
+                    found.setdefault(hit[1], {}).setdefault(hit[0], []).append((proto, n, o))
+
+            def best(o: Dict[str, Any], tag: str) -> Optional[int]:
+                """The faster of two tries (the first one through a fresh path pays for the handshakes)."""
+                times = []
+                for _ in range(2):
+                    o["tag"] = tag
+                    try:
+                        r = panel.test_outbound(o)
+                    except PanelError:
+                        r = {}
+                    if r.get("success"):
+                        times.append(int(r.get("delay") or 0))
+                return min(times) if times else None
+            for name, kinds in found.items():
+                for wkind in ("warp", "rwarp"):
+                    if wkind not in kinds or got.get(name) is not None:
+                        continue
+                    proto, n, o = kinds[wkind][0]
+                    got[name] = best(o, f"warp-probe-{n}")
+                    if got[name] is None:
+                        continue
+                    plain = [e for k in base_kinds[wkind] for e in kinds.get(k, [])]
+                    plain.sort(key=lambda e: e[0] != proto)  # the same protocol first
+                    if plain:
+                        b = best(plain[0][2], f"warp-base-{plain[0][1]}")
+                        if b is not None:
+                            self.warp_added[name] = max(0, got[name] - b)
+        # The figure shown is the ping from each server to its Cloudflare entry point — the WARP leg itself, measured
+        # like every other leg of the map and steady; the traffic difference above (noisier) only fills in where
+        # that ping does not answer.
+        self.warp_added.update(self.warp_pings([n for n in self.cfg.nodes if n.name in got]))
         return got
+
+    def warp_pings(self, nodes: List[NodeConfig]) -> Dict[str, int]:
+        """Ping from each server to the Cloudflare entry point its WARP uses (state warp_endpoint), ms, in parallel
+        over SSH. Servers whose entry is not known yet or that get no ping reply are left out."""
+        import shlex
+
+        def one(node: NodeConfig) -> Optional[int]:
+            ep = str((self.state.get(node.name, "warp_endpoint") or {}).get("endpoint") or "")
+            ip = ep.rsplit(":", 1)[0] if ":" in ep else ep
+            if not ip:
+                return None
+            try:
+                ssh = self.ssh(node).connect()
+                try:
+                    # Cloudflare answers pings with spikes (1–30 ms on a 2 ms path): the median of ten, not the mean
+                    out = ssh.run(f"ping -c 10 -i 0.2 -W 1 {shlex.quote(ip)} 2>/dev/null | grep -o 'time=[0-9.]*' | cut -d= -f2",
+                                  check=False, timeout=25).out.split()
+                finally:
+                    ssh.close()
+                import statistics
+                times = [float(t) for t in out if t.replace(".", "", 1).isdigit()]
+                return max(0, round(statistics.median(times))) if len(times) >= 3 else None
+            except Exception:  # no SSH or no ping: the traffic difference stays
+                return None
+        got = dict(zip([n.name for n in nodes], parallel(nodes, one, 30, lambda _n: None))) if nodes else {}
+        return {k: v for k, v in got.items() if v is not None}
 
     # ---- backups and moving the master ----------------------------------
     @property

@@ -4,8 +4,10 @@ Samples are taken by the running app (see ui.serve), so the history has gaps whi
 the page says so. Health is measured from the main server (wherever it is): latency master → node.
 
 Files, one folder per profile (keyed by its fleet.yaml path):
-    health.jsonl   {"t": epoch, "n": {node: latency_ms | null (down)}, "m": 1 | 0 (master Xray running),
-                    "w": {node: ms | null} (real traffic through the node's WARP from the master; absent: not checked)}
+    health.jsonl   {"t": epoch, "n": {node: latency_ms | null (down)}, "m": 1 | 0 (master Xray running)}
+    warp.jsonl     {"t": epoch, "w": {node: ms | null} (real traffic through the node's WARP from the master),
+                    "wa": {node: ms} (what WARP adds: ping from the node to its Cloudflare entry, else the traffic
+                    difference with and without WARP)}
     traffic.jsonl  {"t": epoch, "u": {user: bytes total}, "r": {node: {"ru": bytes via RU, "d": bytes direct}}}
 Counters are cumulative (as 3x-ui keeps them); per-day amounts are the differences between samples, and a
 counter that went down (reset in the panel) counts from zero.
@@ -134,12 +136,19 @@ class History:
         rows = _read(self.dir / f"{kind}.jsonl", time.time() - 2 * 86400)
         return rows[-1]["t"] if rows else 0
 
+    def add_warp(self, row: Dict[str, Any]) -> None:
+        _append(self.dir / "warp.jsonl", row)
+        _prune(self.dir / "warp.jsonl", KEEP_HEALTH_DAYS)
+
     def last_warp(self, max_age: float = 3 * HEALTH_EVERY) -> Dict[str, Any]:
-        """The latest WARP check if it is recent: {"at": epoch, "nodes": {server: ms | None}}, or {}."""
-        for row in reversed(_read(self.dir / "health.jsonl", time.time() - max_age)):
-            if "w" in row:
-                return {"at": row["t"], "nodes": row["w"]}
-        return {}
+        """The latest WARP check if it is recent: {"at": epoch, "nodes": {server: ms | None}, "added": {server: ms}},
+        or {}. Checks live in warp.jsonl; older versions wrote them into health rows."""
+        since = time.time() - max_age
+        rows = [r for r in _read(self.dir / "warp.jsonl", since)] + [r for r in _read(self.dir / "health.jsonl", since) if "w" in r]
+        if not rows:
+            return {}
+        row = max(rows, key=lambda r: r.get("t", 0))
+        return {"at": row["t"], "nodes": row.get("w") or {}, "added": row.get("wa") or {}}
 
     def forget(self) -> None:
         for p in self.dir.glob("*.jsonl"):
@@ -212,7 +221,10 @@ def record(fleet: Any, hist: History, now: Optional[float] = None) -> List[str]:
     done = []
     want_health = now - hist.last("health") >= HEALTH_EVERY - 5
     want_traffic = now - hist.last("traffic") >= TRAFFIC_EVERY - 5
-    if not (want_health or want_traffic):
+    # WARP on its own clock: due as soon as there is no check from the last 5 minutes — right after the app starts
+    # too, not at the next health sample
+    want_warp = now - hist.last("warp") >= HEALTH_EVERY - 5
+    if not (want_health or want_traffic or want_warp):
         return done
     if want_health:
         nodes, _inb = fleet.status()
@@ -220,14 +232,15 @@ def record(fleet: Any, hist: History, now: Optional[float] = None) -> List[str]:
         # the network delay measured on the master (ping), where it has one: the panel's figure is an HTTP call
         rtts = getattr(fleet, "master_rtts", {}) or {}
         row["n"] = {k: (rtts.get(k, v) if v is not None else None) for k, v in row["n"].items()}
-        try:  # does WARP carry traffic on each server: {server: ms | null}
-            warp = fleet.probe_warp()
-            if warp:
-                row["w"] = warp
-        except Exception:
-            pass  # a gap in the WARP history, not in the rest
         hist.add_health(row)
         done.append("health")
+    if want_warp:
+        try:  # does WARP carry traffic on each server: {server: ms | null}; what it adds: {server: ms}
+            warp = fleet.probe_warp()
+            hist.add_warp({"t": int(now), "w": warp or {}, "wa": getattr(fleet, "warp_added", None) or {}})
+            done.append("warp")
+        except Exception:
+            pass  # a gap in the WARP history, not in the rest
     if want_traffic:
         with fleet.master_panel(provision=False) as panel:
             names = {n.get("id"): n.get("name") for n in _flatten_nodes(panel.nodes())}

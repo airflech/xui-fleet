@@ -1759,3 +1759,24 @@ def test_master_warp_rule_and_cascade_rules_keep_one_order():
     order = [r.get("outboundTag") for r in two["routing"]["rules"]]
     assert order[:2] == ["api", "warp"] and order.index("fleet-out-de") > 1
     assert mg.merge_warp(two, two["outbounds"][-1], ["fleet-warp-ru"], "162.159.195.1:2408") == two
+
+
+def test_warp_entry_never_leads_out_through_russia_when_another_works():
+    """From Moscow the fastest WARP entry lands in Cloudflare DME: sites then see a Russian address (YouTube
+    bot check, Telegram media stalls). The fastest entry that leaves Cloudflare abroad wins."""
+    from xui_fleet import provision as pv
+    answers = {"188.114.96.1:2408": ("0.30", "AMS"), "162.159.195.1:2408": ("0.10", "DME"), "188.114.97.1:2408": ("0.25", "FRA"),
+               "162.159.192.1:2408": ("9", "")}
+
+    class FakeSSH:
+        def run(self, script, check=False, timeout=0):
+            ep = next(e for e in answers if e in script)
+            t, colo = answers[ep]
+            ok = "204" if t != "9" else "000"
+            return type("R", (), {"out": f"{ok}:{t} {ok}:{t} {ok}:{t} " + (f"colo={colo}" if colo else "")})()
+    best, scores, colos = pv.pick_warp_endpoint(FakeSSH(), {"settings": {"peers": [{}]}}, list(answers))
+    assert best == "188.114.97.1:2408" and colos["162.159.195.1:2408"] == "DME" and scores["162.159.192.1:2408"] == 99.0
+    # only Russian ones work: take the fastest of them rather than leave WARP without an entry
+    only_ru = {"162.159.195.1:2408": ("0.10", "DME"), "188.114.98.1:2408": ("0.12", "LED")}
+    answers.clear(); answers.update(only_ru)
+    assert pv.pick_warp_endpoint(FakeSSH(), {"settings": {"peers": [{}]}}, list(only_ru))[0] == "162.159.195.1:2408"

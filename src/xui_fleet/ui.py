@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "После включения WARP на главном сервере кнопка «Исправить» больше не загорается без причины"
+WHATS_NEW = "WARP больше не выходит в интернет через Cloudflare в России: в YouTube и Telegram через «RU · WARP» снова грузятся видео и картинки"
 
 
 def _last_backup(fleet: Any) -> int:

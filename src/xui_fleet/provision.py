@@ -758,13 +758,24 @@ WARP_ENDPOINTS = ["188.114.96.1:2408", "162.159.192.1:2408", "162.159.192.1:500"
                   "162.159.195.1:2408", "162.159.192.1:1701"]
 
 
-def pick_warp_endpoint(ssh: SSH, warp: Dict[str, Any], candidates: Optional[List[str]] = None) -> Tuple[str, Dict[str, float]]:
-    """Fastest WARP endpoint from this server: median of a few real HTTPS requests through each.
-    Returns (endpoint or "", {endpoint: seconds}); a candidate that fails scores 99."""
+# Cloudflare points of presence in Russia. WARP traffic that leaves Cloudflare there is Russian traffic: YouTube
+# answers it with a bot check (black video in the app), Telegram media stall — the same limits as without a VPN.
+# From a server in Moscow the fastest entry point is usually DME, so the choice must skip these.
+WARP_RU_COLOS = {"DME", "SVO", "VKO", "LED", "SVX", "KZN", "OVB", "KJA", "KHV", "VVO", "KUF", "ROV", "AER", "UFA", "KRR",
+                 "CEK", "PEE", "IKT", "TJM", "OMS", "MRV", "GOJ", "VOZ", "SGC", "KGD", "MMK", "ARH", "NBC", "STW"}
+
+
+def pick_warp_endpoint(ssh: SSH, warp: Dict[str, Any], candidates: Optional[List[str]] = None
+                       ) -> Tuple[str, Dict[str, float], Dict[str, str]]:
+    """Fastest WARP endpoint from this server whose traffic leaves Cloudflare outside Russia: median of a few real
+    HTTPS requests through each, and Cloudflare's own answer where the traffic went (colo).
+    Returns (endpoint or "", {endpoint: seconds}, {endpoint: colo}); a candidate that fails scores 99.
+    Only when every working entry lands in Russia is one of them taken (better than no WARP at all)."""
     import copy
     import json as _json
     import statistics
     scores: Dict[str, float] = {}
+    colos: Dict[str, str] = {}
     for ep in candidates or WARP_ENDPOINTS:
         o = copy.deepcopy(warp)
         o["tag"] = "t"
@@ -775,11 +786,16 @@ def pick_warp_endpoint(ssh: SSH, warp: Dict[str, Any], candidates: Optional[List
             "cd /usr/local/x-ui/bin && (./xray-linux-amd64 run -c /tmp/xf-warp.json >/dev/null 2>&1 & echo $! > /tmp/xf-warp.pid); sleep 2\n"
             "for i in 1 2 3; do curl -s -m 6 -x socks5h://127.0.0.1:39996 -o /dev/null -w '%{http_code}:%{time_total} ' "
             "https://www.gstatic.com/generate_204; done\n"
+            "curl -s -m 6 -x socks5h://127.0.0.1:39996 https://www.cloudflare.com/cdn-cgi/trace | grep '^colo='\n"
             "kill $(cat /tmp/xf-warp.pid) 2>/dev/null; rm -f /tmp/xf-warp.json /tmp/xf-warp.pid\n", check=False, timeout=60).out.split()
-        times = [float(t) for code, _, t in (x.partition(":") for x in out) if code == "204"]
+        times = [float(t) for code, _, t in (x.partition(":") for x in out if not x.startswith("colo=")) if code == "204"]
         scores[ep] = statistics.median(times) if len(times) >= 2 else 99.0
-    best = min(scores, key=scores.get) if scores else ""
-    return (best if best and scores[best] < 99 else ""), scores
+        colos[ep] = next((x[5:] for x in out if x.startswith("colo=")), "")
+    working = [ep for ep in scores if scores[ep] < 99]
+    abroad = [ep for ep in working if colos.get(ep) not in WARP_RU_COLOS]
+    pool = abroad or working
+    best = min(pool, key=scores.get) if pool else ""
+    return best, scores, colos
 
 
 def warp_added_ms(ssh: SSH, warp: Dict[str, Any], endpoint: str) -> Optional[int]:

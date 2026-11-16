@@ -963,19 +963,25 @@ class Fleet:
     def _warp_endpoint(self, node, ssh: SSH, warp: Dict[str, Any]) -> str:
         """Best Cloudflare entry point for this server, measured once a day (the routes change)."""
         saved = self.state.get(node.name, "warp_endpoint") or {}
-        if saved.get("endpoint") and time.time() - saved.get("at", 0) < self.WARP_RECHECK:
+        # "colo" is new: an entry chosen before it was known may lead out through Russia — choose again now.
+        if saved.get("endpoint") and "colo" in saved and time.time() - saved.get("at", 0) < self.WARP_RECHECK:
             if "added_ms" not in saved:  # measured by an older version: add the delay figure once
                 self.state.update(node.name, warp_endpoint=dict(saved, added_ms=self._warp_added(node, ssh, warp, saved["endpoint"])))
             return saved["endpoint"]
-        best, scores = pv.pick_warp_endpoint(ssh, warp)
+        best, scores, colos = pv.pick_warp_endpoint(ssh, warp)
         self._warp_bad[node.name] = not best or scores[best] > 1.5
         if not best:
             self.log(f"⚠ {node.name}: ни одна точка входа WARP не ответила — оставляю прежнюю")
             return saved.get("endpoint", "")
-        shown = ", ".join(f"{ep} {t:.2f} с" if t < 99 else f"{ep} ✗" for ep, t in sorted(scores.items(), key=lambda x: x[1]))
-        if best != saved.get("endpoint"):
-            self.log(f"{node.name}: WARP через {best} (замер: {shown})")
-        self.state.update(node.name, warp_endpoint={"endpoint": best, "at": time.time(), "scores": scores,
+        shown = ", ".join((f"{ep} {t:.2f} с" if t < 99 else f"{ep} ✗") + (f" ({colos[ep]})" if colos.get(ep) else "")
+                          for ep, t in sorted(scores.items(), key=lambda x: x[1]))
+        colo = colos.get(best, "")
+        if colo in pv.WARP_RU_COLOS:
+            self.log(f"⚠ {node.name}: все точки входа WARP ведут в Cloudflare в России ({colo}) — через WARP сайты увидят "
+                     f"российский адрес: YouTube может требовать вход, медиа Telegram — не грузиться")
+        if best != saved.get("endpoint") or colo != saved.get("colo"):
+            self.log(f"{node.name}: WARP через {best}{' — точка Cloudflare ' + colo if colo else ''} (замер: {shown})")
+        self.state.update(node.name, warp_endpoint={"endpoint": best, "at": time.time(), "scores": scores, "colo": colo,
                                                     "added_ms": self._warp_added(node, ssh, warp, best)})
         return best
 

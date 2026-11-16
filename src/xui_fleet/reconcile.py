@@ -960,7 +960,11 @@ class Reconciler:
     # ---- hygiene --------------------------------------------------------
     def _check_orphans(self) -> None:
         known = {n.name for n in self.cfg.nodes} | ({self.cfg.master.name} if self.cfg.master.vpn else set())
+        # master.warp: the master's own WARP entry is meant to be there (it is not a node)
+        own_warp = xc.warp_tag(self.cfg.master.name) if self.cfg.master.warp else None
         for tag in self._inbounds_by_tag():
+            if tag == own_warp:
+                continue
             for prefix in (xc.direct_tag(""), xc.cascade_tag(""), xc.xhttp_tag(""), xc.hy2_tag(""), xc.rhy2_tag(""),
                            xc.warp_tag(""), xc.warpup_tag(""), xc.rwarp_tag("")):
                 if tag.startswith(prefix) and tag[len(prefix):] not in known:

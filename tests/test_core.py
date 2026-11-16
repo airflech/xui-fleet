@@ -1728,7 +1728,8 @@ def test_master_warp_entry_without_the_vpn_role():
     doc = {"master": {"name": "ru", "host": "9.9.9.9", "warp": True, "tls": {"mode": "domain", "domain": "v.example"}},
            "defaults": {"set": {"cascade_tcp": False, "warp": False, "cascade_warp": False}},
            "users": [{"name": "a"}], "nodes": [{"name": "de", "host": "de.example"}]}
-    Reconciler(panel, FleetConfig.model_validate(doc)).run(_access(["de", "ru"]))
+    rep = Reconciler(panel, FleetConfig.model_validate(doc)).run(_access(["de", "ru"]))
+    assert not [w for w in rep.warnings if "остался" in w]  # its own WARP entry is not a leftover of a node
     by_tag = {i["tag"]: i for i in panel.inbounds()}
     assert "fleet-warp-ru" in by_tag and "nodeId" not in by_tag["fleet-warp-ru"]  # on the master itself
     assert not {"fleet-direct-ru", "fleet-xhttp-ru", "fleet-hy2-ru"} & set(by_tag)  # not the whole VPN role

@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "WARP с главного сервера: отдельное подключение без роли VPN — галочка в ролях главного сервера"
+WHATS_NEW = "WARP-подключение главного сервера больше не принимается за остаток удалённого сервера"
 
 
 def _last_backup(fleet: Any) -> int:

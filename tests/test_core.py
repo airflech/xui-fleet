@@ -1718,3 +1718,26 @@ def test_warp_leg_is_the_ping_to_cloudflare(tmp_path, monkeypatch):
     replies = {"uk": "5.02\n12.4\n1.95\n2.33\n30.5\n1.24\n3.86\n", "de": ""}  # spikes do not move the median (3.86 → 4)
     fleet.ssh = lambda node: FakeSSH(replies[node.name])
     assert fleet.warp_pings(list(fleet.cfg.nodes)) == {"uk": 4}  # fr: entry unknown; de: no reply → left out
+
+
+def test_master_warp_entry_without_the_vpn_role():
+    """master.warp: one entry on the master whose traffic leaves through WARP from the master itself — no other
+    own entries; every user gets it; switching it off removes it (cascades stay)."""
+    from xui_fleet.ui import real_routes
+    panel = FakePanel()
+    doc = {"master": {"name": "ru", "host": "9.9.9.9", "warp": True, "tls": {"mode": "domain", "domain": "v.example"}},
+           "defaults": {"set": {"cascade_tcp": False, "warp": False, "cascade_warp": False}},
+           "users": [{"name": "a"}], "nodes": [{"name": "de", "host": "de.example"}]}
+    Reconciler(panel, FleetConfig.model_validate(doc)).run(_access(["de", "ru"]))
+    by_tag = {i["tag"]: i for i in panel.inbounds()}
+    assert "fleet-warp-ru" in by_tag and "nodeId" not in by_tag["fleet-warp-ru"]  # on the master itself
+    assert not {"fleet-direct-ru", "fleet-xhttp-ru", "fleet-hy2-ru"} & set(by_tag)  # not the whole VPN role
+    assert "fleet-warp-de" not in by_tag  # the template has no WARP: nodes get none
+    assert by_tag["fleet-warp-ru"]["id"] in panel._clients["a"]["inboundIds"]
+    r = real_routes("ru", panel.nodes(), panel.inbounds())
+    assert r["master"] == {"vpn": False, "warp": True}  # its WARP entry alone is not the VPN role
+    assert Reconciler(panel, FleetConfig.model_validate(doc)).run(_stale(_access(["de", "ru"]))).changes == []
+    doc["master"]["warp"] = False
+    Reconciler(panel, FleetConfig.model_validate(doc)).run(_stale(_access(["de", "ru"])))
+    tags = {i["tag"] for i in panel.inbounds()}
+    assert "fleet-warp-ru" not in tags and "fleet-rxh-de" in tags

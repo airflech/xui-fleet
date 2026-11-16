@@ -114,7 +114,8 @@ $('verAuto').addEventListener('change', async (e) => {
 $('roleForm').addEventListener('submit', (e) => {
   e.preventDefault();
   const d = formData(e.target);
-  if (!d.vpn && !d.cascades) { e.target.querySelector('.formerr').textContent = 'Выберите хотя бы одну роль'; return; }
+  if (d.vpn) d.warp = false;  // a VPN server has its WARP entry in its own set
+  if (!d.vpn && !d.cascades && !d.warp) { e.target.querySelector('.formerr').textContent = 'Выберите хотя бы одну роль'; return; }
   start('/api/master/role', d, e.target);
 });
 document.querySelectorAll('#setupRoles input').forEach((r) => r.addEventListener('change', () => {

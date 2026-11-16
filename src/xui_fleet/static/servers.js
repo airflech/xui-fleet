@@ -260,8 +260,15 @@ function renderMap() {
   }
   if (nodes.length && mWarp) {
     const ly = H - botLane / 2, sx = MX + MW - 30;
-    svg.appendChild(svgEl('path', { d: `M ${sx} ${cy + MH / 2} C ${sx} ${ly - 30}, ${sx + 10} ${ly}, ${sx + 50} ${ly} L ${EX - 60} ${ly} C ${EX - 20} ${ly}, ${EX} ${ly - 10}, ${EX} ${warpY + 10}`, class: 'rm-line warp ' + (inSt === 'down' ? 'down' : 'live') }));
-    pill((sx + EX) / 2, ly, 'WARP с главного', 'warp', 'Подключение главного сервера через Cloudflare WARP');
+    // its state and delay from the same 5-minute check as the servers' WARP (keyed by the master's name)
+    const wc = ready && live.warp ? live.warp : null, mname = overview.master.name;
+    const wOk = wc && wc.nodes && mname in wc.nodes ? wc.nodes[mname] != null : null;
+    const wSt = inSt === 'down' || wOk === false ? 'down' : 'live';
+    const wMs = wc && wc.added ? wc.added[mname] : null;
+    svg.appendChild(svgEl('path', { d: `M ${sx} ${cy + MH / 2} C ${sx} ${ly - 30}, ${sx + 10} ${ly}, ${sx + 50} ${ly} L ${EX - 60} ${ly} C ${EX - 20} ${ly}, ${EX} ${ly - 10}, ${EX} ${warpY + 10}`, class: 'rm-line warp ' + wSt }));
+    pill((sx + EX) / 2, ly, 'WARP с главного' + (wSt === 'down' ? ' ✕' : wMs != null ? ' +' + wMs + ' мс' : ''), wSt === 'down' ? 'down' : 'warp',
+      wSt === 'down' ? 'WARP главного сервера не пропустил трафик при последней проверке (раз в 5 минут)'
+        : 'Подключение через главный сервер с выходом через Cloudflare WARP' + (wMs != null ? ': добавляет ' + wMs + ' мс (ping с главного до Cloudflare)' : ''));
   }
   // master box — only when the master is on the route
   if (hubOnMap) {
@@ -451,7 +458,7 @@ function realMap(ready) {
     return Object.assign({}, n, { cascade: r.cascade, direct: r.direct ? n.direct || 443 : null, warp: r.warp, offered: r.cascade || r.direct });
   }).filter((n) => n.cascade || n.direct || n.offered === false);
   const mVpn = routes ? routes.master.vpn : !!m.vpn, mWarp = routes ? routes.master.warp : false;
-  return { m, nodes, mVpn, mWarp, carries: mVpn || nodes.some((n) => n.cascade) };
+  return { m, nodes, mVpn, mWarp, carries: mVpn || mWarp || nodes.some((n) => n.cascade) };
 }
 // The state of every leg of the map: 'live' (works), 'down' (does not answer — drawn red), 'idle' (no data yet).
 //   master — this computer → RU (ping) and Xray on RU; per node: ru — RU → node (the panel sees the node and the
@@ -689,10 +696,13 @@ function openRole() {
   resetForm(form);
   form.querySelector('[name=vpn]').checked = !!m.vpn;
   form.querySelector('[name=cascades]').checked = !!m.cascades;
+  form.querySelector('[name=warp]').checked = !!m.warp;
   form.querySelector('[name=label]').value = splitFlag(m.labelText)[1];
   const sel = form.querySelector('[name=flag]'); fillFlags(sel, m.country); sel.value = m.flag || 'auto';
   for (const k of ['direct', 'xhttp', 'hy2', 'warp']) form.querySelector('[name=show_' + k + ']').checked = !(m.hide || []).includes(k);
-  const sync = () => $('roleOwn').classList.toggle('hidden', !form.querySelector('[name=vpn]').checked);
+  // a VPN server already has a WARP entry in its set (when the template has WARP): the separate switch is for the rest
+  const sync = () => { const vpn = form.querySelector('[name=vpn]').checked;
+    $('roleOwn').classList.toggle('hidden', !vpn); $('roleWarpRow').classList.toggle('hidden', vpn); };
   form.querySelector('[name=vpn]').onchange = sync; sync();
   $('dlgRole').showModal();
 }

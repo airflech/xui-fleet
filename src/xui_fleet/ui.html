@@ -610,6 +610,8 @@
   <div class="dlg-b">
     <label class="check"><input type="checkbox" name="vpn"> <span><b>Сам VPN-сервер</b> — пользователи подключаются к нему, интернет выходит с него</span></label>
     <label class="check"><input type="checkbox" name="cascades"> <span><b>Каскады</b> — подключения через этот сервер ведут на зарубежные серверы</span></label>
+    <label class="check" id="roleWarpRow"><input type="checkbox" name="warp"> <span><b>WARP с этого сервера</b> — отдельное подключение: пользователи
+      подключаются к этому серверу, а в интернет выходят через Cloudflare WARP прямо с него (сайты видят адрес Cloudflare)</span></label>
     <div id="roleOwn">
       <div class="grid2">
         <div><label class="f" for="o_label">Название в приложениях</label><input type="text" id="o_label" name="label" placeholder="по стране"></div>

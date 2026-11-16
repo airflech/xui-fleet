@@ -127,7 +127,7 @@ class Reconciler:
     def _drop_local_entries(self) -> None:
         """master.vpn switched off: remove the master's own entries (cascades are kept)."""
         name = self.cfg.master.name
-        own = {xc.direct_tag(name), xc.xhttp_tag(name), xc.hy2_tag(name), xc.warp_tag(name)}
+        own = {xc.direct_tag(name), xc.xhttp_tag(name), xc.hy2_tag(name)} | (set() if self.cfg.master.warp else {xc.warp_tag(name)})
         for tag, inbound in self._inbounds_by_tag().items():
             if tag in own and not inbound.get("nodeId"):
                 self._do(f"мастер больше не VPN-сервер: удаляю «{inbound.get('remark')}»",
@@ -196,11 +196,14 @@ class Reconciler:
         self._direct_ports = {name: a.direct_port for name, a in access.items() if a.direct_port}
         node_ids = self._ensure_nodes(nodes, access)
         # master.vpn: the master gets the same connection set as a node, hosted on itself.
-        local = [self.cfg.local_node()] if self.cfg.master.vpn and (only is None or self.cfg.master.name in only) else []
-        entry_ids = dict(node_ids, **{n.name: LOCAL for n in local})
+        mine = only is None or self.cfg.master.name in only
+        local = [self.cfg.local_node()] if self.cfg.master.vpn and mine else []
+        # master.warp without vpn: only its WARP entry (users → the master → Cloudflare WARP)
+        warp_only = [self.cfg.local_node()] if self.cfg.master.warp and not self.cfg.master.vpn and mine else []
+        entry_ids = dict(node_ids, **{n.name: LOCAL for n in local + warp_only})
         direct = self._ensure_direct_inbounds(local + nodes, entry_ids)
         self._ensure_extra_inbounds(local + nodes, entry_ids, access)
-        self._ensure_warp_inbounds(local + nodes, entry_ids, access)
+        self._ensure_warp_inbounds(local + warp_only + nodes, entry_ids, access)
         if not self.cfg.master.vpn:
             self._drop_local_entries()
         direct = {k: v for k, v in direct.items() if k != self.cfg.master.name}
@@ -471,7 +474,8 @@ class Reconciler:
             ports = [8443, 2053, 2083, 2087, 9443, 10443] + list(range(20443, 60000, 1000))
 
             tag, cur = xc.warp_tag(node.name), by_tag.get(xc.warp_tag(node.name))
-            if not want.warp:
+            # the master's WARP entry exists by master.warp on its own, whatever the template says
+            if not (want.warp or (node_id == LOCAL and self.cfg.master.warp)):
                 if cur is not None:
                     self._do(f"{node.name}: WARP выключен, удаляю {tag}", lambda i=cur["id"]: self.panel.delete_inbound(i))
             elif cur is not None:
@@ -839,6 +843,9 @@ class Reconciler:
                           xc.warp_tag(node.name), xc.rwarp_tag(node.name)):
                 if extra in by_tag:
                     facing.append(by_tag[extra]["id"])
+        own_warp = by_tag.get(xc.warp_tag(self.cfg.master.name))
+        if self.cfg.master.warp and not self.cfg.master.vpn and own_warp and not own_warp.get("nodeId"):
+            facing.append(own_warp["id"])  # the master's WARP entry (master.warp): every user gets it too
         if not facing:
             return
         bridge = self.cfg.clients.bridge_email

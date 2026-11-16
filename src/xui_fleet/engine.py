@@ -115,7 +115,7 @@ class Fleet:
         return acc
 
     def ensure_master_warp(self, panel: Panel) -> Optional[str]:
-        """WARP exit on the master for its own WARP entry (master.vpn): own registration, best endpoint."""
+        """WARP exit on the master for its own WARP entry (master.vpn or master.warp): own registration, best endpoint."""
         from . import migrate as mg
         from . import xrayconf as xc
         tag = xc.warp_tag(self.cfg.master.name)
@@ -367,7 +367,7 @@ class Fleet:
             fresh = {n: a for n, a in access.items() if a.token_fresh or not self._registered(panel, n)}
             net_warnings = self.check_reachability(fresh, failed)
             access = {n: a for n, a in access.items() if n not in failed}
-            if self.cfg.master.vpn and self._master_ssh is not None:
+            if (self.cfg.master.vpn or self.cfg.master.warp) and self._master_ssh is not None:
                 access[self.cfg.master.name] = self._master_facts()
             healthy = None if only is None and not failed else {n.name for n in nodes if n.name not in failed}
             used = self.health()
@@ -389,7 +389,7 @@ class Fleet:
                 report.changes += again.changes
             report.warnings = net_warnings + report.warnings
             self._open_fleet_ports(panel, access)
-            if self.cfg.master.vpn and self.cfg.defaults.set.warp:
+            if (self.cfg.master.vpn and self.cfg.defaults.set.warp) or self.cfg.master.warp:
                 try:
                     msg = self.ensure_master_warp(panel)
                     if msg:
@@ -1167,7 +1167,10 @@ class Fleet:
         # The figure shown is the ping from each server to its Cloudflare entry point — the WARP leg itself, measured
         # like every other leg of the map and steady; the traffic difference above (noisier) only fills in where
         # that ping does not answer.
-        self.warp_added.update(self.warp_pings([n for n in self.cfg.nodes if n.name in got]))
+        servers = [n for n in self.cfg.nodes if n.name in got]
+        if self.cfg.master.name in got:  # the master's own WARP (master.warp / master.vpn)
+            servers.append(self.cfg.local_node())
+        self.warp_added.update(self.warp_pings(servers))
         return got
 
     def warp_pings(self, nodes: List[NodeConfig]) -> Dict[str, int]:

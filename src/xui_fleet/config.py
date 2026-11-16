@@ -188,6 +188,9 @@ class MasterConfig(ServerBase):
     # A single-server setup is vpn: true with no nodes.
     vpn: bool = False
     cascades: bool = True
+    # warp: one entry on the master whose traffic leaves through Cloudflare WARP from the master itself — without
+    # the whole VPN role (vpn already includes it when the template has WARP).
+    warp: bool = False
     hide: List[str] = Field(default_factory=list)  # own entries left out of subscriptions (like a node's)
     # Its own connection set when vpn (like a node's): only the fields stated here override defaults.set.
     set: Optional[SetConfig] = None
@@ -572,11 +575,16 @@ def set_master_domain(path: Path, domain: str, reserves: Optional[List[str]] = N
 
 
 def set_master_role(path: Path, vpn: bool, cascades: bool, label: Optional[str] = None,
-                    flag: Optional[str] = None, hide: Optional[List[str]] = None) -> None:
-    """Roles of the master (its own VPN entries / cascades to the nodes) and how its entries are named."""
+                    flag: Optional[str] = None, hide: Optional[List[str]] = None, warp: Optional[bool] = None) -> None:
+    """Roles of the master (its own VPN entries / cascades to the nodes / a WARP entry) and how its entries are named."""
     doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     m = doc.setdefault("master", {})
     m["vpn"], m["cascades"] = bool(vpn), bool(cascades)
+    if warp is not None:
+        if warp:
+            m["warp"] = True
+        else:
+            m.pop("warp", None)
     if label is not None:
         if label.strip():
             m["label"] = label.strip()

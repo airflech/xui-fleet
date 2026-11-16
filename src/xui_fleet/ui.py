@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "задержка WARP — ping с сервера до Cloudflare раз в 5 минут; проверка WARP сразу после запуска, без ожидания"
+WHATS_NEW = "WARP с главного сервера: отдельное подключение без роли VPN — галочка в ролях главного сервера"
 
 
 def _last_backup(fleet: Any) -> int:
@@ -122,9 +122,10 @@ def real_routes(master: str, nodes: List[Dict[str, Any]], inbounds: List[Dict[st
             if k == "warp":
                 node(on_node)["warp"] = True
         elif k in DIRECT_KINDS and not i.get("nodeId") and owner == master:
-            out["master"]["vpn"] = True
             if k == "warp":
-                out["master"]["warp"] = True
+                out["master"]["warp"] = True  # its WARP entry alone (master.warp) is not the VPN role
+            else:
+                out["master"]["vpn"] = True
     for n in nodes:  # every registered node gets a row, even with nothing offered
         node(n.get("name"))
     return out
@@ -461,7 +462,7 @@ class App:
                            "tls": tls.mode, "domain": tls.domain or "", "reserveDomains": list(tls.reserve_domains),
                            "addressMode": tls.address_mode, "allowedApps": list(cfg.clients.allowed_apps),
                            "vpnName": cfg.clients.vpn_name,
-                           "access": access(cfg.master), "vpn": cfg.master.vpn, "cascades": cfg.master.cascades,
+                           "access": access(cfg.master), "vpn": cfg.master.vpn, "cascades": cfg.master.cascades, "warp": cfg.master.warp,
                            "labelText": cfg.master.label or "", "flag": cfg.master.flag or "auto", "hide": list(cfg.master.hide),
                            "country": state.get(cfg.master.name, "country") or "",
                            "display": geo.display_label(cfg.master.name, cfg.master.label, cfg.master.flag,

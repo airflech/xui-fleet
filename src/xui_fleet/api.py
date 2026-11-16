@@ -372,11 +372,12 @@ def _master_remove(c: Call):
 def _master_role(c: Call):
     from .config import set_master_role
     b = c.body
-    if not b.get("vpn") and not b.get("cascades"):
+    if not b.get("vpn") and not b.get("cascades") and not b.get("warp"):
         raise ValueError("главный сервер должен выполнять хотя бы одну роль")
     hide = [k for k in ("direct", "xhttp", "hy2", "warp") if b.get("show_" + k) is False]
     return c.run_change("Роль главного сервера",
-                        lambda: set_master_role(c.app.path, bool(b.get("vpn")), bool(b.get("cascades")), b.get("label"), b.get("flag"), hide),
+                        lambda: set_master_role(c.app.path, bool(b.get("vpn")), bool(b.get("cascades")), b.get("label"), b.get("flag"), hide,
+                                                warp=bool(b.get("warp")) and not b.get("vpn")),
                         lambda log: c.app.fleet(log).apply())
 
 

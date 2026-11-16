@@ -23,6 +23,17 @@ Log = Callable[[str], None]
 
 
 
+def public_sub_port(s: Dict[str, Any]) -> int:
+    """The port users fetch subscriptions on. Behind the app gate (nginx) 3x-ui itself listens on 127.0.0.1 and
+    the public address is its subURI."""
+    from urllib.parse import urlparse
+    if str(s.get("subListen") or "") == "127.0.0.1" and s.get("subURI"):
+        port = urlparse(str(s["subURI"])).port
+        if port:
+            return port
+    return int(s.get("subPort") or 2096)
+
+
 BEFORE_CHANGE_HOURS = 0.25  # a restore point before every change; a series of quick edits shares one
 
 class FleetError(RuntimeError):
@@ -345,6 +356,13 @@ class Fleet:
             healthy = None if only is None and not failed else {n.name for n in nodes if n.name not in failed}
             used = self.health()
             report = Reconciler(panel, self.cfg, countries=self.countries(), neighbors=self.neighbors(), health=used, log=self.log).run(access, healthy)
+            if self._master_ssh is not None:
+                try:
+                    gate = self.ensure_sub_gate(panel, self._master_ssh)
+                    if gate:
+                        report.changes.append(gate)
+                except Exception as exc:  # subscriptions keep working without the gate (it rolls itself back)
+                    report.warnings.append(f"мастер: фильтр приложений для подписки не применён: {exc}")
             for name, ok in report.cascade_ok.items():
                 hist = list(self.state.get(name, "cascade_hist") or [])[-5:] + [ok]
                 self.state.update(name, cascade_hist=hist)
@@ -516,8 +534,96 @@ class Fleet:
             access = {n.name: a for n in nodes for a in [self._access_from_state(n)] if a}
             dry = Reconciler(panel, self.cfg, countries=self.countries(), neighbors=self.neighbors(), health=self.health(),
                              dry_run=True, log=lambda _m: None).run(access, {n.name for n in nodes if n.name not in pending})
-        return {"changes": [f"{p}: сервер ещё не подключён — установить и подключить" for p in pending] + list(dry.changes),
+            gate = self.sub_gate_drift(panel.settings())
+        return {"changes": [f"{p}: сервер ещё не подключён — установить и подключить" for p in pending] + list(dry.changes)
+                + ([gate] if gate else []),
                 "warnings": list(dry.warnings)}
+
+    # ---- subscriptions only for chosen apps -------------------------------
+    def sub_gate_drift(self, s: Dict[str, Any]) -> Optional[str]:
+        """Without SSH: does 3x-ui sit where the app gate wants it (behind nginx, or on the public port)?"""
+        apps = self.cfg.clients.allowed_apps
+        behind = str(s.get("subListen") or "") == "127.0.0.1"
+        if apps and not behind:
+            return "мастер: подписку будут получать только " + pv._app_names(apps) + " (остальным — сообщение, что приложение не поддерживается)"
+        if not apps and behind and self.state.get(self.cfg.master.name, "sub_gate"):
+            return "мастер: подписку снова будут получать любые приложения"
+        return None
+
+    def ensure_sub_gate(self, panel: Panel, ssh: SSH) -> Optional[str]:
+        """Put nginx in front of the subscription server when clients.allowed_apps is set, or take it away.
+        The public port and the links stay the same; 3x-ui moves to 127.0.0.1. Returns what changed, or None."""
+        master = self.cfg.master
+        apps = self.cfg.clients.allowed_apps
+        s = panel.settings()
+        gate = self.state.get(master.name, "sub_gate") or {}
+        behind = str(s.get("subListen") or "") == "127.0.0.1"
+
+        def restart(settings: Dict[str, Any]) -> None:
+            panel.update_settings(settings)
+            panel.restart_panel()
+            time.sleep(4)
+            panel.wait_ready(90)
+
+        if not apps:
+            if not gate and not behind:
+                return None
+            public = int(gate.get("port") or public_sub_port(s))
+            pv.remove_sub_gate(ssh)  # frees the public port first
+            if behind:
+                s["subListen"], s["subPort"] = "", public
+                if not gate or s.get("subURI") == gate.get("uri"):
+                    s["subURI"] = ""
+                restart(s)
+            self.state.drop(master.name, "sub_gate")
+            msg = f"мастер: подписку снова получают любые приложения (3x-ui на порту {public})"
+            self.log(msg)
+            return msg
+
+        public = int(gate.get("port") or (public_sub_port(s) if behind else s.get("subPort") or 2096))
+        facts = pv.sub_gate_facts(ssh)
+        internal = int(gate.get("internal") or facts["free"])
+        tls = self.cfg.tls_for(master)
+        cert, key = str(s.get("subCertFile") or ""), str(s.get("subKeyFile") or "")
+        host = s.get("subDomain") or (tls.domain if tls.mode == "domain" and tls.domain else master.host)
+        uri = f"{'https' if cert and key else 'http'}://{host}:{public}{s.get('subPath', '/sub/')}"
+        ips = list(facts["ips"]) + [master.host]
+        conf = pv.sub_gate_conf(public, internal, cert, key, apps, ips, ipv6=facts["ipv6"])
+        before = dict(s)
+        move = not behind or int(s.get("subPort") or 0) != internal or s.get("subURI") != uri
+        try:
+            changed = pv.write_sub_gate(ssh, conf)
+            if move:
+                s["subListen"], s["subPort"], s["subURI"] = "127.0.0.1", internal, uri
+                restart(s)  # 3x-ui leaves the public port to nginx
+            if (changed or move) and not pv.reload_nginx_on(ssh, public):
+                raise FleetError(f"nginx не занял порт {public}")
+        except Exception:
+            # Never leave subscriptions without a listener: back to 3x-ui on the public port.
+            pv.remove_sub_gate(ssh)
+            if move:
+                restart(before)
+            raise
+        self.state.update(master.name, sub_gate={"port": public, "internal": internal, "uri": uri, "apps": list(apps)})
+        if not (changed or move):
+            return None
+        msg = (f"мастер: подписку получают только {pv._app_names(apps)}; остальным приложениям — сообщение, что они не "
+               f"поддерживаются (nginx на порту {public}, 3x-ui на 127.0.0.1:{internal})")
+        self.log(msg)
+        return msg
+
+    def set_app_gate(self) -> str:
+        """Apply clients.allowed_apps right away (the page's switch)."""
+        self.backup_before("перед изменением списка приложений для подписки")
+        with self.master_panel(provision=False) as panel:
+            if self._master_ssh is None:
+                raise FleetError("фильтр приложений ставится на главный сервер по SSH, а он подключён напрямую (api_url)")
+            self.ensure_sub_gate(panel, self._master_ssh)  # logs what it changed
+            Reconciler(panel, self.cfg, countries=self.countries(), neighbors=self.neighbors(), health=self.health(),
+                       log=self.log)._ensure_subscription_settings()
+        apps = self.cfg.clients.allowed_apps
+        return ("Готово: подписку получают только " + pv._app_names(apps) + ", остальные приложения видят сообщение, что они не поддерживаются"
+                if apps else "Готово: подписку получают любые приложения")
 
     def _servers(self):
         from .geo import display_labels
@@ -610,7 +716,7 @@ class Fleet:
         with self.master_panel(provision=False) as panel:
             s = panel.settings()
             sample = next((c["subId"] for c in panel.clients() if c.get("subId") and c["email"] != self.cfg.clients.bridge_email), "")
-        port, path = s.get("subPort", 2096), s.get("subPath", "/sub/")
+        port, path = public_sub_port(s), s.get("subPath", "/sub/")
         ssh = self.ssh(self.cfg.master).connect()
         try:
             return {d: ssh.run(f"curl -s -o /dev/null -w '%{{http_code}}' -m 15 --resolve {d}:{port}:127.0.0.1 "
@@ -647,10 +753,14 @@ class Fleet:
                 time.sleep(5)
                 panel.wait_ready(90)
                 self.log("мастер: подписки и панель теперь работают с сертификатом домена")
-            path, port = s.get("subPath", "/sub/"), s.get("subPort", 2096)
+            path, port = s.get("subPath", "/sub/"), public_sub_port(s)
         mode_before = tls.address_mode
         set_master_domain(self.config_path, domain, reserves)
         self.reload()
+        if self.cfg.clients.allowed_apps:  # nginx in front of the subscriptions takes the new certificate and address
+            with self.master_panel(provision=False) as panel:
+                if self._master_ssh is not None:
+                    self.ensure_sub_gate(panel, self._master_ssh)
         if mode_before != self.cfg.tls_for(master).address_mode:
             self.log(f"адреса подключений через RU: теперь основной домен {domain} — режим «только резервный» снят, "
                      f"иначе ссылки вели бы на прежний домен")
@@ -873,7 +983,7 @@ class Fleet:
             hosts = [h for h in (tls.domain, *tls.reserve_domains, self.cfg.master.host) if h]
             outs, last_err = None, None
             for host in hosts:  # the domain may still point at the old server right after a move
-                url = f"https://{host}:{s.get('subPort', 2096)}{s.get('subPath', '/sub/')}{user['subId']}"
+                url = f"https://{host}:{public_sub_port(s)}{s.get('subPath', '/sub/')}{user['subId']}"
                 try:
                     parsed = panel.post("/xray/outbound-subs/parse", form={"url": url})
                     outs = parsed.get("outbounds") if isinstance(parsed, dict) else parsed
@@ -1040,7 +1150,8 @@ class Fleet:
             if not pv._wait_token(new, scheme, settings["port"], settings["base_path"], token):
                 raise FleetError("панель на новом сервере не запустилась — смотрите `journalctl -u x-ui` на нём")
             sub_port = new.run(pv._ENV + f"{pv.XUI} setting -show true 2>/dev/null | sed -n 's/^subPort: //p'", check=False).out.strip()
-            for port in (settings["port"], int(sub_port) if sub_port.isdigit() else 2096, 80):
+            gate_port = (self.state.get(self.cfg.master.name, "sub_gate") or {}).get("port")  # nginx's, behind the app gate
+            for port in (settings["port"], int(sub_port) if sub_port.isdigit() else 2096, 80, *([gate_port] if gate_port else [])):
                 pv.open_port(new, int(port))
             host_key = self.state.get(temp_name, "ssh_host_key")
         finally:

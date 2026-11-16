@@ -389,6 +389,14 @@ def _master_addresses(c: Call):
                         lambda log: c.app.fleet(log).apply(skip_provision=True))
 
 
+@post("/api/master/apps", needs={"apps": "enum:any|happ_incy"})
+def _master_apps(c: Call):
+    from .config import set_allowed_apps
+    apps = [] if c.body["apps"] == "any" else ["happ", "incy"]
+    title = "Подписка: только Happ и INCY" if apps else "Подписка: любые приложения"
+    return c.run_change(title, lambda: set_allowed_apps(c.app.path, apps), lambda log: c.app.fleet(log).set_app_gate())
+
+
 @post("/api/domain", needs={"domain": "str"})
 def _domain(c: Call):
     domain = c.body["domain"]

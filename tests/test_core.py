@@ -1362,3 +1362,121 @@ def test_reserve_only_mode_follows_the_domains(tmp_path):
     write("both")
     set_master_domain(path, "b.example", ["a.example"])  # both links stay meaningful
     assert mode() == "both"
+
+
+def test_incy_gets_the_same_ru_profile_and_its_time_only_moves_on_change(monkeypatch):
+    from xui_fleet import reconcile as rc
+    panel = FakePanel()
+    cfg = _cfg([{"name": "de", "host": "de.example"}])
+    monkeypatch.setattr(rc, "_now", lambda: 1_800_000_000)
+    Reconciler(panel, cfg).run(_access(["de"]))
+    s = panel.settings()
+    happ, incy = xc.profile_from_link(s["subRoutingRules"]), xc.profile_from_link(s["subIncyRoutingRules"])
+    assert s["subIncyEnableRouting"] is True and s["subIncyRoutingRules"].startswith("incy://routing/onadd/")
+    assert {k: v for k, v in happ.items() if k != "RouteOrder"} == {k: v for k, v in incy.items() if k != "LastUpdated"}
+    assert incy["LastUpdated"] == "1800000000"
+    monkeypatch.setattr(rc, "_now", lambda: 1_900_000_000)
+    assert Reconciler(panel, cfg).run(_stale(_access(["de"]))).changes == []  # same rules: INCY is not asked to reload
+    doc = cfg.model_dump()
+    doc["routing"]["extra_direct"] = ["domain:example.org"]
+    Reconciler(panel, FleetConfig.model_validate(doc)).run(_stale(_access(["de"])))
+    assert xc.profile_from_link(panel.settings()["subIncyRoutingRules"])["LastUpdated"] == "1900000000"
+    doc["routing"]["client_profile"] = False
+    Reconciler(panel, FleetConfig.model_validate(doc)).run(_stale(_access(["de"])))
+    assert panel.settings()["subIncyRoutingRules"] == "" and panel.settings()["subIncyEnableRouting"] is False
+
+
+def test_allowed_apps_setting(tmp_path):
+    from xui_fleet.config import set_allowed_apps
+    path = tmp_path / "fleet.yaml"
+    path.write_text("master: {name: ru, host: 9.9.9.9}\nnodes: []\n", encoding="utf-8")
+    set_allowed_apps(path, ["happ", "incy"])
+    assert load_config(path).clients.allowed_apps == ["happ", "incy"]
+    set_allowed_apps(path, [])
+    assert "clients" not in yaml.safe_load(path.read_text(encoding="utf-8")) and load_config(path).clients.allowed_apps == []
+    with pytest.raises(ValidationError):
+        FleetConfig.model_validate({"master": {"name": "ru", "host": "9.9.9.9"}, "clients": {"allowed_apps": ["v2rayng"]}})
+
+
+def test_sub_gate_conf_lets_only_the_apps_through_and_tells_the_others():
+    import base64, re
+    from urllib.parse import unquote
+    from xui_fleet import provision as pv
+    conf = pv.sub_gate_conf(2096, 12096, "/root/cert/a/fullchain.pem", "/root/cert/a/privkey.pem", ["happ", "incy"],
+                            ["203.0.113.5", "10.0.0.2"], ipv6=True)
+    assert "listen 2096 ssl;" in conf and "listen [::]:2096 ssl;" in conf and "proxy_pass https://127.0.0.1:12096;" in conf
+    assert "~*(^|[^a-z0-9])happ([^a-z0-9]|$) 1;" in conf and "~*(^|[^a-z0-9])incy([^a-z0-9]|$) 1;" in conf
+    assert "\\" not in conf.split("location @xf_sub_app_denied")[0]  # no backslashes for nginx to misread
+    for ip in ("127.0.0.1", "::1", "203.0.113.5", "10.0.0.2"):
+        assert f"    {ip} 1;" in conf  # the master itself (link check) is never turned away
+    assert "proxy_set_header X-Real-IP $remote_addr;" in conf  # HWID and IP limits still see the user
+    for ua, ok in (("Happ/3.2.1", True), ("INCY/1.4 (iOS)", True), ("v2rayNG/1.8.5", False), ("Hiddify", False),
+                   ("happy-client", False)):
+        pats = re.findall(r"~\*(\S+) 1;", conf.split("map $remote_addr")[0])
+        assert any(re.search(p, ua, re.I) for p in pats) == ok, ua
+    body = re.search(r'location @xf_sub_app_denied \{.*?return 200 "([^"]+)";', conf, re.S).group(1)
+    lines = base64.b64decode(body).decode().splitlines()
+    assert len(lines) == 2 and all(line.startswith("vless://") for line in lines)
+    assert "не поддерживается" in unquote(lines[0]) and "Happ или INCY" in unquote(lines[1])
+    assert re.search(r'add_header announce "base64:[A-Za-z0-9+/=]+" always;', conf)
+    page = re.search(r'location @xf_sub_page_denied \{.*?return 200 "(.+?)";\n', conf, re.S).group(1)
+    assert '"' not in page and "$" not in page and "happ.su" in page
+    plain = pv.sub_gate_conf(2096, 12096, "", "", ["happ"], [], ipv6=False)
+    assert "listen 2096;" in plain and "[::]" not in plain and "proxy_pass http://127.0.0.1:12096;" in plain and "incy" not in plain.split("server {")[0]
+
+
+def _gate_fleet(tmp_path, apps, monkeypatch, reload_ok=True):
+    from xui_fleet import provision as pv
+    from xui_fleet.engine import Fleet
+    from xui_fleet.state import State
+    calls = []
+    monkeypatch.setattr(pv, "sub_gate_facts", lambda ssh: {"ips": ["203.0.113.5"], "ipv6": False, "free": 12096})
+    written = {}
+
+    def write(ssh, conf):
+        calls.append(("write", conf))
+        changed, written["conf"] = written.get("conf") != conf, conf
+        return changed
+    monkeypatch.setattr(pv, "write_sub_gate", write)
+    monkeypatch.setattr(pv, "reload_nginx_on", lambda ssh, port: calls.append(("reload", port)) or reload_ok)
+    monkeypatch.setattr(pv, "remove_sub_gate", lambda ssh: calls.append(("remove",)) or True)
+    fleet = Fleet.__new__(Fleet)
+    fleet.cfg = FleetConfig.model_validate({"master": {"name": "ru", "host": "203.0.113.5",
+                                                       "tls": {"mode": "domain", "domain": "a.example"}},
+                                            "clients": {"allowed_apps": apps}})
+    fleet.state = State(tmp_path / "state.json")
+    fleet.log = lambda _m: None
+    return fleet, calls
+
+
+def test_sub_gate_moves_3xui_behind_nginx_and_back(tmp_path, monkeypatch):
+    from xui_fleet.engine import public_sub_port
+    panel = FakePanel()
+    panel._settings = {"subEnable": True, "subPort": 2096, "subPath": "/s/", "subCertFile": "/c", "subKeyFile": "/k"}
+    fleet, calls = _gate_fleet(tmp_path, ["happ", "incy"], monkeypatch)
+    assert fleet.sub_gate_drift(panel.settings())
+    assert "только Happ или INCY" in fleet.ensure_sub_gate(panel, ssh=None)
+    s = panel.settings()
+    assert (s["subListen"], s["subPort"], s["subURI"]) == ("127.0.0.1", 12096, "https://a.example:2096/s/")
+    assert public_sub_port(s) == 2096 and fleet.sub_gate_drift(s) is None
+    assert [c[0] for c in calls] == ["write", "reload"] and ("reload", 2096) in calls
+    assert fleet.state.get("ru", "sub_gate")["port"] == 2096
+    calls.clear()
+    assert fleet.ensure_sub_gate(panel, ssh=None) is None and [c[0] for c in calls] == ["write"]  # in place: no restart, no reload
+    fleet.cfg = FleetConfig.model_validate({"master": fleet.cfg.master.model_dump()})
+    assert fleet.sub_gate_drift(panel.settings())
+    calls.clear()
+    fleet.ensure_sub_gate(panel, ssh=None)
+    s = panel.settings()
+    assert (s["subListen"], s["subPort"], s["subURI"]) == ("", 2096, "") and calls == [("remove",)]
+    assert fleet.state.get("ru", "sub_gate") is None and fleet.ensure_sub_gate(panel, ssh=None) is None
+
+
+def test_sub_gate_rolls_back_when_nginx_cannot_take_the_port(tmp_path, monkeypatch):
+    panel = FakePanel()
+    panel._settings = {"subEnable": True, "subPort": 2096, "subPath": "/s/", "subCertFile": "/c", "subKeyFile": "/k"}
+    before = panel.settings()
+    fleet, calls = _gate_fleet(tmp_path, ["happ", "incy"], monkeypatch, reload_ok=False)
+    with pytest.raises(Exception):
+        fleet.ensure_sub_gate(panel, ssh=None)
+    assert panel.settings() == before and ("remove",) in calls and fleet.state.get("ru", "sub_gate") is None

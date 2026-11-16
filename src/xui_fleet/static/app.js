@@ -140,6 +140,20 @@ $('addrForm').addEventListener('submit', (e) => {
   if (mode === (overview.master.addressMode || 'main')) { $('dlgAddr').close(); return; }
   start('/api/master/addresses', { mode }, e.target);
 });
+const APPS_MODE = { any: 'любые приложения', happ_incy: 'только Happ и INCY' };
+function appsMode() { return (overview.master.allowedApps || []).length ? 'happ_incy' : 'any'; }
+function openApps() {
+  closeMenus(); $('dlgDomains').close();
+  const form = $('appsForm'); resetForm(form);
+  form.querySelector('[value=' + appsMode() + ']').checked = true;
+  $('dlgApps').showModal();
+}
+$('appsForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const apps = (e.target.querySelector('input[name=apps]:checked') || {}).value;
+  if (apps === appsMode()) { $('dlgApps').close(); return; }
+  start('/api/master/apps', { apps }, e.target);
+});
 function switchToReserve() {
   closeMenus(); $('dlgDomains').close();
   const rsv = overview.master.reserveDomains[0], cur = overview.master.domain;
@@ -170,6 +184,7 @@ function renderDomains() {
     'Перейти на ' + rsv, switchToReserve, 'alert-row');
   row('Основной домен подписки', m.domain || 'не задан', m.domain ? domainState(m.domain) : null, m.domain ? 'Изменить' : 'Задать', openDomain);
   row('Резервный домен', rsv || 'не задан — подписка держится на одном домене', rsv ? domainState(rsv) : null, rsv ? 'Изменить' : 'Добавить', openReserve);
+  row('Приложения, которые получают подписку', APPS_MODE[appsMode()], null, 'Изменить', openApps);
   if (rsv) {
     row('Адреса подключений через RU', ADDR_MODE[m.addressMode || 'main'], null, 'Изменить', openAddr);
     if (!(mainDown && rsvUp)) row('Если основной заблокируют', 'Резервный станет основным', null, 'Перейти на ' + rsv, switchToReserve);

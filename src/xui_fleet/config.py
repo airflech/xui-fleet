@@ -248,10 +248,43 @@ class ClientsConfig(Strict):
     # Service user whose subscription the link check uses, so test traffic from the master never lands in a
     # real user's devices, IPs and "last connected".
     check_email: str = "fleet-check"
+    # Apps allowed to fetch subscriptions (by User-Agent, through nginx on the master); empty — any app.
+    # Other apps get a placeholder subscription that says the app is not supported, browsers a page.
+    allowed_apps: List[str] = Field(default_factory=list)
+
+    @field_validator("allowed_apps")
+    @classmethod
+    def _apps(cls, v: List[str]) -> List[str]:
+        v = [a.strip().lower() for a in v if a.strip()]
+        bad = [a for a in v if a not in APPS]
+        if bad:
+            raise ValueError(f"clients.allowed_apps: {', '.join(bad)} — допустимо {', '.join(APPS)}")
+        return list(dict.fromkeys(v))
 
     @property
     def service_emails(self) -> Set[str]:
         return {self.bridge_email, self.check_email}
+
+
+# Apps that can be the only ones allowed to fetch subscriptions: name → how its User-Agent is recognised
+# (the same patterns 3x-ui itself uses to detect them).
+APPS = {"happ": r"\bhapp\b", "incy": r"\bincy\b"}
+APP_TITLES = {"happ": "Happ", "incy": "INCY"}
+
+
+def set_allowed_apps(path: Path, apps: List[str]) -> None:
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    clients = doc.get("clients") or {}
+    if apps:
+        clients["allowed_apps"] = list(apps)
+    else:
+        clients.pop("allowed_apps", None)
+    if clients:
+        doc["clients"] = clients
+    else:
+        doc.pop("clients", None)
+    FleetConfig.model_validate(doc)
+    _save_doc(path, doc)
 
 
 class RoutingConfig(Strict):

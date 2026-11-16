@@ -139,6 +139,11 @@ class Reconciler:
         if getattr(self, "_reserved", None) is None:
             s = self.panel.settings() or {}
             self._reserved = {22, 80, self.cfg.master.decoy_port} | {int(s[k]) for k in ("webPort", "subPort") if s.get(k)}
+            if s.get("subURI"):  # behind the app gate nginx holds the public subscription port
+                from urllib.parse import urlparse
+                port = urlparse(str(s["subURI"])).port
+                if port:
+                    self._reserved.add(port)
             if self.cfg.defaults.hardening.cover_site and self.cfg.tls_for(self.cfg.master).mode == "domain":
                 self._reserved.add(443)  # the cover website (nginx) owns 443 on a master with a domain
         return self._reserved
@@ -889,6 +894,7 @@ class Reconciler:
                 "RU напрямую" in _b64_name(settings.get("subRoutingRules", "")):
             settings["subEnableRouting"], settings["subRoutingRules"] = False, ""
             changed.append("убираю профиль «RU напрямую» из подписки")
+        self._ensure_incy_profile(settings, changed)
         if not changed:
             return
 
@@ -898,6 +904,25 @@ class Reconciler:
             time.sleep(4)
             self.panel.wait_ready(90)
         self._do("мастер: " + ", ".join(changed) + ", перезапускаю панель", apply)
+
+    def _ensure_incy_profile(self, settings: Dict[str, Any], changed: List[str]) -> None:
+        """The same «RU напрямую» profile for INCY: 3x-ui sends it to INCY in the subscription body (its own
+        fields, Happ's header is not passed to INCY). Its LastUpdated only moves when the rules change, since
+        INCY takes a new version of a profile only when that time grows."""
+        r = self.cfg.routing
+        cur = str(settings.get("subIncyRoutingRules") or "")
+        old = xc.profile_from_link(cur) if cur.startswith("incy://") else None
+        if r.client_profile:
+            stamp = int(old.get("LastUpdated") or 0) if old else 0
+            if xc.incy_routing_link(r.extra_direct, updated=stamp) != cur:
+                stamp = _now()
+            link = xc.incy_routing_link(r.extra_direct, updated=stamp)
+            if not _truthy(settings.get("subIncyEnableRouting")) or cur != link:
+                settings["subIncyEnableRouting"], settings["subIncyRoutingRules"] = True, link
+                changed.append("подписка передаёт INCY профиль «RU напрямую»")
+        elif old and old.get("Name") == "RU напрямую":
+            settings["subIncyEnableRouting"], settings["subIncyRoutingRules"] = False, ""
+            changed.append("убираю профиль «RU напрямую» из подписки INCY")
 
     def subscription_base(self) -> str:
         s = self.panel.settings()
@@ -1033,6 +1058,15 @@ def _free_port(port_range: Any, used: Set[Any]) -> int:
 # entering via RU works where foreign IPs are filtered, Hysteria2 needs UDP, plain TCP is the most fragile,
 # WARP is for sites that block VPN/hosting addresses.
 KIND_RANK = {"rxh": 0, "xhttp": 1, "rhy2": 2, "hy2": 3, "cascade": 4, "direct": 5, "rwarp": 6, "warp": 7}
+
+
+def _now() -> int:
+    return int(time.time())
+
+
+def _truthy(v: Any) -> bool:
+    """3x-ui keeps some switches as booleans and some as "true"/"1" strings."""
+    return v is True or str(v).strip().lower() in ("true", "1", "yes", "on")
 
 
 def _b64_name(link: str) -> str:

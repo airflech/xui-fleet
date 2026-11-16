@@ -389,13 +389,11 @@ def ru_direct_rules(inbound_tags: List[str], extra: Optional[List[str]] = None) 
             {"type": "field", "ruleTag": RU_RULE_TAG + "-ip", "inboundTag": tags, "ip": ips, "outboundTag": "direct"}]
 
 
-def happ_routing_link(extra: Optional[List[str]] = None, name: str = "RU напрямую") -> str:
-    """Happ routing profile (happ://routing/onadd/…): everything through the VPN except Russian sites,
-    local networks and the user's extra entries. Uses Happ's own geo files (v2fly geosite, geoip with "ru")."""
-    import base64
-    import json
+def ru_profile(extra: Optional[List[str]] = None, name: str = "RU напрямую") -> Dict[str, Any]:
+    """The routing profile shared by Happ and INCY (same format): everything through the VPN except Russian
+    sites, local networks and the user's extra entries. Uses the apps' own geo files (geosite, geoip with "ru")."""
     extra = extra or []
-    profile = {
+    return {
         "Name": name,
         "GlobalProxy": "true",
         "RouteOrder": "block-proxy-direct",
@@ -409,8 +407,40 @@ def happ_routing_link(extra: Optional[List[str]] = None, name: str = "RU нап�
         "DomainStrategy": "IPIfNonMatch",
         "FakeDNS": "false",
     }
+
+
+def _profile_link(scheme: str, profile: Dict[str, Any]) -> str:
+    import base64
+    import json
     data = json.dumps(profile, ensure_ascii=False, separators=(",", ":")).encode()
-    return "happ://routing/onadd/" + base64.b64encode(data).decode()
+    return f"{scheme}://routing/onadd/" + base64.b64encode(data).decode()
+
+
+def happ_routing_link(extra: Optional[List[str]] = None, name: str = "RU напрямую") -> str:
+    """Happ routing profile (happ://routing/onadd/…), sent by 3x-ui in the Routing header."""
+    return _profile_link("happ", ru_profile(extra, name))
+
+
+def incy_routing_link(extra: Optional[List[str]] = None, name: str = "RU напрямую", updated: int = 0) -> str:
+    """The same profile for INCY (incy://routing/onadd/…): 3x-ui puts it into the subscription body for INCY.
+    INCY replaces a profile of the same name only when LastUpdated grows, so it carries the time of the change."""
+    profile = {k: v for k, v in ru_profile(extra, name).items() if k != "RouteOrder"}  # a Happ-only field
+    profile["LastUpdated"] = str(int(updated))
+    return _profile_link("incy", profile)
+
+
+def profile_from_link(link: str) -> Optional[Dict[str, Any]]:
+    """The JSON inside a happ:// or incy:// routing link, or None."""
+    import base64
+    import json
+    import re
+    m = re.match(r"^[a-z]+://routing/(?:on)?add/(.+)$", (link or "").strip())
+    if not m:
+        return None
+    try:  # base64 itself may contain "/": everything after the command is the payload
+        return json.loads(base64.b64decode(m.group(1) + "=="))
+    except ValueError:
+        return None
 
 
 def merge_template(template: Dict[str, Any], routes: Dict[str, Dict[str, Any]],

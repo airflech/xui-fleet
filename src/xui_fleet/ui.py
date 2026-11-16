@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "после перехода на резервный домен ссылки больше не уходят на заблокированный; график маршрутов учитывает упавший Xray"
+WHATS_NEW = "подписку можно отдавать только Happ и INCY — остальные приложения увидят, что не поддерживаются; INCY получает профиль «RU напрямую»"
 
 
 def _last_backup(fleet: Any) -> int:
@@ -352,7 +352,7 @@ class App:
                 "countries": [[iso, geo.flag(iso), nm] for iso, nm in sorted(geo.COUNTRIES.items(), key=lambda x: x[1])], "version": cfg.panel.version,
                 "master": {"name": cfg.master.name, "host": cfg.master.host, "label": cfg.master.label,
                            "tls": tls.mode, "domain": tls.domain or "", "reserveDomains": list(tls.reserve_domains),
-                           "addressMode": tls.address_mode,
+                           "addressMode": tls.address_mode, "allowedApps": list(cfg.clients.allowed_apps),
                            "access": access(cfg.master), "vpn": cfg.master.vpn, "cascades": cfg.master.cascades,
                            "labelText": cfg.master.label or "", "flag": cfg.master.flag or "auto", "hide": list(cfg.master.hide),
                            "country": state.get(cfg.master.name, "country") or "",

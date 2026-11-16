@@ -488,6 +488,146 @@ def ensure_site(ssh: SSH, domains: List[str], decoy_port: Optional[int] = None, 
     return "changed=1" in out
 
 
+# ---- subscriptions only for chosen apps ------------------------------------
+# nginx takes the public subscription port; 3x-ui moves to 127.0.0.1:<internal>. A request whose User-Agent is
+# one of the allowed apps (or that comes from the master itself — the link check) goes on to 3x-ui as before:
+# the same links, HWID limits, headers. Any other app gets a placeholder subscription that says it is not
+# supported (two dummy entries and an announcement), a browser gets a short page.
+SUBGATE_CONF = "/etc/nginx/conf.d/xui-fleet-subgate.conf"
+
+
+def _app_names(apps: List[str]) -> str:
+    from .config import APP_TITLES
+    names = [APP_TITLES.get(a, a) for a in apps]
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " или " + names[-1]
+
+
+def unsupported_subscription(apps: List[str]) -> Tuple[str, Dict[str, str]]:
+    """(body, headers) for an app that is not allowed: a valid subscription whose only entries are notices,
+    so the app shows the reason in its server list instead of a bare error."""
+    import base64 as b64
+    from urllib.parse import quote
+    names = _app_names(apps)
+    remarks = ["⛔ Это приложение не поддерживается", f"Установите {names} и добавьте подписку заново"]
+    lines = [f"vless://00000000-0000-0000-0000-000000000000@127.0.0.1:{k}?encryption=none&security=none&type=tcp#{quote(r)}"
+             for k, r in enumerate(remarks, 1)]
+    enc = lambda t: "base64:" + b64.b64encode(t.encode()).decode()
+    headers = {
+        "profile-title": enc(f"Только {names}"),
+        "announce": enc(f"Эта подписка работает только в приложениях {names}. Установите одно из них и добавьте ссылку заново."),
+        "profile-update-interval": "1",
+    }
+    return b64.b64encode("\n".join(lines).encode()).decode(), headers
+
+
+def unsupported_page(apps: List[str]) -> str:
+    """The page a browser sees instead of the subscription. No double quotes or $: it goes into nginx `return`."""
+    from .config import APP_TITLES
+    links = {"happ": ("Happ", "https://www.happ.su"), "incy": ("INCY", "https://incy.cc")}
+    items = "".join(f"<li><a href='{links[a][1]}'>{links[a][0]}</a></li>" for a in apps if a in links)
+    names = _app_names(apps)
+    return ("<!doctype html><html lang='ru'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
+            f"<title>Подписка для {names}</title><style>body{{font:16px/1.5 system-ui,sans-serif;max-width:520px;margin:12vh auto;padding:0 16px;color:#222}}"
+            "h1{font-size:22px}a{color:#3a6}</style></head><body>"
+            f"<h1>Эта ссылка открывается только в приложении</h1><p>Подписка работает в {names}. Установите приложение, "
+            f"скопируйте ссылку и добавьте её в приложении (в Happ и INCY — кнопка «+» → «Вставить из буфера»).</p><ul>{items}</ul>"
+            "</body></html>").replace('"', "'")
+
+
+def sub_gate_conf(public_port: int, internal_port: int, cert: str, key: str, apps: List[str], local_ips: List[str],
+                  ipv6: bool = True) -> str:
+    from .config import APPS
+    import re as _re
+    tls = bool(cert and key)
+    # No backslashes in nginx regexes (\b is easy to break by quoting): a word boundary written out.
+    ua = "".join(f"    ~*(^|[^a-z0-9]){_re.escape(a)}([^a-z0-9]|$) 1;\n" for a in apps if a in APPS)
+    local = "".join(f"    {ip} 1;\n" for ip in dict.fromkeys(["127.0.0.1", "::1"] + list(local_ips)) if ip)
+    body, headers = unsupported_subscription(apps)
+    page = unsupported_page(apps)
+    ssl = " ssl" if tls else ""
+    listen = f"    listen {public_port}{ssl};\n" + (f"    listen [::]:{public_port}{ssl};\n" if ipv6 else "")
+    hdrs = "".join(f"        add_header {k} \"{v}\" always;\n" for k, v in headers.items())
+    upstream = f"{'https' if tls else 'http'}://127.0.0.1:{internal_port}"
+    return (
+        "# xui-fleet: subscriptions only for " + ", ".join(apps) + " (other apps get a notice)\n"
+        "map $http_user_agent $xf_sub_app {\n    default 0;\n" + ua + "}\n"
+        "map $remote_addr $xf_sub_local {\n    default 0;\n" + local + "}\n"
+        "map $http_accept $xf_sub_page {\n    default 0;\n    ~*text/html 1;\n}\n"
+        "map $xf_sub_app$xf_sub_local$xf_sub_page $xf_sub_deny {\n    default \"\";\n    000 app;\n    001 page;\n}\n"
+        "server {\n" + listen +
+        "    server_name _;\n"
+        "    server_tokens off;\n"
+        + (f"    ssl_certificate {cert};\n    ssl_certificate_key {key};\n    ssl_protocols TLSv1.2 TLSv1.3;\n" if tls else "") +
+        "    error_page 418 = @xf_sub_app_denied;\n"
+        "    error_page 419 = @xf_sub_page_denied;\n"
+        "    location / {\n"
+        "        if ($xf_sub_deny = app) { return 418; }\n"
+        "        if ($xf_sub_deny = page) { return 419; }\n"
+        f"        proxy_pass {upstream};\n"
+        + ("        proxy_ssl_server_name on;\n        proxy_ssl_name $host;\n        proxy_ssl_verify off;\n" if tls else "") +
+        "        proxy_set_header Host $http_host;\n"
+        "        proxy_set_header X-Real-IP $remote_addr;\n"
+        "        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n"
+        f"        proxy_set_header X-Forwarded-Proto {'https' if tls else 'http'};\n"
+        "        proxy_set_header X-Forwarded-Host $http_host;\n"
+        "        proxy_read_timeout 90s;\n"
+        "    }\n"
+        "    location @xf_sub_app_denied {\n"
+        "        default_type text/plain;\n" + hdrs +
+        f"        return 200 \"{body}\";\n"
+        "    }\n"
+        "    location @xf_sub_page_denied {\n"
+        "        default_type text/html;\n"
+        "        charset utf-8;\n"
+        f"        return 200 \"{page}\";\n"
+        "    }\n"
+        "}\n"
+    )
+
+
+def sub_gate_facts(ssh: SSH, start: int = 12096) -> Dict[str, Any]:
+    """The master's own addresses (the link check fetches the subscription from there), whether it has IPv6,
+    and a free local port for 3x-ui behind nginx."""
+    out = ssh.run(
+        "hostname -I 2>/dev/null | tr ' ' '\\n'; echo ---; [ -f /proc/net/if_inet6 ] && echo v6; echo ---; "
+        "ss -Hltn | awk '{print $4}' | sed 's/.*://'", check=False).out
+    parts = (out + "\n---\n---").split("---")
+    ips = [x.strip() for x in parts[0].splitlines() if x.strip()]
+    taken = {int(p) for p in parts[2].split() if p.strip().isdigit()}
+    port = next(p for p in range(start, start + 2000) if p not in taken)
+    return {"ips": ips, "ipv6": "v6" in parts[1], "free": port}
+
+
+def write_sub_gate(ssh: SSH, conf: str) -> bool:
+    """Put the gate config in place if it differs, checked by nginx -t (a rejected config is taken back).
+    Does not reload: the caller frees the public port first. Returns True if the file changed."""
+    out = ssh.run(
+        "set -e\nmkdir -p /etc/nginx/conf.d\n"
+        f"cat > {SUBGATE_CONF}.new <<'XUIFLEETCONF'\n{conf}XUIFLEETCONF\n"
+        f"if cmp -s {SUBGATE_CONF}.new {SUBGATE_CONF}; then rm -f {SUBGATE_CONF}.new; echo same; exit 0; fi\n"
+        f"[ -f {SUBGATE_CONF} ] && cp -p {SUBGATE_CONF} {SUBGATE_CONF}.bak || true\n"
+        f"mv {SUBGATE_CONF}.new {SUBGATE_CONF}\n"
+        f"if ! nginx -t >/dev/null 2>&1; then nginx -t || true\n"
+        f"  if [ -f {SUBGATE_CONF}.bak ]; then mv {SUBGATE_CONF}.bak {SUBGATE_CONF}; else rm -f {SUBGATE_CONF}; fi; exit 1; fi\n"
+        f"rm -f {SUBGATE_CONF}.bak\necho changed\n", timeout=60).out
+    return "changed" in out
+
+
+def reload_nginx_on(ssh: SSH, port: int) -> bool:
+    """Reload nginx and tell whether it now listens on `port` (a reload that cannot bind only logs an error)."""
+    out = ssh.run(
+        "systemctl reload nginx 2>/dev/null || systemctl restart nginx; "
+        f"for i in 1 2 3 4 5 6 7 8 9 10; do ss -Hltnp 'sport = :{port}' | grep -q nginx && {{ echo listening; exit 0; }}; sleep 1; done; "
+        "echo missing", check=False, timeout=60).out
+    return "listening" in out
+
+
+def remove_sub_gate(ssh: SSH) -> bool:
+    out = ssh.run(f"if [ -f {SUBGATE_CONF} ]; then rm -f {SUBGATE_CONF} {SUBGATE_CONF}.bak; "
+                  "(systemctl reload nginx 2>/dev/null || systemctl restart nginx); echo removed; fi", check=False, timeout=60).out
+    return "removed" in out
+
+
 def node_facts(ssh: SSH) -> Dict[str, Any]:
     """Ports in use (TCP/UDP, any process) and the panel certificate, for the extra entries."""
     import base64

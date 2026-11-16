@@ -461,12 +461,17 @@ def merge_template(template: Dict[str, Any], routes: Dict[str, Dict[str, Any]],
     # Russian destinations of the RU entries leave from the master; must precede the cascade rules.
     new_rules = ru_direct_rules(list(routes), extra_direct) if ru_direct and routes else []
     added: Dict[str, bool] = {}
+    managed_outs: List[Dict[str, Any]] = []
     for inbound_tag in sorted(routes):
         outbound = routes[inbound_tag]
         if outbound["tag"] not in added:  # several entries (VLESS, Hysteria2) may share one exit
-            outbounds.append(outbound)
+            managed_outs.append(outbound)
             added[outbound["tag"]] = True
         new_rules.append({"type": "field", "inboundTag": [inbound_tag], "outboundTag": outbound["tag"]})
+    # The master's own WARP outbound stays last (where migrate.merge_warp puts it): the cascade exits go before it,
+    # so the two functions agree on the order and never "fix" each other.
+    at = next((i for i, o in enumerate(outbounds) if o.get("tag") == "warp"), len(outbounds))
+    outbounds = outbounds[:at] + managed_outs + outbounds[at:]
 
     # Keep the internal API rule first; fleet rules must win over everything else
     # (otherwise e.g. a geoip/bittorrent rule could leak cascade traffic via RU).
@@ -474,6 +479,11 @@ def merge_template(template: Dict[str, Any], routes: Dict[str, Dict[str, Any]],
     for i, rule in enumerate(rules):
         if rule.get("outboundTag") == "api" or rule.get("inboundTag") == ["api"]:
             head = i + 1
+    # The master's own WARP rule (its WARP entry → warp, see migrate.merge_warp) sits right after the API rule; it
+    # only concerns its own entry, so it stays there — otherwise this and merge_warp would keep reordering the
+    # rules on every run (a difference that is not one, and an Xray restart each time).
+    while head < len(rules) and rules[head].get("outboundTag") == "warp" and rules[head].get("inboundTag"):
+        head += 1
     tpl["outbounds"] = outbounds
     routing["rules"] = rules[:head] + new_rules + rules[head:]
     return tpl

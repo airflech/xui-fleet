@@ -1742,3 +1742,20 @@ def test_master_warp_entry_without_the_vpn_role():
     Reconciler(panel, FleetConfig.model_validate(doc)).run(_stale(_access(["de", "ru"])))
     tags = {i["tag"] for i in panel.inbounds()}
     assert "fleet-warp-ru" not in tags and "fleet-rxh-de" in tags
+
+
+def test_master_warp_rule_and_cascade_rules_keep_one_order():
+    """merge_warp puts the master's WARP rule right after the API rule; merge_template must leave it there,
+    or the two keep swapping them and the master always looks out of sync («Исправить · 1»)."""
+    from xui_fleet import migrate as mg
+    tpl = {"outbounds": [{"tag": "direct"}, {"tag": "blocked"}],
+           "routing": {"rules": [{"type": "field", "inboundTag": ["api"], "outboundTag": "api"},
+                                 {"type": "field", "outboundTag": "blocked", "ip": ["geoip:private"]}]}}
+    routes = {"fleet-rxh-de": {"tag": "fleet-out-de", "protocol": "vless"}}
+    one = xc.merge_template(tpl, routes, ru_direct=True)
+    two = mg.merge_warp(one, {"tag": "warp", "protocol": "wireguard", "settings": {"peers": [{"endpoint": "1.1.1.1:2408"}]}},
+                        ["fleet-warp-ru"], "162.159.195.1:2408")
+    assert xc.merge_template(two, routes, ru_direct=True) == two  # nothing to fix any more
+    order = [r.get("outboundTag") for r in two["routing"]["rules"]]
+    assert order[:2] == ["api", "warp"] and order.index("fleet-out-de") > 1
+    assert mg.merge_warp(two, two["outbounds"][-1], ["fleet-warp-ru"], "162.159.195.1:2408") == two

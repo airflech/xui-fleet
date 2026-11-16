@@ -9,6 +9,20 @@ from xui_fleet.cli import EXAMPLE, _drop_node_from_yaml
 from xui_fleet.config import FleetConfig, append_node, load_config
 from xui_fleet.reconcile import Reconciler, Report, _free_port
 
+
+def _bash() -> str:
+    """The shell that plays the sync server. A bare "bash" on Windows starts WSL (System32 comes first), which
+    neither sees C:/ paths nor this Python's files: use Git Bash there, or skip."""
+    import os
+    import shutil
+    if os.name != "nt":
+        return "bash"
+    for found in [shutil.which("bash"), r"C:\Program Files\Git\bin\bash.exe", r"C:\Program Files\Git\usr\bin\bash.exe"]:
+        if found and "system32" not in found.lower() and os.path.exists(found):
+            return found
+    pytest.skip("нужен Git Bash: тест синхронизации запускает скрипты сервера в bash")
+
+
 @pytest.fixture(autouse=True)
 def _update_settings(tmp_path, monkeypatch):
     """Never touch this computer's real update settings; tests that install expect automatic updates on."""
@@ -577,7 +591,9 @@ def test_backup_bundle_round_trip_and_keeps_only_ten(tmp_path):
     assert len(items) == 10 and items[0].created > items[-1].created  # the two oldest were dropped
     back = bk.read_bundle(items[0].path)
     assert back["db"] == db and back["files"] == {"/root/cert/x/fullchain.pem": b"CERT"} and back["meta"]["host"] == "1.2.3.4"
-    assert oct(items[0].path.stat().st_mode & 0o777) == "0o600"
+    import os
+    if os.name != "nt":  # Windows has no Unix modes (chmod only sets read-only); the user's profile folder guards it
+        assert oct(items[0].path.stat().st_mode & 0o777) == "0o600"
     script = bk.upload_script({"/etc/x-ui/x-ui.db": b"\\x00\\x01"})
     assert "base64 -d > /etc/x-ui/x-ui.db.fleet-new" in script and "chmod 600" in script
 
@@ -907,12 +923,12 @@ def test_three_computers_stay_in_sync_through_one_server(tmp_path, monkeypatch):
     import json as _json, subprocess
     from xui_fleet import sync as sy
     remote = tmp_path / "server"
-    monkeypatch.setattr(sy, "REMOTE", str(remote))
+    monkeypatch.setattr(sy, "REMOTE", remote.as_posix())
     monkeypatch.setenv("XUI_FLEET_BACKUP_DIR", str(tmp_path / "bk"))
 
     class FakeSSH:
         def run(self, script, check=True, timeout=0, env=None):
-            r = subprocess.run(["bash", "-c", "set -o pipefail\n" + script], capture_output=True, text=True)
+            r = subprocess.run([_bash(), "-c", "set -o pipefail\n" + script], capture_output=True, text=True)
             if check and r.returncode:
                 raise RuntimeError(r.stderr)
             return type("R", (), {"out": r.stdout, "code": r.returncode})()
@@ -958,12 +974,12 @@ def test_new_version_reaches_other_computers_and_old_ones_never_touch_newer_data
     import subprocess
     from xui_fleet import sync as sy, update as upd
     remote = tmp_path / "server"
-    monkeypatch.setattr(sy, "REMOTE", str(remote))
+    monkeypatch.setattr(sy, "REMOTE", remote.as_posix())
     monkeypatch.setenv("XUI_FLEET_BACKUP_DIR", str(tmp_path / "bk"))
 
     class FakeSSH:
         def run(self, script, check=True, timeout=0, env=None):
-            r = subprocess.run(["bash", "-c", "set -o pipefail\n" + script], capture_output=True, text=True)
+            r = subprocess.run([_bash(), "-c", "set -o pipefail\n" + script], capture_output=True, text=True)
             if check and r.returncode:
                 raise RuntimeError(r.stderr)
             return type("R", (), {"out": r.stdout, "code": r.returncode})()
@@ -1055,11 +1071,11 @@ def test_a_beta_never_covers_the_stable_version_on_the_sync_server(tmp_path, mon
     import subprocess
     from xui_fleet import sync as sy, update as upd
     remote = tmp_path / "server"
-    monkeypatch.setattr(sy, "REMOTE", str(remote))
+    monkeypatch.setattr(sy, "REMOTE", remote.as_posix())
 
     class FakeSSH:
         def run(self, script, check=True, timeout=0, env=None):
-            r = subprocess.run(["bash", "-c", "set -o pipefail\n" + script], capture_output=True, text=True)
+            r = subprocess.run([_bash(), "-c", "set -o pipefail\n" + script], capture_output=True, text=True)
             return type("R", (), {"out": r.stdout, "code": r.returncode})()
         def close(self):
             pass
@@ -1127,12 +1143,12 @@ def test_a_server_added_on_an_old_version_survives_the_new_version(tmp_path, mon
     import json as _json, subprocess
     from xui_fleet import sync as sy
     remote = tmp_path / "server"
-    monkeypatch.setattr(sy, "REMOTE", str(remote))
+    monkeypatch.setattr(sy, "REMOTE", remote.as_posix())
     monkeypatch.setenv("XUI_FLEET_BACKUP_DIR", str(tmp_path / "bk"))
 
     class FakeSSH:
         def run(self, script, check=True, timeout=0, env=None):
-            r = subprocess.run(["bash", "-c", "set -o pipefail\n" + script], capture_output=True, text=True)
+            r = subprocess.run([_bash(), "-c", "set -o pipefail\n" + script], capture_output=True, text=True)
             if check and r.returncode:
                 raise RuntimeError(r.stderr)
             return type("R", (), {"out": r.stdout, "code": r.returncode})()
@@ -1297,3 +1313,52 @@ def test_history_turns_counters_into_days_and_probes_into_uptime(tmp_path, monke
          {"tag": "fleet-warpup-uk", "nodeId": 3, "up": 50, "down": 50}, {"tag": "mine", "up": 7, "down": 7}],
         {3: "uk"}, {"fleet-check", "fleet-bridge"})
     assert sample["u"] == {"alice": 3} and sample["r"] == {"uk": {"ru": 10, "d": 2}}  # service traffic left out
+
+
+def test_health_counts_a_node_with_xray_down_as_a_down_route():
+    from xui_fleet import history as hs
+    row = hs.health_sample([{"name": "uk", "status": "online", "latencyMs": 20},
+                            {"name": "de", "status": "online", "latencyMs": 30, "xrayError": "failed to start"},
+                            {"name": "fr", "status": "offline"}, {"name": "off", "enable": False}], {"xray": {"state": "running"}})
+    assert row["n"] == {"uk": 20, "de": None, "fr": None} and row["m"] == 1
+
+
+def test_history_file_is_pruned_about_once_a_day_not_on_every_sample(tmp_path):
+    from xui_fleet import history as hs
+    path, day, now = tmp_path / "health.jsonl", 86400, 2_000_000_000
+    path.write_text("".join(f'{{"t":{now - k * 300}}}\n' for k in range(14 * 288, -1, -1)), encoding="utf-8")
+    before = path.read_text(encoding="utf-8")
+    hs._prune(path, 14, now=now)  # holds exactly 14 days: nothing to drop, nothing rewritten
+    assert path.read_text(encoding="utf-8") == before
+    path.write_text('{"t":%d}\n' % (now - 16 * day) + before, encoding="utf-8")  # a line past the limit and a day
+    hs._prune(path, 14, now=now)
+    rows = hs._read(path, 0)
+    assert rows[0]["t"] >= now - 14 * day and len(rows) == 14 * 288 + 1
+
+
+def test_reserve_only_mode_follows_the_domains(tmp_path):
+    import yaml
+    from xui_fleet.config import set_master_domain
+    path = tmp_path / "fleet.yaml"
+
+    def write(mode, reserves=("b.example",)):
+        tls = {"mode": "domain", "domain": "a.example", "reserve_domains": list(reserves), "address_mode": mode}
+        path.write_text(yaml.safe_dump({"master": {"name": "ru", "host": "9.9.9.9", "tls": tls}, "nodes": []}), encoding="utf-8")
+
+    def mode():
+        return (yaml.safe_load(path.read_text(encoding="utf-8"))["master"]["tls"]).get("address_mode", "main")
+    write("reserve")
+    set_master_domain(path, "a.example", ["c.example"])  # another reserve: still only the reserve
+    assert mode() == "reserve"
+    write("reserve")
+    set_master_domain(path, "b.example", ["a.example"])  # switched to the reserve: a.example (blocked) is the reserve now
+    assert mode() == "main"
+    write("reserve")
+    set_master_domain(path, "a.example", [])  # reserve removed: links cannot stay on it
+    assert mode() == "main"
+    write("both")
+    set_master_domain(path, "a.example", [])
+    assert mode() == "main"
+    write("both")
+    set_master_domain(path, "b.example", ["a.example"])  # both links stay meaningful
+    assert mode() == "both"

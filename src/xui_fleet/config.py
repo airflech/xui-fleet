@@ -494,11 +494,18 @@ def update_server_access(path: Path, name: str, host: str, ssh: dict) -> None:
 def set_master_domain(path: Path, domain: str, reserves: Optional[List[str]] = None) -> None:
     doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     tls = (doc.setdefault("master", {}).get("tls") or {})
+    old = tls.get("domain")
     tls.update(mode="domain", domain=domain)
     if reserves is not None:
         tls["reserve_domains"] = [d for d in dict.fromkeys(reserves) if d != domain]
         if not tls["reserve_domains"]:
             tls.pop("reserve_domains")
+    # "Only the reserve domain" means the main one is blocked. Once the reserve became the main domain (the old,
+    # blocked one is now the reserve) or no reserve is left, keeping that mode would send every link to the
+    # blocked domain or to none: links go back to the main domain. "Both" without a reserve is just "main".
+    mode = tls.get("address_mode")
+    if (mode == "reserve" and old != domain) or (mode in ("reserve", "both") and not tls.get("reserve_domains")):
+        tls.pop("address_mode")
     doc["master"]["tls"] = tls
     FleetConfig.model_validate(doc)
     path.write_text(yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")

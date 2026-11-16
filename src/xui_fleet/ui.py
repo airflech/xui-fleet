@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "новое окно первого запуска: четыре шага и схема сети, которая рисуется по ходу настройки"
+WHATS_NEW = "после перехода на резервный домен ссылки больше не уходят на заблокированный; график маршрутов учитывает упавший Xray"
 
 
 def _last_backup(fleet: Any) -> int:

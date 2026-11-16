@@ -648,8 +648,12 @@ class Fleet:
                 panel.wait_ready(90)
                 self.log("мастер: подписки и панель теперь работают с сертификатом домена")
             path, port = s.get("subPath", "/sub/"), s.get("subPort", 2096)
+        mode_before = tls.address_mode
         set_master_domain(self.config_path, domain, reserves)
         self.reload()
+        if mode_before != self.cfg.tls_for(master).address_mode:
+            self.log(f"адреса подключений через RU: теперь основной домен {domain} — режим «только резервный» снят, "
+                     f"иначе ссылки вели бы на прежний домен")
         code = self._sub_answers([domain])[domain]
         if code != "200":
             raise FleetError(f"сертификат выпущен, но подписка по https://{domain}:{port}{path}… ответила {code or 'ошибкой'}")
@@ -679,9 +683,14 @@ class Fleet:
             self._master_cert(ssh, tls.domain, reserves)
         finally:
             ssh.close()
+        mode_before = tls.address_mode
         set_master_domain(self.config_path, tls.domain, reserves)
         self.reload()
         if not reserves:
+            if mode_before != "main":
+                # the hosts of the removed domain still carry the links: back to the main domain right away
+                self.log(f"адреса подключений через RU: снова основной домен {tls.domain}")
+                self.apply(skip_provision=True)
             return "Резервный домен убран"
         answers = self._sub_answers([tls.domain, domain])
         bad = {d: c for d, c in answers.items() if c != "200"}

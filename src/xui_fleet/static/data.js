@@ -22,7 +22,7 @@ async function loadLive(quiet) {
   if (live.failed) { clearTimeout(liveRetry); liveRetry = setTimeout(() => loadLive(quiet), 5000); }
   else if (live.ready && !live.busy && (!quiet || Date.now() - statsAt > 120000)) { statsAt = Date.now(); loadUserStats(); }
   if (live.ready && !live.busy && !live.failed && (!quiet || Date.now() - driftAt > DRIFT_EVERY)) loadDrift();
-  if (live.ready && !live.busy && !live.failed) loadHealthHistory(!quiet ? false : false).then((h) => { if (h) renderMap(); });
+  if (live.ready && !live.busy && !live.failed) loadHealthHistory(false).then((h) => { if (h) renderMap(); });
   else if (live.ready === false) { drift = { changes: ['главный сервер ещё не настроен'], warnings: [] }; driftAt = Date.now(); paintSync(); }
 }
 function paintLiveAge() {

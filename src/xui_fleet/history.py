@@ -53,11 +53,27 @@ def _read(path: Path, since: float) -> List[Dict[str, Any]]:
     return out
 
 
-def _prune(path: Path, keep_days: int) -> None:
-    """Drop old lines once in a while (cheap: the files are small)."""
-    if not path.exists() or path.stat().st_size < 256 * 1024:
+def _oldest(path: Path) -> Optional[float]:
+    try:
+        with path.open(encoding="utf-8") as f:
+            for line in f:
+                try:
+                    return float(json.loads(line).get("t", 0))
+                except (ValueError, AttributeError):
+                    continue  # a line cut by a crash
+    except FileNotFoundError:
+        pass
+    return None
+
+
+def _prune(path: Path, keep_days: int, now: Optional[float] = None) -> None:
+    """Drop old lines about once a day: only when the oldest line is a day past the limit, so the file is
+    rewritten once a day, not on every sample once it holds a full period."""
+    now = now or time.time()
+    oldest = _oldest(path)
+    if oldest is None or oldest >= now - (keep_days + 1) * 86400:
         return
-    rows = _read(path, time.time() - keep_days * 86400)
+    rows = _read(path, now - keep_days * 86400)
     tmp = path.with_suffix(".tmp")
     tmp.write_text("".join(json.dumps(r, ensure_ascii=False, separators=(",", ":")) + "\n" for r in rows), encoding="utf-8")
     tmp.replace(path)
@@ -65,12 +81,13 @@ def _prune(path: Path, keep_days: int) -> None:
 
 # ---------------------------------------------------------------- taking samples
 def health_sample(nodes: Iterable[Dict[str, Any]], master_status: Dict[str, Any]) -> Dict[str, Any]:
-    """From the panel's own node probes (what the page shows live)."""
+    """From the panel's own node probes (what the page shows live). The probe only says the node's panel
+    answers; a route also needs Xray running there, so a node with an Xray error counts as down."""
     n = {}
     for node in nodes:
         if not node.get("enable", True):
             continue
-        ok = node.get("status") == "online"
+        ok = node.get("status") == "online" and not node.get("xrayError")
         n[node.get("name")] = int(node.get("latencyMs") or 0) if ok else None
     xray = (master_status.get("xray") or {}).get("state")
     return {"t": int(time.time()), "n": n, "m": 1 if xray == "running" else 0}

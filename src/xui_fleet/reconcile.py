@@ -895,6 +895,10 @@ class Reconciler:
             settings["subEnableRouting"], settings["subRoutingRules"] = False, ""
             changed.append("убираю профиль «RU напрямую» из подписки")
         self._ensure_incy_profile(settings, changed)
+        name = self.cfg.clients.vpn_name
+        if name and str(settings.get("subTitle") or "") != name:  # empty: a title set in the panel itself stays
+            settings["subTitle"] = name
+            changed.append(f"название VPN в приложениях — «{name}»")
         if not changed:
             return
 

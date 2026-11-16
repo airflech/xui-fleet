@@ -533,6 +533,18 @@
   <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Применить</button></div>
 </form></dialog>
 
+<dialog id="dlgVpnName"><form id="vpnNameForm">
+  <div class="dlg-h"><h2>Название VPN</h2><p>Так подписка будет называться в Happ, INCY и других приложениях — вместо адреса сервера.</p></div>
+  <div class="dlg-b">
+    <label class="f" for="vpn_name">Название</label>
+    <input type="text" id="vpn_name" name="name" maxlength="40" placeholder="Например: Семейный VPN">
+    <div class="hint">Одно название для всех пользователей. Приложения покажут его после следующего обновления подписки.
+      Пустое поле — убрать название. Панель 3x-ui при сохранении перезапустится на несколько секунд.</div>
+    <div class="formerr" role="alert"></div>
+  </div>
+  <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Сохранить</button></div>
+</form></dialog>
+
 <dialog id="dlgApps"><form id="appsForm">
   <div class="dlg-h"><h2>Приложения для подписки</h2><p>Какие приложения могут получать подписку пользователей.</p></div>
   <div class="dlg-b">

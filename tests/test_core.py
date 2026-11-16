@@ -1420,7 +1420,19 @@ def test_sub_gate_conf_lets_only_the_apps_through_and_tells_the_others():
     assert "не поддерживается" in unquote(lines[0]) and "Happ или INCY" in unquote(lines[1])
     assert re.search(r'add_header announce "base64:[A-Za-z0-9+/=]+" always;', conf)
     page = re.search(r'location @xf_sub_page_denied \{.*?return 200 "(.+?)";\n', conf, re.S).group(1)
-    assert '"' not in page and "$" not in page and "happ.su" in page
+    assert '"' not in page and "happ.su" in page
+    assert set(re.findall(r"\$[a-z_]+", page)) == {"$host", "$xf_sub_path"}  # only nginx's own, checked values
+    assert "incy://import/https://$host:2096$xf_sub_path" in page and "happ://add/https://$host:2096$xf_sub_path" in page
+    assert "fallback-url" not in conf  # one domain: nowhere to fall back to
+    two = pv.sub_gate_conf(2096, 12096, "/c", "/k", ["happ", "incy"], [], ipv6=False, domains=["a.example", "b.example"])
+    assert "    a.example b.example;\n    b.example a.example;" in two  # each domain points at the other
+    assert 'default "https://$xf_sub_alt:2096";' in two
+    assert "add_header fallback-url $xf_sub_fallback always;" in two and "add_header profile-web-page-url $xf_sub_fallback always;" in two
+    path_re = re.search(r'"~\^\(\?<xfp>(.+?)\)\$" \$xfp;', two).group(1)
+    for uri, ok in (("/s/abc123", True), ("/s/abc-1_2/x", True), ("/s/abc?x=<script>", False), ("/s/%3Cb%3E", False)):
+        assert bool(re.fullmatch(path_re, uri)) == ok, uri
+    fb = re.search(r'"~(\^https\?://\[\^/\]\+/\.)"', two).group(1)
+    assert re.match(fb, "https://b.example:2096/s/abc") and not re.match(fb, "/s/abc") and not re.match(fb, "https://b.example:2096")
     plain = pv.sub_gate_conf(2096, 12096, "", "", ["happ"], [], ipv6=False)
     assert "listen 2096;" in plain and "[::]" not in plain and "proxy_pass http://127.0.0.1:12096;" in plain and "incy" not in plain.split("server {")[0]
 
@@ -1510,3 +1522,38 @@ def test_sub_gate_taken_over_without_moving_3xui_again(tmp_path, monkeypatch):
     fleet.ensure_sub_gate(panel, ssh=None)
     assert panel.settings()["subPort"] == 12096 and "update_settings" not in panel.calls
     assert fleet.state.get("ru", "sub_gate") == {"port": 2096, "internal": 12096, "uri": "https://a.example:2096/s/", "apps": ["happ", "incy"]}
+
+
+def test_new_url_only_for_the_domain_the_master_moved_from():
+    import re
+    from xui_fleet import provision as pv
+    plain = pv.sub_gate_conf(2096, 12096, "/c", "/k", ["happ", "incy"], [], ipv6=False, domains=["b.example", "a.example"])
+    assert "new-url" not in plain  # no move: nobody is redirected (a reserve copy is never pulled back)
+    moved = pv.sub_gate_conf(2096, 12096, "/c", "/k", ["happ", "incy"], [], ipv6=False, domains=["b.example", "a.example"],
+                             moved_from="a.example")
+    assert '    a.example "https://b.example:2096";' in moved and "b.example \"https" not in moved.split("map $host $xf_sub_moved")[1].split("}")[0].replace('a.example "https://b.example', "")
+    assert "add_header new-url $xf_sub_new_url always;" in moved
+    assert "new-url" not in pv.sub_gate_conf(2096, 12096, "/c", "/k", ["happ"], [], ipv6=False, domains=["b.example", "a.example"],
+                                             moved_from="b.example")  # moved to itself: nothing to say
+    assert "new-url" not in pv.sub_gate_conf(2096, 12096, "/c", "/k", ["happ"], [], ipv6=False, domains=["b.example"],
+                                             moved_from="gone.example")  # a domain no longer served
+
+
+def test_vpn_name_goes_to_the_panel_title(tmp_path):
+    from xui_fleet.config import set_vpn_name
+    path = tmp_path / "fleet.yaml"
+    path.write_text("master: {name: ru, host: 9.9.9.9}\nnodes: []\nusers: [{name: alice}]\n", encoding="utf-8")
+    set_vpn_name(path, "  Семейный   VPN ")
+    cfg = load_config(path)
+    assert cfg.clients.vpn_name == "Семейный VPN"
+    panel = FakePanel()
+    panel._settings = {"subEnable": True, "subPort": 2096, "subPath": "/s/", "subCertFile": "/c", "webCertFile": "/c", "subTitle": "manual"}
+    Reconciler(panel, cfg).run(_access([]))
+    assert panel.settings()["subTitle"] == "Семейный VPN"
+    set_vpn_name(path, "")
+    assert load_config(path).clients.vpn_name == ""
+    panel._settings["subTitle"] = "set in the panel"
+    Reconciler(panel, load_config(path)).run(_access([]))
+    assert panel.settings()["subTitle"] == "set in the panel"  # no name in the settings: the panel's own stays
+    with pytest.raises(ValidationError):
+        FleetConfig.model_validate({"master": {"name": "ru", "host": "9.9.9.9"}, "clients": {"vpn_name": "x" * 41}})

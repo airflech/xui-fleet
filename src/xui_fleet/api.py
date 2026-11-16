@@ -397,6 +397,14 @@ def _master_apps(c: Call):
     return c.run_change(title, lambda: set_allowed_apps(c.app.path, apps), lambda log: c.app.fleet(log).set_app_gate())
 
 
+@post("/api/master/title", needs={"name": "str?"})
+def _master_vpn_name(c: Call):
+    from .config import set_vpn_name
+    name = c.body.get("name") or ""
+    return c.run_change(f"Название VPN: {name}" if name else "Название VPN убрано",
+                        lambda: set_vpn_name(c.app.path, name), lambda log: c.app.fleet(log).set_vpn_name())
+
+
 @post("/api/domain", needs={"domain": "str"})
 def _domain(c: Call):
     domain = c.body["domain"]

@@ -520,22 +520,44 @@ def unsupported_subscription(apps: List[str]) -> Tuple[str, Dict[str, str]]:
     return b64.b64encode("\n".join(lines).encode()).decode(), headers
 
 
-def unsupported_page(apps: List[str]) -> str:
-    """The page a browser sees instead of the subscription. No double quotes or $: it goes into nginx `return`."""
-    from .config import APP_TITLES
+def unsupported_page(apps: List[str], port: Optional[int] = None) -> str:
+    """The page a browser sees instead of the subscription. It goes into nginx `return`: no double quotes, and
+    the only $ are nginx's own variables ($host, $xf_sub_path — a checked path) when `port` asks for the
+    personal part."""
     links = {"happ": ("Happ", "https://www.happ.su"), "incy": ("INCY", "https://incy.cc")}
     items = "".join(f"<li><a href='{links[a][1]}'>{links[a][0]}</a></li>" for a in apps if a in links)
     names = _app_names(apps)
+    personal = ""
+    if port:
+        # Filled in by nginx for each visitor: this very address (on whichever domain still opens) and buttons that
+        # add it to the app — what INCY's «website» button leads to when the main domain is blocked.
+        url = f"https://$host:{port}$xf_sub_path"
+        add = {"happ": ("Добавить в Happ", f"happ://add/{url}"), "incy": ("Добавить в INCY", f"incy://import/{url}")}
+        buttons = "".join(f"<a class='b' href='{add[a][1]}'>{add[a][0]}</a>" for a in apps if a in add)
+        personal = ("<p>Если подписка в приложении перестала обновляться (например, основной адрес заблокировали), "
+                    "откройте эту страницу на телефоне и нажмите кнопку — подписка добавится заново по этому адресу.</p>"
+                    f"<p>{buttons}</p><p class='u'>{url}</p>"
+                    "<p>Если в приложении после этого две подписки с одинаковым названием, ту, что перестала обновляться, "
+                    "можно удалить.</p>")
     return ("<!doctype html><html lang='ru'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-            f"<title>Подписка для {names}</title><style>body{{font:16px/1.5 system-ui,sans-serif;max-width:520px;margin:12vh auto;padding:0 16px;color:#222}}"
-            "h1{font-size:22px}a{color:#3a6}</style></head><body>"
-            f"<h1>Эта ссылка открывается только в приложении</h1><p>Подписка работает в {names}. Установите приложение, "
-            f"скопируйте ссылку и добавьте её в приложении (в Happ и INCY — кнопка «+» → «Вставить из буфера»).</p><ul>{items}</ul>"
+            f"<title>Подписка для {names}</title><style>body{{font:16px/1.5 system-ui,sans-serif;max-width:520px;margin:10vh auto;padding:0 16px;color:#222}}"
+            "h1{font-size:22px}a{color:#3a6}.b{display:inline-block;margin:0 8px 8px 0;padding:10px 16px;border-radius:8px;background:#3a6;"
+            "color:#fff;text-decoration:none}.u{font:13px monospace;word-break:break-all;color:#666}</style></head><body>"
+            f"<h1>Эта ссылка открывается только в приложении</h1><p>Подписка работает в {names}.</p>{personal}"
+            f"<p>Нет приложения? Установите:</p><ul>{items}</ul>"
             "</body></html>").replace('"', "'")
 
 
 def sub_gate_conf(public_port: int, internal_port: int, cert: str, key: str, apps: List[str], local_ips: List[str],
-                  ipv6: bool = True) -> str:
+                  ipv6: bool = True, domains: Optional[List[str]] = None, moved_from: str = "") -> str:
+    """`domains`: the master's subscription domains, main first. With two or more, every subscription answer
+    carries the user's own address on the other domain — `fallback-url` (Happ switches to it by itself when
+    the main one stops answering) and `profile-web-page-url` (a button in the app, INCY included, that opens
+    a page on the other domain with «add to the app» buttons).
+    `moved_from`: the domain the master moved away from («switch to reserve»). Answers fetched through it carry
+    `new-url` with the same address on the main domain: INCY then moves the saved subscription there itself
+    (Happ honours it only with a Provider ID). Other domains never get it, so a copy added from the reserve
+    page is never pulled back to a domain that may be blocked."""
     from .config import APPS
     import re as _re
     tls = bool(cert and key)
@@ -543,7 +565,25 @@ def sub_gate_conf(public_port: int, internal_port: int, cert: str, key: str, app
     ua = "".join(f"    ~*(^|[^a-z0-9]){_re.escape(a)}([^a-z0-9]|$) 1;\n" for a in apps if a in APPS)
     local = "".join(f"    {ip} 1;\n" for ip in dict.fromkeys(["127.0.0.1", "::1"] + list(local_ips)) if ip)
     body, headers = unsupported_subscription(apps)
-    page = unsupported_page(apps)
+    names = [d for d in dict.fromkeys(domains or []) if d]
+    page = unsupported_page(apps, port=public_port if tls else None)
+    scheme = "https" if tls else "http"
+    # Each domain points at the next one (main → reserve → … → main).
+    alt = "".join(f"    {d} {names[(i + 1) % len(names)]};\n" for i, d in enumerate(names)) if len(names) > 1 else ""
+    # Only a plain path (letters, digits, / _ -) is echoed back: never a query or anything HTML could read.
+    path_map = "map $request_uri $xf_sub_path {\n    default \"\";\n    \"~^(?<xfp>/[A-Za-z0-9/_-]{1,300})$\" $xfp;\n}\n"
+    alt_maps = "" if not alt else (
+        "map $host $xf_sub_alt {\n    hostnames;\n    default \"\";\n" + alt + "}\n"
+        f"map $xf_sub_alt $xf_sub_alt_base {{\n    \"\" \"\";\n    default \"{scheme}://$xf_sub_alt:{public_port}\";\n}}\n"
+        "map $xf_sub_alt_base$xf_sub_path $xf_sub_fallback {\n    default \"\";\n    \"~^https?://[^/]+/.\" $xf_sub_alt_base$xf_sub_path;\n}\n")
+    fallback = ("        add_header fallback-url $xf_sub_fallback always;\n"
+                "        add_header profile-web-page-url $xf_sub_fallback always;\n") if alt else ""
+    moved = moved_from if names and moved_from and moved_from != names[0] and moved_from in names else ""
+    if moved:
+        alt_maps += (
+            f"map $host $xf_sub_moved {{\n    hostnames;\n    default \"\";\n    {moved} \"{scheme}://{names[0]}:{public_port}\";\n}}\n"
+            "map $xf_sub_moved$xf_sub_path $xf_sub_new_url {\n    default \"\";\n    \"~^https?://[^/]+/.\" $xf_sub_moved$xf_sub_path;\n}\n")
+        fallback += "        add_header new-url $xf_sub_new_url always;\n"
     ssl = " ssl" if tls else ""
     listen = f"    listen {public_port}{ssl};\n" + (f"    listen [::]:{public_port}{ssl};\n" if ipv6 else "")
     hdrs = "".join(f"        add_header {k} \"{v}\" always;\n" for k, v in headers.items())
@@ -554,6 +594,7 @@ def sub_gate_conf(public_port: int, internal_port: int, cert: str, key: str, app
         "map $remote_addr $xf_sub_local {\n    default 0;\n" + local + "}\n"
         "map $http_accept $xf_sub_page {\n    default 0;\n    ~*text/html 1;\n}\n"
         "map $xf_sub_app$xf_sub_local$xf_sub_page $xf_sub_deny {\n    default \"\";\n    000 app;\n    001 page;\n}\n"
+        + path_map + alt_maps +
         "server {\n" + listen +
         "    server_name _;\n"
         "    server_tokens off;\n"
@@ -571,6 +612,7 @@ def sub_gate_conf(public_port: int, internal_port: int, cert: str, key: str, app
         f"        proxy_set_header X-Forwarded-Proto {'https' if tls else 'http'};\n"
         "        proxy_set_header X-Forwarded-Host $http_host;\n"
         "        proxy_read_timeout 90s;\n"
+        + fallback +
         "    }\n"
         "    location @xf_sub_app_denied {\n"
         "        default_type text/plain;\n" + hdrs +

@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "окно версий объясняет, когда GitHub временно не отвечает (лимит запросов) и когда можно повторить"
+WHATS_NEW = "название VPN в приложениях; запасной адрес подписки для Happ и кнопка с ним для INCY; INCY сам переезжает на новый домен"
 
 
 def _last_backup(fleet: Any) -> int:
@@ -353,6 +353,7 @@ class App:
                 "master": {"name": cfg.master.name, "host": cfg.master.host, "label": cfg.master.label,
                            "tls": tls.mode, "domain": tls.domain or "", "reserveDomains": list(tls.reserve_domains),
                            "addressMode": tls.address_mode, "allowedApps": list(cfg.clients.allowed_apps),
+                           "vpnName": cfg.clients.vpn_name,
                            "access": access(cfg.master), "vpn": cfg.master.vpn, "cascades": cfg.master.cascades,
                            "labelText": cfg.master.label or "", "flag": cfg.master.flag or "auto", "hide": list(cfg.master.hide),
                            "country": state.get(cfg.master.name, "country") or "",

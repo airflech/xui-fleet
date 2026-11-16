@@ -251,6 +251,17 @@ class ClientsConfig(Strict):
     # Apps allowed to fetch subscriptions (by User-Agent, through nginx on the master); empty — any app.
     # Other apps get a placeholder subscription that says the app is not supported, browsers a page.
     allowed_apps: List[str] = Field(default_factory=list)
+    # The VPN's name in the apps (subscription title, 3x-ui subTitle → Profile-Title). Empty: the apps show
+    # whatever they pick themselves (usually the address or the subscription id).
+    vpn_name: str = ""
+
+    @field_validator("vpn_name")
+    @classmethod
+    def _vpn_name(cls, v: str) -> str:
+        v = " ".join(str(v or "").split())
+        if len(v) > 40:
+            raise ValueError("clients.vpn_name: не длиннее 40 символов")
+        return v
 
     @field_validator("allowed_apps")
     @classmethod
@@ -270,6 +281,22 @@ class ClientsConfig(Strict):
 # (the same patterns 3x-ui itself uses to detect them).
 APPS = {"happ": r"\bhapp\b", "incy": r"\bincy\b"}
 APP_TITLES = {"happ": "Happ", "incy": "INCY"}
+
+
+def set_vpn_name(path: Path, name: str) -> None:
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    clients = doc.get("clients") or {}
+    name = " ".join(str(name or "").split())
+    if name:
+        clients["vpn_name"] = name
+    else:
+        clients.pop("vpn_name", None)
+    if clients:
+        doc["clients"] = clients
+    else:
+        doc.pop("clients", None)
+    FleetConfig.model_validate(doc)
+    _save_doc(path, doc)
 
 
 def set_allowed_apps(path: Path, apps: List[str]) -> None:

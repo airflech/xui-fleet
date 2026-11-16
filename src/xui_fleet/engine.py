@@ -589,7 +589,10 @@ class Fleet:
         host = s.get("subDomain") or (tls.domain if tls.mode == "domain" and tls.domain else master.host)
         uri = f"{'https' if cert and key else 'http'}://{host}:{public}{s.get('subPath', '/sub/')}"
         ips = list(facts["ips"]) + [master.host]
-        conf = pv.sub_gate_conf(public, internal, cert, key, apps, ips, ipv6=facts["ipv6"])
+        domains = [tls.domain, *tls.reserve_domains] if tls.mode == "domain" and tls.domain else []
+        moved_from = str(self.state.get(master.name, "domain_moved_from") or "")
+        conf = pv.sub_gate_conf(public, internal, cert, key, apps, ips, ipv6=facts["ipv6"], domains=domains,
+                                moved_from=moved_from)
         before = dict(s)
         move = not behind or int(s.get("subPort") or 0) != internal or s.get("subURI") != uri
         try:
@@ -625,6 +628,23 @@ class Fleet:
         apps = self.cfg.clients.allowed_apps
         return ("Готово: подписку получают только " + pv._app_names(apps) + ", остальные приложения видят сообщение, что они не поддерживаются"
                 if apps else "Готово: подписку получают любые приложения")
+
+    def set_vpn_name(self) -> str:
+        """Put clients.vpn_name into the panel (3x-ui subTitle → the title apps show). An empty name clears it."""
+        name = self.cfg.clients.vpn_name
+        self.backup_before("перед изменением названия VPN")
+        with self.master_panel(provision=False) as panel:
+            s = panel.settings()
+            if str(s.get("subTitle") or "") == name:
+                return "Название уже такое"
+            s["subTitle"] = name
+            panel.update_settings(s)
+            panel.restart_panel()
+            time.sleep(4)
+            panel.wait_ready(90)
+        self.log(f"мастер: название VPN в приложениях — «{name}»" if name else "мастер: название VPN убрано")
+        return (f"Готово: приложения покажут «{name}» после обновления подписки" if name
+                else "Готово: название убрано, приложения покажут своё")
 
     def _servers(self):
         from .geo import display_labels
@@ -758,6 +778,9 @@ class Fleet:
         mode_before = tls.address_mode
         set_master_domain(self.config_path, domain, reserves)
         self.reload()
+        if old and old != domain:
+            # Apps that still reach the old domain are told the new address (new-url, see sub_gate_conf).
+            self.state.update(master.name, domain_moved_from=old)
         if self.cfg.clients.allowed_apps:  # nginx in front of the subscriptions takes the new certificate and address
             with self.master_panel(provision=False) as panel:
                 if self._master_ssh is not None:
@@ -797,6 +820,10 @@ class Fleet:
         mode_before = tls.address_mode
         set_master_domain(self.config_path, tls.domain, reserves)
         self.reload()
+        if self.cfg.clients.allowed_apps:  # the personal fallback addresses follow the new set of domains
+            with self.master_panel(provision=False) as panel:
+                if self._master_ssh is not None:
+                    self.ensure_sub_gate(panel, self._master_ssh)
         if not reserves:
             if mode_before != "main":
                 # the hosts of the removed domain still carry the links: back to the main domain right away

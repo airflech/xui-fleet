@@ -154,6 +154,17 @@ $('appsForm').addEventListener('submit', (e) => {
   if (apps === appsMode()) { $('dlgApps').close(); return; }
   start('/api/master/apps', { apps }, e.target);
 });
+function openVpnName() {
+  closeMenus(); $('dlgDomains').close();
+  resetForm($('vpnNameForm')); $('vpn_name').value = overview.master.vpnName || '';
+  $('dlgVpnName').showModal();
+}
+$('vpnNameForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const name = $('vpn_name').value.trim().replace(/\s+/g, ' ');
+  if (name === (overview.master.vpnName || '')) { $('dlgVpnName').close(); return; }
+  start('/api/master/title', { name }, e.target);
+});
 function switchToReserve() {
   closeMenus(); $('dlgDomains').close();
   const rsv = overview.master.reserveDomains[0], cur = overview.master.domain;
@@ -184,6 +195,7 @@ function renderDomains() {
     'Перейти на ' + rsv, switchToReserve, 'alert-row');
   row('Основной домен подписки', m.domain || 'не задан', m.domain ? domainState(m.domain) : null, m.domain ? 'Изменить' : 'Задать', openDomain);
   row('Резервный домен', rsv || 'не задан — подписка держится на одном домене', rsv ? domainState(rsv) : null, rsv ? 'Изменить' : 'Добавить', openReserve);
+  row('Название VPN в приложениях', m.vpnName || 'не задано — приложения показывают адрес', null, m.vpnName ? 'Изменить' : 'Задать', openVpnName);
   row('Приложения, которые получают подписку', APPS_MODE[appsMode()], null, 'Изменить', openApps);
   if (rsv) {
     row('Адреса подключений через RU', ADDR_MODE[m.addressMode || 'main'], null, 'Изменить', openAddr);

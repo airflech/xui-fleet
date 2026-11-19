@@ -54,6 +54,10 @@ def _on(inbound: Dict[str, Any], node_id: Any) -> bool:
     return (inbound.get("nodeId") or None) == _nid(node_id)
 
 
+STOCK_EXPIRED = "⛔ {{EMAIL}} | Expired: {{EXPIRE_DATE}}"
+STOCK_DEPLETED = "🚫 {{EMAIL}} | Traffic Depleted | {{TRAFFIC_USED}}/{{TRAFFIC_TOTAL}}"
+
+
 class Reconciler:
     def __init__(self, panel: Panel, cfg: FleetConfig, dry_run: bool = False,
                  log: Callable[[str], None] = lambda _m: None, countries: Optional[Dict[str, str]] = None,
@@ -915,6 +919,26 @@ class Reconciler:
         if support and str(settings.get("subSupportUrl") or "") != support:  # empty: one set in the panel stays
             settings["subSupportUrl"] = support
             changed.append("кнопка «Поддержка» в приложениях")
+        # What a person sees in the app when the subscription ends: in Russian and with what to do, instead of 3x-ui's
+        # English defaults; a reminder from Happ beforehand; its «renew» button leads to support. Texts someone wrote
+        # in the panel themselves are left alone — only the stock ones are replaced.
+        for key, stock, ours in (
+                ("subExpiredTemplate", STOCK_EXPIRED, "⛔ Подписка закончилась {{EXPIRE_DATE}} — напишите администратору, чтобы продлить"),
+                ("subTrafficDepletedTemplate", STOCK_DEPLETED, "🚫 Трафик закончился ({{TRAFFIC_USED}} из {{TRAFFIC_TOTAL}}) — напишите администратору")):
+            if str(settings.get(key) or "") in ("", stock):
+                if settings.get(key) != ours:
+                    settings[key] = ours
+                    if "сообщения об окончании подписки — по-русски" not in changed:
+                        changed.append("сообщения об окончании подписки — по-русски")
+        if "subHappNotificationExpire" in settings and settings.get("subHappNotificationExpire") is not True:
+            settings["subHappNotificationExpire"] = True
+            changed.append("Happ напоминает об окончании подписки")
+        if support and "subHappSubExpireButtonLink" in settings and not settings.get("subHappSubExpireButtonLink"):
+            settings["subHappSubExpireButtonLink"] = support
+            changed.append("кнопка продления в Happ ведёт в поддержку")
+        if int(settings.get("subUpdates") or 0) == 12:  # 3x-ui's default: changes reach people within 4 hours, not 12
+            settings["subUpdates"] = 4
+            changed.append("приложения обновляют подписку раз в 4 часа")
         if not changed:
             return
 

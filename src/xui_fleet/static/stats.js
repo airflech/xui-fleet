@@ -180,7 +180,7 @@ async function loadStats() {
       for (const v of [ru, d, ru + d]) r.appendChild(el('span', 'num', fmtBytes(v)));
       tt.appendChild(r);
     }
-    const users = Object.entries(tr.users).map(([u, v]) => ({ label: u, value: sum(v), onClick: () => { showTab('users'); openUserInfo(u); } }))
+    const users = Object.entries(tr.users).map(([u, v]) => ({ label: shortName(u), value: sum(v), onClick: () => { showTab('users'); openUserInfo(u); } }))
       .filter((r) => r.value > 0).sort((a, b) => b.value - a.value).slice(0, 12);
     hbars($('statUsers'), users);
   }

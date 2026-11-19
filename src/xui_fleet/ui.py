@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "кнопка «Поддержка» в Happ; в карточке пользователя — работает ли его подписка и продление в один щелчок"
+WHATS_NEW = "сообщения об окончании подписки в Happ — по-русски, с напоминанием заранее и кнопкой в поддержку"
 
 
 def _last_backup(fleet: Any) -> int:

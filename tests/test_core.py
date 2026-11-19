@@ -1830,3 +1830,21 @@ def test_support_link_reaches_the_apps_the_invitation_and_the_page():
     import pytest
     with pytest.raises(Exception):
         FleetConfig.model_validate(dict(doc, clients={"support_url": "javascript:alert(1)"}))
+
+
+def test_what_a_person_sees_when_the_subscription_ends_is_russian_and_leads_to_support():
+    from xui_fleet.reconcile import STOCK_DEPLETED, STOCK_EXPIRED
+    panel = FakePanel()
+    panel._settings = {"subEnable": True, "subPort": 2096, "subPath": "/s/", "subCertFile": "/c", "webCertFile": "/c",
+                       "subExpiredTemplate": STOCK_EXPIRED, "subTrafficDepletedTemplate": "мой текст", "subUpdates": 12,
+                       "subHappNotificationExpire": False, "subHappSubExpireButtonLink": ""}
+    doc = {"master": {"name": "ru", "host": "9.9.9.9"}, "users": [{"name": "x"}], "nodes": [{"name": "de", "host": "de.example"}],
+           "clients": {"support_url": "@help_me"}}
+    cfg = FleetConfig.model_validate(doc)
+    Reconciler(panel, cfg).run(_access(["de"]))
+    s = panel.settings()
+    assert s["subExpiredTemplate"].startswith("⛔ Подписка закончилась")
+    assert s["subTrafficDepletedTemplate"] == "мой текст"  # written by someone in the panel: left alone
+    assert s["subHappNotificationExpire"] is True and s["subHappSubExpireButtonLink"] == "https://t.me/help_me"
+    assert s["subUpdates"] == 4
+    assert Reconciler(panel, cfg).run(_stale(_access(["de"]))).changes == []  # and it stays that way

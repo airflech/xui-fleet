@@ -615,7 +615,7 @@ class Fleet:
         domains = [tls.domain, *tls.reserve_domains] if tls.mode == "domain" and tls.domain else []
         moved_from = str(self.state.get(master.name, "domain_moved_from") or "")
         conf = pv.sub_gate_conf(public, internal, cert, key, apps, ips, ipv6=facts["ipv6"], domains=domains,
-                                moved_from=moved_from)
+                                moved_from=moved_from, title=self.cfg.clients.vpn_name)
         before = dict(s)
         move = not behind or int(s.get("subPort") or 0) != internal or s.get("subURI") != uri
         try:

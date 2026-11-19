@@ -177,7 +177,7 @@
         <span class="tag ok hidden" id="onlineTag"><span class="dot ok" style="box-shadow:none"></span><span id="onlineText"></span></span>
         <div class="spacer"></div>
         <button class="btn primary" id="btnAddUser"><svg class="i"><use href="#i-plus"/></svg>Добавить пользователя</button>
-        <div class="lead">Одна ссылка-подписка содержит все подключения. Вставьте её в Happ, v2rayNG, Hiddify или Streisand.</div>
+        <div class="lead" id="usersLead">Одна ссылка-подписка содержит все подключения.</div>
       </div>
       <div class="panel">
         <div class="panel-h">
@@ -434,6 +434,7 @@
   <button role="menuitem" id="btnMasterRemove" class="danger"><svg class="i"><use href="#i-trash"/></svg><span>Удалить главный сервер<small>Вся сеть этого профиля</small></span></button>
 </div>
 <div class="menu hidden" id="linkMenu" role="menu">
+  <button role="menuitem" data-link="invite"><svg class="i"><use href="#i-copy"/></svg><span>Приглашение<small>Ссылка и три шага — для мессенджера</small></span></button>
   <button role="menuitem" data-link="main"><svg class="i"><use href="#i-copy"/></svg><span>Основная ссылка<small id="linkMain"></small></span></button>
   <button role="menuitem" data-link="reserve"><svg class="i"><use href="#i-copy"/></svg><span>Резервная ссылка<small id="linkReserve"></small></span></button>
 </div>
@@ -815,6 +816,13 @@
   <div class="dlg-f"><button type="button" class="btn" id="rtCard">Показать карточку</button><div class="spacer"></div><button type="button" class="btn" data-close>Закрыть</button></div>
 </div></dialog>
 <div class="charttip hidden" id="chartTip" role="tooltip"></div>
+
+<dialog id="dlgInvite"><div class="dlg">
+  <div class="dlg-h"><h2 id="invTitle"></h2><p>Отправьте человеку приглашение: в нём ссылка и что с ней делать. Ссылка личная — у каждого своя.</p></div>
+  <div class="dlg-b"><pre class="invite" id="invText"></pre></div>
+  <div class="dlg-f"><button type="button" class="btn" id="invLink">Только ссылку</button><div class="spacer"></div>
+    <button type="button" class="btn" data-close>Готово</button><button type="button" class="btn primary" id="invCopy">Скопировать приглашение</button></div>
+</div></dialog>
 
 <dialog id="dlgConfirm"><div class="dlg">
   <div class="dlg-h"><h2 id="confirmTitle"></h2><p id="confirmText"></p></div>

@@ -1421,8 +1421,12 @@ def test_sub_gate_conf_lets_only_the_apps_through_and_tells_the_others():
     assert re.search(r'add_header announce "base64:[A-Za-z0-9+/=]+" always;', conf)
     page = re.search(r'location @xf_sub_page_denied \{.*?return 200 "(.+?)";\n', conf, re.S).group(1)
     assert '"' not in page and "happ.su" in page
-    assert set(re.findall(r"\$[a-z_]+", page)) == {"$host", "$xf_sub_path"}  # only nginx's own, checked values
-    assert "incy://import/https://$host:2096$xf_sub_path" in page and "happ://add/https://$host:2096$xf_sub_path" in page
+    # nginx puts nothing into the page: it reads its own address in the browser, so no request data is echoed
+    assert "$" not in page and "\\" not in page
+    assert "data-scheme='happ://add/'" in page and "data-scheme='incy://import/'" in page and "location.href" in page
+    assert "Установите приложение" in page and "Скопировать ссылку" in page  # the steps a newcomer needs
+    named = pv.unsupported_page(["happ"], 2096, title='Мой "VPN" $x')
+    assert "<h1>Мой &quot;VPN&quot; x</h1>" in named and '"' not in named and "$" not in named  # the name cannot break nginx
     assert "fallback-url" not in conf  # one domain: nowhere to fall back to
     two = pv.sub_gate_conf(2096, 12096, "/c", "/k", ["happ", "incy"], [], ipv6=False, domains=["a.example", "b.example"])
     assert "    a.example b.example;\n    b.example a.example;" in two  # each domain points at the other

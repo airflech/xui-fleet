@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "WARP больше не выходит в интернет через Cloudflare в России: в YouTube и Telegram через «RU · WARP» снова грузятся видео и картинки"
+WHATS_NEW = "«Ссылка» → «Приглашение»: готовый текст для нового пользователя; понятная страница, если ссылку открыть в браузере"
 
 
 def _last_backup(fleet: Any) -> int:

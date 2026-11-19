@@ -45,11 +45,41 @@ let linkTarget = null;
 $('linkMenu').addEventListener('click', (e) => {
   const b = e.target.closest('[data-link]'); if (!b || !linkTarget) return;
   closeMenus();
-  if (b.dataset.link === 'main') copy(linkTarget.url, 'Подписка ' + linkTarget.name);
+  if (b.dataset.link === 'invite') copy(inviteText(linkTarget.url), 'Приглашение для ' + linkTarget.name);
+  else if (b.dataset.link === 'main') copy(linkTarget.url, 'Подписка ' + linkTarget.name);
   else copy(linkTarget.alt, 'Резервная подписка ' + linkTarget.name);
 });
+// What a person needs with their link: which app, how to add it, what to choose. Pasted into a messenger as is.
+function appsText() {
+  const apps = (overview && overview.master && overview.master.allowedApps) || [];
+  const t = { happ: 'Happ', incy: 'INCY' }, names = apps.map((a) => t[a] || a);
+  return names.length ? (names.length === 1 ? names[0] : names.slice(0, -1).join(', ') + ' или ' + names[names.length - 1]) : 'Happ';
+}
+function inviteText(url) {
+  const vpn = (overview && overview.master && overview.master.vpnName) || 'VPN';
+  const apps = (overview && overview.master && overview.master.allowedApps) || [];
+  const site = apps.length === 1 && apps[0] === 'incy' ? 'https://incy.cc' : 'https://www.happ.su';
+  return 'Подключение к ' + vpn + ':\n\n'
+    + '1. Установите приложение ' + appsText() + ' — ' + site + ' (есть для iPhone, Android, Windows и Mac).\n'
+    + '2. Откройте эту ссылку на телефоне и нажмите «Добавить в ' + (apps[0] === 'incy' ? 'INCY' : 'Happ') + '»:\n' + url + '\n'
+    + '   На компьютере — скопируйте ссылку и в приложении нажмите «+» → «Вставить из буфера».\n'
+    + '3. Включите VPN. Подключения вверху списка самые надёжные; если одно не открывает сайты — выберите следующее той же страны. '
+    + 'Российские сайты работают напрямую.\n\n'
+    + 'Ссылка личная — пожалуйста, не пересылайте её.';
+}
+let invTarget = null;
+function openInvite(name, url, created) {
+  invTarget = { name, url };
+  $('invTitle').textContent = created ? 'Пользователь ' + name + ' создан' : 'Приглашение для ' + name;
+  $('invText').textContent = inviteText(url);
+  if (!$('dlgInvite').open) $('dlgInvite').showModal();
+}
+$('invCopy').addEventListener('click', () => { copy(inviteText(invTarget.url), 'Приглашение для ' + invTarget.name); $('dlgInvite').close(); });
+$('invLink').addEventListener('click', () => copy(invTarget.url, 'Подписка ' + invTarget.name));
 function renderUsers() {
   const box = $('userRows');
+  $('usersLead').textContent = 'Одна ссылка-подписка содержит все подключения. Работает в ' + appsText()
+    + (((overview && overview.master && overview.master.allowedApps) || []).length ? '' : ' и других приложениях для VLESS') + '. «Ссылка» → «Приглашение» — готовый текст для мессенджера.';
   box.textContent = '';
   const msg = (b, t) => { const e = el('div', 'empty'); if (b) e.appendChild(el('b', null, b)); if (t) e.appendChild(document.createTextNode(t)); box.appendChild(e); };
   if (!live) {

@@ -594,7 +594,9 @@ function renderServers() {
       const ok = info.status === 'online';
       const t = el('span', 'tag ' + (ok ? 'ok' : 'bad')); t.appendChild(el('span', 'dot ' + (ok ? 'ok' : 'bad'))); t.lastChild.style.boxShadow = 'none';
       t.appendChild(document.createTextNode(ok ? 'В сети' : 'Недоступен')); st.appendChild(t);
-      if (ok) st.appendChild(el('span', 'muted small num', info.latency + ' мс от ' + hub()));
+      // the same figure as on the map: ping from the main server (the panel's own probe only as a fallback)
+      const ping = live.rtt && live.rtt.fromMaster ? live.rtt.fromMaster[n.name] : null;
+      if (ok) st.appendChild(el('span', 'muted small num', (ping != null ? ping : info.latency) + ' мс от ' + hub()));
     }
     card.appendChild(st);
     if (info && info.status !== 'online') card.appendChild(problem(humanError(info.error),

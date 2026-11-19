@@ -136,6 +136,7 @@ $('btnForce').addEventListener('click', () => { closeMenus(); confirmAction('П�
   () => start('/api/apply'), 'Перенастроить'); });
 $('jobhide').addEventListener('click', () => { jobClosed = curJob; $('drawer').classList.add('hidden'); });
 
+let pendingInvite = null;
 async function pollJob() {
   clearTimeout(jobTimer);
   let job;
@@ -152,5 +153,11 @@ async function pollJob() {
     toast(job.ok ? '«' + job.title + '» — готово' : '«' + job.title + '» завершилось с ошибкой — подробности в журнале');
     await refresh();
     if (panelsAfterJob) { panelsAfterJob = false; loadPanels(); }
+    // A new user: their link and the invitation right away, not a search through the list.
+    if (pendingInvite) {
+      const name = pendingInvite; pendingInvite = null;
+      const url = job.ok && live && live.users ? live.users[name] : null;
+      if (url) openInvite(name, url, true);
+    }
   }
 }

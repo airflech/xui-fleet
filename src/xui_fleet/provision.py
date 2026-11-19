@@ -520,36 +520,57 @@ def unsupported_subscription(apps: List[str]) -> Tuple[str, Dict[str, str]]:
     return b64.b64encode("\n".join(lines).encode()).decode(), headers
 
 
-def unsupported_page(apps: List[str], port: Optional[int] = None) -> str:
-    """The page a browser sees instead of the subscription. It goes into nginx `return`: no double quotes, and
-    the only $ are nginx's own variables ($host, $xf_sub_path — a checked path) when `port` asks for the
-    personal part."""
-    links = {"happ": ("Happ", "https://www.happ.su"), "incy": ("INCY", "https://incy.cc")}
-    items = "".join(f"<li><a href='{links[a][1]}'>{links[a][0]}</a></li>" for a in apps if a in links)
+def unsupported_page(apps: List[str], port: Optional[int] = None, title: str = "") -> str:
+    """The page a person sees when they open their subscription link in a browser — usually the first thing they do
+    with the link they were sent. Three steps: install the app, add the subscription (a button opens the app with
+    this very address), switch it on; the address can be copied for an app on another device.
+    It goes into nginx `return`: no double quotes, no $ and no backslashes; the page reads its own address from
+    location in the browser, so nothing personal is put in by nginx. `port` is kept for older callers."""
+    import html as _html
+    sites = {"happ": ("Happ", "https://www.happ.su"), "incy": ("INCY", "https://incy.cc")}
+    add = {"happ": ("Добавить в Happ", "happ://add/"), "incy": ("Добавить в INCY", "incy://import/")}
     names = _app_names(apps)
-    personal = ""
-    if port:
-        # Filled in by nginx for each visitor: this very address (on whichever domain still opens) and buttons that
-        # add it to the app — what INCY's «website» button leads to when the main domain is blocked.
-        url = f"https://$host:{port}$xf_sub_path"
-        add = {"happ": ("Добавить в Happ", f"happ://add/{url}"), "incy": ("Добавить в INCY", f"incy://import/{url}")}
-        buttons = "".join(f"<a class='b' href='{add[a][1]}'>{add[a][0]}</a>" for a in apps if a in add)
-        personal = ("<p>Если подписка в приложении перестала обновляться (например, основной адрес заблокировали), "
-                    "откройте эту страницу на телефоне и нажмите кнопку — подписка добавится заново по этому адресу.</p>"
-                    f"<p>{buttons}</p><p class='u'>{url}</p>"
-                    "<p>Если в приложении после этого две подписки с одинаковым названием, ту, что перестала обновляться, "
-                    "можно удалить.</p>")
-    return ("<!doctype html><html lang='ru'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-            f"<title>Подписка для {names}</title><style>body{{font:16px/1.5 system-ui,sans-serif;max-width:520px;margin:10vh auto;padding:0 16px;color:#222}}"
-            "h1{font-size:22px}a{color:#3a6}.b{display:inline-block;margin:0 8px 8px 0;padding:10px 16px;border-radius:8px;background:#3a6;"
-            "color:#fff;text-decoration:none}.u{font:13px monospace;word-break:break-all;color:#666}</style></head><body>"
-            f"<h1>Эта ссылка открывается только в приложении</h1><p>Подписка работает в {names}.</p>{personal}"
-            f"<p>Нет приложения? Установите:</p><ul>{items}</ul>"
-            "</body></html>").replace('"', "'")
+    brand = _html.escape(" ".join(str(title or "").split())[:60], quote=True).replace('"', "'").replace("$", "").replace("\\", "") or "VPN"
+    install = "".join(f"<a class='b o' href='{sites[a][1]}' target='_blank' rel='noopener'>{sites[a][0]}</a>" for a in apps if a in sites)
+    buttons = "".join(f"<a class='b' data-scheme='{add[a][1]}' href='#'>{add[a][0]}</a>" for a in apps if a in add)
+    css = ("body{font:16px/1.55 system-ui,-apple-system,Segoe UI,sans-serif;max-width:560px;margin:0 auto;padding:28px 18px 40px;color:#14202f;background:#f3f6fa}"
+           "h1{font-size:26px;margin:0 0 4px;letter-spacing:-.02em}.lead{color:#4a586d;margin:0 0 22px}"
+           "ol{list-style:none;padding:0;margin:0;counter-reset:s}li{counter-increment:s;background:#fff;border:1px solid #dfe6ef;border-radius:14px;"
+           "padding:16px 16px 16px 58px;margin:0 0 12px;position:relative}li:before{content:counter(s);position:absolute;left:16px;top:15px;width:28px;height:28px;"
+           "border-radius:50%;background:#5f9600;color:#fff;font-weight:700;display:grid;place-items:center}li b{display:block;margin-bottom:4px}"
+           ".b{display:inline-block;margin:8px 8px 0 0;padding:11px 16px;border-radius:10px;background:#5f9600;color:#fff;text-decoration:none;font-weight:600;"
+           "border:0;font-size:15px;cursor:pointer}.b.o{background:#fff;color:#14202f;border:1px solid #c3cedd}.s{color:#687790;font-size:14px;margin-top:8px}"
+           ".u{font:13px ui-monospace,monospace;word-break:break-all;color:#687790;background:#fff;border:1px dashed #c3cedd;border-radius:8px;padding:8px 10px;margin-top:10px}"
+           "details{margin-top:18px;color:#4a586d;font-size:15px}summary{cursor:pointer;color:#14202f;font-weight:600}"
+           "@media (prefers-color-scheme:dark){body{background:#0a101b;color:#e7eef8}.lead,details{color:#a7b4c8}summary{color:#e7eef8}"
+           "li{background:#101929;border-color:#1b2840}li:before,.b{background:#c8f25a;color:#132003}.b.o{background:#101929;color:#e7eef8;border-color:#283a58}"
+           ".u{background:#101929;border-color:#283a58;color:#a7b4c8}}")
+    js = ("var u=location.href.split('#')[0];document.getElementById('u').textContent=u;"
+          "var bs=document.querySelectorAll('[data-scheme]');for(var i=0;i<bs.length;i++){bs[i].href=bs[i].getAttribute('data-scheme')+u;}"
+          "document.getElementById('c').onclick=function(){var b=this;function ok(){b.textContent='Скопировано';}"
+          "if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(u).then(ok);}"
+          "else{var t=document.createElement('textarea');t.value=u;document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();ok();}};"
+          "var a=navigator.userAgent,p=a.indexOf('iPhone')>=0||a.indexOf('iPad')>=0?'iPhone':a.indexOf('Android')>=0?'Android':"
+          "a.indexOf('Windows')>=0?'Windows':a.indexOf('Mac')>=0?'Mac':'';if(p){document.getElementById('p').textContent='У вас '+p+' — приложение есть и для него.';}")
+    page = ("<!doctype html><html lang='ru'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
+            f"<meta name='robots' content='noindex'><title>{brand} — подключение</title><style>{css}</style></head><body>"
+            f"<h1>{brand}</h1><p class='lead'>Это ваша личная ссылка для подключения. Настройка займёт минуту.</p><ol>"
+            f"<li><b>Установите приложение</b>Подписка работает в {names}.<br>{install}<div class='s' id='p'>Есть для iPhone, Android, Windows и Mac.</div></li>"
+            f"<li><b>Добавьте подписку</b>Нажмите кнопку на этом же устройстве — приложение откроется и добавит подписку само.<br>{buttons}"
+            "<div class='s'>Приложение на другом устройстве или кнопка не сработала? Скопируйте ссылку и в приложении нажмите «+» → «Вставить из буфера».</div>"
+            "<button class='b o' id='c' type='button'>Скопировать ссылку</button><div class='u' id='u'></div></li>"
+            "<li><b>Включите VPN</b>Большой кнопкой в приложении. Подключения вверху списка — самые надёжные; если одно не открывает сайты, выберите "
+            "следующее той же страны. Российские сайты и приложения банков работают напрямую, без VPN.</li></ol>"
+            "<details><summary>Подписка в приложении перестала обновляться?</summary><p>Например, основной адрес заблокировали. Откройте эту "
+            "страницу на телефоне и нажмите «Добавить» ещё раз — подписка добавится по этому адресу. Если в приложении после этого две подписки "
+            "с одинаковым названием, ту, что не обновляется, можно удалить.</p></details>"
+            f"<script>{js}</script></body></html>")
+    assert '"' not in page and "$" not in page and "\\" not in page, "страница идёт в nginx return"
+    return page
 
 
 def sub_gate_conf(public_port: int, internal_port: int, cert: str, key: str, apps: List[str], local_ips: List[str],
-                  ipv6: bool = True, domains: Optional[List[str]] = None, moved_from: str = "") -> str:
+                  ipv6: bool = True, domains: Optional[List[str]] = None, moved_from: str = "", title: str = "") -> str:
     """`domains`: the master's subscription domains, main first. With two or more, every subscription answer
     carries the user's own address on the other domain — `fallback-url` (Happ switches to it by itself when
     the main one stops answering) and `profile-web-page-url` (a button in the app, INCY included, that opens
@@ -566,7 +587,7 @@ def sub_gate_conf(public_port: int, internal_port: int, cert: str, key: str, app
     local = "".join(f"    {ip} 1;\n" for ip in dict.fromkeys(["127.0.0.1", "::1"] + list(local_ips)) if ip)
     body, headers = unsupported_subscription(apps)
     names = [d for d in dict.fromkeys(domains or []) if d]
-    page = unsupported_page(apps, port=public_port if tls else None)
+    page = unsupported_page(apps, port=public_port if tls else None, title=title)
     scheme = "https" if tls else "http"
     # Each domain points at the next one (main → reserve → … → main).
     alt = "".join(f"    {d} {names[(i + 1) % len(names)]};\n" for i, d in enumerate(names)) if len(names) > 1 else ""

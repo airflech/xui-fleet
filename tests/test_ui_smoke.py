@@ -93,6 +93,13 @@ def test_every_tab_and_main_dialog_opens_without_errors(page_url):
         page.wait_for_selector("#jobhist:not(.hidden)")
         assert "Операций пока не было" in page.inner_text("#jobhist")
 
+        # a new user's invitation: the link and what to do with it, ready for a messenger
+        assert page.evaluate("inviteText('https://x.example/s/abc').includes('https://x.example/s/abc')")
+        page.evaluate("openInvite('alice', 'https://x.example/s/abc', true)")
+        page.wait_for_selector("#dlgInvite[open]")
+        assert "alice" in page.inner_text("#invTitle") and "Установите приложение" in page.inner_text("#invText")
+        page.keyboard.press("Escape")
+
         # quick search: Ctrl+K, Cyrillic finds a Latin name, Enter runs the action
         page.keyboard.press("Control+k")
         page.wait_for_selector("#dlgCmd[open]")

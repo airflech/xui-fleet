@@ -8,7 +8,11 @@ document.querySelectorAll('dialog').forEach((d) => d.addEventListener('click', (
 $('s_tls').addEventListener('change', () => $('s_domain_box').classList.toggle('hidden', $('s_tls').value !== 'domain'));
 $('setupForm').addEventListener('submit', (e) => { e.preventDefault(); start('/api/setup', formData(e.target), e.target); });
 $('nodeForm').addEventListener('submit', async (e) => { e.preventDefault(); if (await start('/api/node', formData(e.target), e.target)) resetForm(e.target); });
-$('userForm').addEventListener('submit', async (e) => { e.preventDefault(); if (await start('/api/user', formData(e.target), e.target)) resetForm(e.target); });
+$('userForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = e.target.querySelector('[name=name]').value.trim();
+  if (await start('/api/user', formData(e.target), e.target)) { pendingInvite = name; resetForm(e.target); }
+});
 $('accessForm').addEventListener('submit', (e) => { e.preventDefault(); start('/api/access', formData(e.target), e.target); });
 $('btnMasterAccess').addEventListener('click', () => { closeMenus(); openAccess(overview.master, 'Доступ к главному серверу'); });
 $('btnFixAccess').addEventListener('click', () => openAccess(overview.master, 'Доступ к главному серверу'));

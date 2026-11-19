@@ -65,7 +65,8 @@ function inviteText(url) {
     + '   На компьютере — скопируйте ссылку и в приложении нажмите «+» → «Вставить из буфера».\n'
     + '3. Включите VPN. Подключения вверху списка самые надёжные; если одно не открывает сайты — выберите следующее той же страны. '
     + 'Российские сайты работают напрямую.\n\n'
-    + 'Ссылка личная — пожалуйста, не пересылайте её.';
+    + 'Ссылка личная — пожалуйста, не пересылайте её.'
+    + ((overview && overview.master && overview.master.supportUrl) ? '\nЕсли что-то не работает — пишите: ' + overview.master.supportUrl : '');
 }
 let invTarget = null;
 function openInvite(name, url, created) {
@@ -76,6 +77,15 @@ function openInvite(name, url, created) {
 }
 $('invCopy').addEventListener('click', () => { copy(inviteText(invTarget.url), 'Приглашение для ' + invTarget.name); $('dlgInvite').close(); });
 $('invLink').addEventListener('click', () => copy(invTarget.url, 'Подписка ' + invTarget.name));
+// When every name starts with the same word and a dash («Main-Катя-phone», «Main-Папа-phone»), the list shows the
+// names without it: it says nothing and makes every row start the same. Search and the card keep the full name.
+function namePrefix() {
+  const names = Object.keys((live && live.users) || {});
+  if (names.length < 3) return '';
+  const m = /^([^-\s]+-)/.exec(names[0]);
+  return m && names.every((n) => n.startsWith(m[1]) && n.length > m[1].length) ? m[1] : '';
+}
+function shortName(name) { const p = namePrefix(); return p && name.startsWith(p) ? name.slice(p.length) : name; }
 function renderUsers() {
   const box = $('userRows');
   $('usersLead').textContent = 'Одна ссылка-подписка содержит все подключения. Работает в ' + appsText()
@@ -123,7 +133,7 @@ function renderUsers() {
     let hue = 0; for (const ch of name) hue = (hue * 31 + ch.codePointAt(0)) % 360; av.style.setProperty('--h', hue);
     r.appendChild(av);
     const g = el('div', 'grow');
-    const t = el('div', 'title', name);
+    const t = el('div', 'title', shortName(name)); if (shortName(name) !== name) t.title = name;
     const dev = deviceOf(name); if (dev) t.appendChild(el('span', 'device', dev));
     g.appendChild(t);
     const st = userStats && userStats[name];

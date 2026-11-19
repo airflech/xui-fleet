@@ -1813,3 +1813,20 @@ def test_a_rejected_gate_config_never_takes_the_subscription_down(tmp_path, monk
         fleet.ensure_sub_gate(panel, ssh=None)
     s = panel.settings()
     assert ("remove",) in calls and s["subListen"] == "" and int(s["subPort"]) == 2096  # 3x-ui answers itself again
+
+
+def test_support_link_reaches_the_apps_the_invitation_and_the_page():
+    from xui_fleet import provision as pv
+    panel = FakePanel()
+    panel._settings = {"subEnable": True, "subPort": 2096, "subPath": "/s/", "subCertFile": "/c", "webCertFile": "/c"}
+    doc = {"master": {"name": "ru", "host": "9.9.9.9"}, "users": [{"name": "x"}], "nodes": [{"name": "de", "host": "de.example"}],
+           "clients": {"support_url": "@family_help"}}
+    cfg = FleetConfig.model_validate(doc)
+    assert cfg.clients.support_url == "https://t.me/family_help"
+    Reconciler(panel, cfg).run(_access(["de"]))
+    assert panel.settings()["subSupportUrl"] == "https://t.me/family_help"  # → support-url, the «Support» button
+    page = pv.unsupported_page(["happ"], title="VPN", support=cfg.clients.support_url)
+    assert "href='https://t.me/family_help'" in page and '"' not in page
+    import pytest
+    with pytest.raises(Exception):
+        FleetConfig.model_validate(dict(doc, clients={"support_url": "javascript:alert(1)"}))

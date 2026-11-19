@@ -73,6 +73,12 @@ function renderUserInfo(u) {
   const old = body.querySelector('form.uform'), typed = old && old.dataset.dirty ? Object.fromEntries(
     [...old.elements].filter((i) => i.name).map((i) => [i.name, i.type === 'checkbox' ? i.checked : i.value])) : null;
   body.textContent = '';
+  // The first question when someone writes «it doesn't work»: does their subscription work at all, and if not, why.
+  const why = attentionOf(u), dead = why.filter((w) => /истёк|исчерпан|выключен/.test(w));
+  const verdict = el('div', 'verdict ' + (dead.length ? 'bad' : why.length ? 'warn' : 'ok'));
+  verdict.appendChild(el('b', null, dead.length ? 'Подписка не работает' : why.length ? 'Подписка работает, но есть что проверить' : 'Подписка работает'));
+  verdict.appendChild(el('span', null, why.length ? why.join(' · ') : 'Срок, трафик и лимиты в порядке. Если у человека не открываются сайты — пусть выберет другое подключение в приложении и обновит подписку.'));
+  body.appendChild(verdict);
   const tiles = el('div', 'tiles');
   const tile = (label, value, extra) => { const t = el('div', 'tile'); t.appendChild(el('small', null, label)); t.appendChild(el('b', null, value)); if (extra) t.appendChild(extra); tiles.appendChild(t); };
   let meter = null;
@@ -139,7 +145,22 @@ function renderUserInfo(u) {
   const day = (ms) => { if (!ms || ms <= 0) return ''; const d = new Date(ms); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
   uf.appendChild(inp('Комментарий', 'text', 'comment', u.comment || '', 'wide', { maxLength: 200, placeholder: 'Например: телефон мамы' }));
   uf.appendChild(inp('Лимит трафика, ГБ (0 — без лимита)', 'number', 'totalGb', u.quota ? +(u.quota / 1024 ** 3).toFixed(2) : 0, null, { min: '0', step: 'any' }));
-  uf.appendChild(inp('Действует до (пусто — бессрочно)', 'date', 'expiry', day(u.expiry), null));
+  const exp = inp('Действует до (пусто — бессрочно)', 'date', 'expiry', day(u.expiry), null);
+  // Renewing is the everyday action: one click, counted from the current end date (or from today if it has passed).
+  const quick = el('div', 'quick');
+  for (const [label, months] of [['+1 мес', 1], ['+3 мес', 3], ['+1 год', 12]]) {
+    const b = el('button', 'btn sm', label); b.type = 'button';
+    b.addEventListener('click', () => {
+      const base = new Date(Math.max(Date.now(), u.expiry > 0 ? u.expiry : 0));
+      base.setMonth(base.getMonth() + months); base.setHours(23, 59, 59, 0);
+      userAction('/api/user/edit', { name: infoUser, comment: u.comment || '', totalGb: u.quota ? +(u.quota / 1024 ** 3).toFixed(3) : 0,
+        expiry: base.getTime(), enabled: true, devices: u.limitDevices || 0, ips: u.limitIp || 0 }, uerr,
+        'Продлено до ' + base.toLocaleDateString('ru-RU'));
+    });
+    quick.appendChild(b);
+  }
+  exp.appendChild(quick);
+  uf.appendChild(exp);
   uf.appendChild(inp('Устройств (0 — без лимита)', 'number', 'devices', u.limitDevices, null, { min: '0', max: '1000' }));
   uf.appendChild(inp('IP одновременно (0 — без лимита)', 'number', 'ips', u.limitIp, null, { min: '0', max: '1000' }));
   uf.appendChild(el('div', 'hint wide', 'Лишнее устройство не получит подписку. Лишние IP 3x-ui отключает на время. '

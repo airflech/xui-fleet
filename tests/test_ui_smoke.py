@@ -93,6 +93,12 @@ def test_every_tab_and_main_dialog_opens_without_errors(page_url):
         page.wait_for_selector("#jobhist:not(.hidden)")
         assert "Операций пока не было" in page.inner_text("#jobhist")
 
+        # «Support» is offered where the other subscription settings are
+        page.evaluate("renderDomains(); document.getElementById('dlgDomains').showModal()")
+        assert "Поддержка" in page.inner_text("#domRows")
+        page.keyboard.press("Escape")
+        assert page.evaluate("shortName('Main-x')") == "Main-x"  # fewer than three users: names as they are
+
         # a new user's invitation: the link and what to do with it, ready for a messenger
         assert page.evaluate("inviteText('https://x.example/s/abc').includes('https://x.example/s/abc')")
         page.evaluate("openInvite('alice', 'https://x.example/s/abc', true)")

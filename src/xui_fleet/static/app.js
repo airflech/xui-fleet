@@ -163,6 +163,17 @@ $('appsForm').addEventListener('submit', (e) => {
   if (apps === appsMode()) { $('dlgApps').close(); return; }
   start('/api/master/apps', { apps }, e.target);
 });
+function openSupport() {
+  closeMenus(); $('dlgDomains').close();
+  resetForm($('supportForm')); $('support_url').value = overview.master.supportUrl || '';
+  $('dlgSupport').showModal();
+}
+$('supportForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const url = $('support_url').value.trim();
+  if (url === (overview.master.supportUrl || '')) { $('dlgSupport').close(); return; }
+  start('/api/master/support', { url }, e.target);
+});
 function openVpnName() {
   closeMenus(); $('dlgDomains').close();
   resetForm($('vpnNameForm')); $('vpn_name').value = overview.master.vpnName || '';
@@ -205,6 +216,7 @@ function renderDomains() {
   row('Основной домен подписки', m.domain || 'не задан', m.domain ? domainState(m.domain) : null, m.domain ? 'Изменить' : 'Задать', openDomain);
   row('Резервный домен', rsv || 'не задан — подписка держится на одном домене', rsv ? domainState(rsv) : null, rsv ? 'Изменить' : 'Добавить', openReserve);
   row('Название VPN в приложениях', m.vpnName || 'не задано — приложения показывают адрес', null, m.vpnName ? 'Изменить' : 'Задать', openVpnName);
+  row('Поддержка — кнопка в Happ', m.supportUrl || 'не задана — пользователям некуда написать из приложения', null, m.supportUrl ? 'Изменить' : 'Задать', openSupport);
   row('Приложения, которые получают подписку', APPS_MODE[appsMode()], null, 'Изменить', openApps);
   if (rsv) {
     row('Адреса подключений через ' + hub(), ADDR_MODE[m.addressMode || 'main'], null, 'Изменить', openAddr);

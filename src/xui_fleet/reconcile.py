@@ -911,6 +911,10 @@ class Reconciler:
         if name and str(settings.get("subTitle") or "") != name:  # empty: a title set in the panel itself stays
             settings["subTitle"] = name
             changed.append(f"название VPN в приложениях — «{name}»")
+        support = self.cfg.clients.support_url
+        if support and str(settings.get("subSupportUrl") or "") != support:  # empty: one set in the panel stays
+            settings["subSupportUrl"] = support
+            changed.append("кнопка «Поддержка» в приложениях")
         if not changed:
             return
 

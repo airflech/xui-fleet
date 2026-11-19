@@ -534,6 +534,18 @@
   <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Применить</button></div>
 </form></dialog>
 
+<dialog id="dlgSupport"><form id="supportForm">
+  <div class="dlg-h"><h2>Поддержка</h2><p>Куда пользователям писать, если что-то не работает. В Happ появится кнопка «Поддержка»;
+    ссылку получат и приглашение, и страница подписки.</p></div>
+  <div class="dlg-b">
+    <label class="f" for="support_url">Telegram или ссылка</label>
+    <input type="text" id="support_url" name="url" maxlength="200" placeholder="@ваш_ник или https://…">
+    <div class="hint">@имя в Telegram превратится в ссылку t.me. Пустое поле — убрать. Панель 3x-ui при сохранении перезапустится на несколько секунд.</div>
+    <div class="formerr" role="alert"></div>
+  </div>
+  <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Сохранить</button></div>
+</form></dialog>
+
 <dialog id="dlgVpnName"><form id="vpnNameForm">
   <div class="dlg-h"><h2>Название VPN</h2><p>Так подписка будет называться в Happ, INCY и других приложениях — вместо адреса сервера.</p></div>
   <div class="dlg-b">

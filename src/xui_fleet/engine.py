@@ -616,7 +616,7 @@ class Fleet:
         moved_from = str(self.state.get(master.name, "domain_moved_from") or "")
         conf = pv.sub_gate_conf(public, internal, cert, key, apps, ips, ipv6=facts["ipv6"], domains=domains,
                                 moved_from=moved_from, title=self.cfg.clients.vpn_name)
-        page = pv.unsupported_page(apps, title=self.cfg.clients.vpn_name)
+        page = pv.unsupported_page(apps, title=self.cfg.clients.vpn_name, support=self.cfg.clients.support_url)
         before = dict(s)
         move = not behind or int(s.get("subPort") or 0) != internal or s.get("subURI") != uri
         try:
@@ -663,6 +663,25 @@ class Fleet:
         apps = self.cfg.clients.allowed_apps
         return ("Готово: подписку получают только " + pv._app_names(apps) + ", остальные приложения видят сообщение, что они не поддерживаются"
                 if apps else "Готово: подписку получают любые приложения")
+
+    def set_support_url(self) -> str:
+        """Put clients.support_url into the panel (3x-ui subSupportUrl → the apps' «Support» button) and onto the
+        subscription page."""
+        url = self.cfg.clients.support_url
+        self.backup_before("перед изменением ссылки на поддержку")
+        with self.master_panel(provision=False) as panel:
+            s = panel.settings()
+            if str(s.get("subSupportUrl") or "") != url:
+                s["subSupportUrl"] = url
+                panel.update_settings(s)
+                panel.restart_panel()
+                time.sleep(4)
+                panel.wait_ready(90)
+            if self.cfg.clients.allowed_apps and self._master_ssh:
+                self.ensure_sub_gate(panel, self._master_ssh)  # the page mentions it too
+        self.log(f"мастер: поддержка — {url}" if url else "мастер: ссылка на поддержку убрана")
+        return (f"Готово: в Happ появится кнопка «Поддержка» ({url}) после обновления подписки" if url
+                else "Готово: ссылка на поддержку убрана")
 
     def set_vpn_name(self) -> str:
         """Put clients.vpn_name into the panel (3x-ui subTitle → the title apps show). An empty name clears it."""

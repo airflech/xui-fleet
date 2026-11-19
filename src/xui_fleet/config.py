@@ -257,6 +257,14 @@ class ClientsConfig(Strict):
     # The VPN's name in the apps (subscription title, 3x-ui subTitle → Profile-Title). Empty: the apps show
     # whatever they pick themselves (usually the address or the subscription id).
     vpn_name: str = ""
+    # Where users ask for help: a Telegram contact (@name, t.me/…) or any https link. Apps show it as a «Support»
+    # button (3x-ui subSupportUrl → support-url); the invitation and the subscription page mention it too.
+    support_url: str = ""
+
+    @field_validator("support_url")
+    @classmethod
+    def _support_url(cls, v: str) -> str:
+        return normalize_support(v)
 
     @field_validator("vpn_name")
     @classmethod
@@ -284,6 +292,37 @@ class ClientsConfig(Strict):
 # (the same patterns 3x-ui itself uses to detect them).
 APPS = {"happ": r"\bhapp\b", "incy": r"\bincy\b"}
 APP_TITLES = {"happ": "Happ", "incy": "INCY"}
+
+
+def normalize_support(v: str) -> str:
+    """@name or t.me/name → https://t.me/name; https://… as is; empty stays empty. Anything else is refused."""
+    import re as _re
+    v = str(v or "").strip()
+    if not v:
+        return ""
+    if _re.fullmatch(r"@?[A-Za-z][A-Za-z0-9_]{3,31}", v):
+        return "https://t.me/" + v.lstrip("@")
+    m = _re.fullmatch(r"(?:https?://)?(?:t|telegram)\.me/([A-Za-z0-9_+/-]{2,64})", v)
+    if m:
+        return "https://t.me/" + m.group(1)
+    if _re.fullmatch(r"https://[^\s\"'<>$\\]{4,200}", v):
+        return v
+    raise ValueError("ссылка на поддержку: @имя в Telegram, t.me/… или адрес https://…")
+
+
+def set_support_url(path: Path, url: str) -> None:
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    clients = doc.get("clients") or {}
+    url = normalize_support(url)
+    if url:
+        clients["support_url"] = url
+    else:
+        clients.pop("support_url", None)
+    if clients:
+        doc["clients"] = clients
+    else:
+        doc.pop("clients", None)
+    path.write_text(yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
 
 def set_vpn_name(path: Path, name: str) -> None:

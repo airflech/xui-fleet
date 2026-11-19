@@ -523,7 +523,7 @@ def unsupported_subscription(apps: List[str]) -> Tuple[str, Dict[str, str]]:
     return b64.b64encode("\n".join(lines).encode()).decode(), headers
 
 
-def unsupported_page(apps: List[str], port: Optional[int] = None, title: str = "") -> str:
+def unsupported_page(apps: List[str], port: Optional[int] = None, title: str = "", support: str = "") -> str:
     """The page a person sees when they open their subscription link in a browser — usually the first thing they do
     with the link they were sent. Three steps: install the app, add the subscription (a button opens the app with
     this very address), switch it on; the address can be copied for an app on another device.
@@ -564,6 +564,7 @@ def unsupported_page(apps: List[str], port: Optional[int] = None, title: str = "
             "<button class='b o' id='c' type='button'>Скопировать ссылку</button><div class='u' id='u'></div></li>"
             "<li><b>Включите VPN</b>Большой кнопкой в приложении. Подключения вверху списка — самые надёжные; если одно не открывает сайты, выберите "
             "следующее той же страны. Российские сайты и приложения банков работают напрямую, без VPN.</li></ol>"
+            + (f"<p class='s'>Что-то не получается? <a href='{_html.escape(support, quote=True)}'>Напишите в поддержку</a>.</p>" if support.startswith("https://") else "") +
             "<details><summary>Подписка в приложении перестала обновляться?</summary><p>Например, основной адрес заблокировали. Откройте эту "
             "страницу на телефоне и нажмите «Добавить» ещё раз — подписка добавится по этому адресу. Если в приложении после этого две подписки "
             "с одинаковым названием, ту, что не обновляется, можно удалить.</p></details>"

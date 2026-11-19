@@ -398,6 +398,14 @@ def _master_apps(c: Call):
     return c.run_change(title, lambda: set_allowed_apps(c.app.path, apps), lambda log: c.app.fleet(log).set_app_gate())
 
 
+@post("/api/master/support", needs={"url": "str?"})
+def _master_support(c: Call):
+    from .config import normalize_support, set_support_url
+    url = normalize_support(c.body.get("url") or "")  # refuse a bad value before anything is written
+    return c.run_change("Поддержка: " + url if url else "Ссылка на поддержку убрана",
+                        lambda: set_support_url(c.app.path, url), lambda log: c.app.fleet(log).set_support_url())
+
+
 @post("/api/master/title", needs={"name": "str?"})
 def _master_vpn_name(c: Call):
     from .config import set_vpn_name

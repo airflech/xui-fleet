@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "«Ссылка» → «Приглашение»: готовый текст для нового пользователя; понятная страница, если ссылку открыть в браузере"
+WHATS_NEW = "кнопка «Поддержка» в Happ; в карточке пользователя — работает ли его подписка и продление в один щелчок"
 
 
 def _last_backup(fleet: Any) -> int:
@@ -461,7 +461,7 @@ class App:
                 "master": {"name": cfg.master.name, "host": cfg.master.host, "label": cfg.master.label,
                            "tls": tls.mode, "domain": tls.domain or "", "reserveDomains": list(tls.reserve_domains),
                            "addressMode": tls.address_mode, "allowedApps": list(cfg.clients.allowed_apps),
-                           "vpnName": cfg.clients.vpn_name,
+                           "vpnName": cfg.clients.vpn_name, "supportUrl": cfg.clients.support_url,
                            "access": access(cfg.master), "vpn": cfg.master.vpn, "cascades": cfg.master.cascades, "warp": cfg.master.warp,
                            "labelText": cfg.master.label or "", "flag": cfg.master.flag or "auto", "hide": list(cfg.master.hide),
                            "country": state.get(cfg.master.name, "country") or "",

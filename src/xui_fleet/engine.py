@@ -616,20 +616,32 @@ class Fleet:
         moved_from = str(self.state.get(master.name, "domain_moved_from") or "")
         conf = pv.sub_gate_conf(public, internal, cert, key, apps, ips, ipv6=facts["ipv6"], domains=domains,
                                 moved_from=moved_from, title=self.cfg.clients.vpn_name)
+        page = pv.unsupported_page(apps, title=self.cfg.clients.vpn_name)
         before = dict(s)
         move = not behind or int(s.get("subPort") or 0) != internal or s.get("subURI") != uri
         try:
-            changed = pv.write_sub_gate(ssh, conf)
+            changed = pv.write_sub_gate(ssh, conf, page)
             if move:
                 s["subListen"], s["subPort"], s["subURI"] = "127.0.0.1", internal, uri
                 restart(s)  # 3x-ui leaves the public port to nginx
             if (changed or move) and not pv.reload_nginx_on(ssh, public):
                 raise FleetError(f"nginx не занял порт {public}")
         except Exception:
-            # Never leave subscriptions without a listener: back to 3x-ui on the public port.
-            pv.remove_sub_gate(ssh)
-            if move:
+            # Never leave subscriptions without a listener.
+            if move:  # 3x-ui was being moved behind nginx: everything back as it was before this call
+                pv.remove_sub_gate(ssh)
                 restart(before)
+            elif not pv.reload_nginx_on(ssh, public):
+                # 3x-ui stays behind nginx and nginx does not answer even with the previous config (write_sub_gate
+                # restores it when a new one is rejected): the subscription server back on the public port.
+                pv.remove_sub_gate(ssh)
+                s2 = dict(before)
+                s2["subListen"], s2["subPort"] = "", public
+                restart(s2)
+                self.state.drop(master.name, "sub_gate")
+                self.log(f"⚠ мастер: nginx не отвечает на порту {public} — подписку снова отдаёт сам 3x-ui (без фильтра приложений)")
+            else:
+                self.log("⚠ мастер: новая настройка nginx не прошла проверку — работает прежняя, подписка не прерывалась")
             raise
         self.state.update(master.name, sub_gate={"port": public, "internal": internal, "uri": uri, "apps": list(apps)})
         if not (changed or move):

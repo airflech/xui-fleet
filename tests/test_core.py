@@ -1419,7 +1419,9 @@ def test_sub_gate_conf_lets_only_the_apps_through_and_tells_the_others():
     assert len(lines) == 2 and all(line.startswith("vless://") for line in lines)
     assert "не поддерживается" in unquote(lines[0]) and "Happ или INCY" in unquote(lines[1])
     assert re.search(r'add_header announce "base64:[A-Za-z0-9+/=]+" always;', conf)
-    page = re.search(r'location @xf_sub_page_denied \{.*?return 200 "(.+?)";\n', conf, re.S).group(1)
+    # the browser page is its own file (a `return` string has a length limit nginx enforces)
+    assert "root /etc/nginx/xui-fleet-subpage;" in conf and "rewrite ^ /index.html break;" in conf
+    page = pv.unsupported_page(["happ", "incy"])
     assert '"' not in page and "happ.su" in page
     # nginx puts nothing into the page: it reads its own address in the browser, so no request data is echoed
     assert "$" not in page and "\\" not in page
@@ -1446,15 +1448,18 @@ def _gate_fleet(tmp_path, apps, monkeypatch, reload_ok=True):
     from xui_fleet.engine import Fleet
     from xui_fleet.state import State
     calls = []
+    fail = {}
     monkeypatch.setattr(pv, "sub_gate_facts", lambda ssh: {"ips": ["203.0.113.5"], "ipv6": False, "free": 12096})
     written = {}
 
-    def write(ssh, conf):
+    def write(ssh, conf, page=""):
+        if fail.get("write"):
+            raise RuntimeError("nginx -t: too long parameter")
         calls.append(("write", conf))
         changed, written["conf"] = written.get("conf") != conf, conf
         return changed
     monkeypatch.setattr(pv, "write_sub_gate", write)
-    monkeypatch.setattr(pv, "reload_nginx_on", lambda ssh, port: calls.append(("reload", port)) or reload_ok)
+    monkeypatch.setattr(pv, "reload_nginx_on", lambda ssh, port: calls.append(("reload", port)) or (reload_ok and not fail.get("nginx")))
     monkeypatch.setattr(pv, "remove_sub_gate", lambda ssh: calls.append(("remove",)) or True)
     fleet = Fleet.__new__(Fleet)
     fleet.cfg = FleetConfig.model_validate({"master": {"name": "ru", "host": "203.0.113.5",
@@ -1462,6 +1467,7 @@ def _gate_fleet(tmp_path, apps, monkeypatch, reload_ok=True):
                                             "clients": {"allowed_apps": apps}})
     fleet.state = State(tmp_path / "state.json")
     fleet.log = lambda _m: None
+    fleet.fail = fail
     return fleet, calls
 
 
@@ -1784,3 +1790,26 @@ def test_warp_entry_never_leads_out_through_russia_when_another_works():
     only_ru = {"162.159.195.1:2408": ("0.10", "DME"), "188.114.98.1:2408": ("0.12", "LED")}
     answers.clear(); answers.update(only_ru)
     assert pv.pick_warp_endpoint(FakeSSH(), {"settings": {"peers": [{}]}}, list(only_ru))[0] == "162.159.195.1:2408"
+
+
+
+def test_a_rejected_gate_config_never_takes_the_subscription_down(tmp_path, monkeypatch):
+    """nginx refused the new config (too long a page): the previous one keeps serving, nothing is removed. Only if
+    nginx does not answer at all does the subscription go back to 3x-ui on the public port — never to nobody."""
+    import pytest
+    panel = FakePanel()
+    panel._settings = {"subEnable": True, "subPort": 2096, "subPath": "/s/", "subCertFile": "/c", "subKeyFile": "/k"}
+    fleet, calls = _gate_fleet(tmp_path, ["happ", "incy"], monkeypatch)
+    fleet.ensure_sub_gate(panel, ssh=None)  # behind nginx now
+    assert panel.settings()["subListen"] == "127.0.0.1"
+    calls.clear()
+    fleet.fail["write"] = True
+    with pytest.raises(RuntimeError):
+        fleet.ensure_sub_gate(panel, ssh=None)
+    assert ("remove",) not in calls and panel.settings()["subListen"] == "127.0.0.1"  # the working gate stays
+    calls.clear()
+    fleet.fail["nginx"] = True  # and now nginx does not answer even with the old config
+    with pytest.raises(RuntimeError):
+        fleet.ensure_sub_gate(panel, ssh=None)
+    s = panel.settings()
+    assert ("remove",) in calls and s["subListen"] == "" and int(s["subPort"]) == 2096  # 3x-ui answers itself again

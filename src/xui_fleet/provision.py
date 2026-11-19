@@ -494,6 +494,9 @@ def ensure_site(ssh: SSH, domains: List[str], decoy_port: Optional[int] = None, 
 # the same links, HWID limits, headers. Any other app gets a placeholder subscription that says it is not
 # supported (two dummy entries and an announcement), a browser gets a short page.
 SUBGATE_CONF = "/etc/nginx/conf.d/xui-fleet-subgate.conf"
+# The page a browser gets lives in its own file: nginx limits the length of a `return` string (a few KB), and a
+# page that helps a newcomer is longer than that.
+SUBPAGE_DIR = "/etc/nginx/xui-fleet-subpage"
 
 
 def _app_names(apps: List[str]) -> str:
@@ -587,7 +590,6 @@ def sub_gate_conf(public_port: int, internal_port: int, cert: str, key: str, app
     local = "".join(f"    {ip} 1;\n" for ip in dict.fromkeys(["127.0.0.1", "::1"] + list(local_ips)) if ip)
     body, headers = unsupported_subscription(apps)
     names = [d for d in dict.fromkeys(domains or []) if d]
-    page = unsupported_page(apps, port=public_port if tls else None, title=title)
     scheme = "https" if tls else "http"
     # Each domain points at the next one (main → reserve → … → main).
     alt = "".join(f"    {d} {names[(i + 1) % len(names)]};\n" for i, d in enumerate(names)) if len(names) > 1 else ""
@@ -640,9 +642,11 @@ def sub_gate_conf(public_port: int, internal_port: int, cert: str, key: str, app
         f"        return 200 \"{body}\";\n"
         "    }\n"
         "    location @xf_sub_page_denied {\n"
+        f"        root {SUBPAGE_DIR};\n"
         "        default_type text/html;\n"
         "        charset utf-8;\n"
-        f"        return 200 \"{page}\";\n"
+        "        add_header Cache-Control \"no-store\" always;\n"
+        "        rewrite ^ /index.html break;\n"
         "    }\n"
         "}\n"
     )
@@ -661,11 +665,18 @@ def sub_gate_facts(ssh: SSH, start: int = 12096) -> Dict[str, Any]:
     return {"ips": ips, "ipv6": "v6" in parts[1], "free": port}
 
 
-def write_sub_gate(ssh: SSH, conf: str) -> bool:
-    """Put the gate config in place if it differs, checked by nginx -t (a rejected config is taken back).
-    Does not reload: the caller frees the public port first. Returns True if the file changed."""
+def write_sub_gate(ssh: SSH, conf: str, page: str = "") -> bool:
+    """Put the gate config (and the browser page) in place if they differ, checked by nginx -t: a rejected config is
+    taken back and the previous one keeps working. Does not reload: the caller frees the public port first.
+    Returns True if anything changed."""
+    page_step = ""
+    if page:
+        page_step = (f"mkdir -p {SUBPAGE_DIR}\n"
+                     f"cat > {SUBPAGE_DIR}/index.html.new <<'XUIFLEETPAGE'\n{page}\nXUIFLEETPAGE\n"
+                     f"if cmp -s {SUBPAGE_DIR}/index.html.new {SUBPAGE_DIR}/index.html; then rm -f {SUBPAGE_DIR}/index.html.new; "
+                     f"else mv {SUBPAGE_DIR}/index.html.new {SUBPAGE_DIR}/index.html; chmod 644 {SUBPAGE_DIR}/index.html; echo page; fi\n")
     out = ssh.run(
-        "set -e\nmkdir -p /etc/nginx/conf.d\n"
+        "set -e\nmkdir -p /etc/nginx/conf.d\n" + page_step +
         f"cat > {SUBGATE_CONF}.new <<'XUIFLEETCONF'\n{conf}XUIFLEETCONF\n"
         f"if cmp -s {SUBGATE_CONF}.new {SUBGATE_CONF}; then rm -f {SUBGATE_CONF}.new; echo same; exit 0; fi\n"
         f"[ -f {SUBGATE_CONF} ] && cp -p {SUBGATE_CONF} {SUBGATE_CONF}.bak || true\n"
@@ -673,7 +684,7 @@ def write_sub_gate(ssh: SSH, conf: str) -> bool:
         f"if ! nginx -t >/dev/null 2>&1; then nginx -t || true\n"
         f"  if [ -f {SUBGATE_CONF}.bak ]; then mv {SUBGATE_CONF}.bak {SUBGATE_CONF}; else rm -f {SUBGATE_CONF}; fi; exit 1; fi\n"
         f"rm -f {SUBGATE_CONF}.bak\necho changed\n", timeout=60).out
-    return "changed" in out
+    return "changed" in out.split() or "page" in out.split()
 
 
 def reload_nginx_on(ssh: SSH, port: int) -> bool:
@@ -686,7 +697,7 @@ def reload_nginx_on(ssh: SSH, port: int) -> bool:
 
 
 def remove_sub_gate(ssh: SSH) -> bool:
-    out = ssh.run(f"if [ -f {SUBGATE_CONF} ]; then rm -f {SUBGATE_CONF} {SUBGATE_CONF}.bak; "
+    out = ssh.run(f"rm -rf {SUBPAGE_DIR}; if [ -f {SUBGATE_CONF} ]; then rm -f {SUBGATE_CONF} {SUBGATE_CONF}.bak; "
                   "(systemctl reload nginx 2>/dev/null || systemctl restart nginx); echo removed; fi", check=False, timeout=60).out
     return "removed" in out
 

@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "если сайт, под который маскируется Reality, пропал — приложение само выбирает другой; «через RU · Hysteria2» идёт до сервера отдельным путём Hysteria2 (если он проходит)"
+WHATS_NEW = "кнопка «Обновить» вдвое быстрее и не стирает карточки; задержка с этого компьютера меряется в обход включённого VPN (раньше VPN подменял цифры)"
 
 
 def _last_backup(fleet: Any) -> int:
@@ -44,18 +44,39 @@ def _last_backup(fleet: Any) -> int:
         return 0
 
 
-def tcp_rtt(host: str, ports: List[int], tries: int = 3, timeout: float = 2.0) -> Optional[int]:
-    """Round trip from this computer to a server, ms: the median time to open a TCP connection (one round trip),
-    on the first of `ports` that answers. None if none does."""
+def _connect(host: str, port: int, timeout: float, iface: Optional[str] = None) -> None:
+    """Open and close a TCP connection; with `iface` (macOS), through that interface, around a running VPN."""
     import socket
+    if not iface:
+        socket.create_connection((host, port), timeout=timeout).close()
+        return
+    from .ssh import _IP_BOUND_IF
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.setsockopt(socket.IPPROTO_IP, _IP_BOUND_IF, socket.if_nametoindex(iface))
+        sock.settimeout(timeout)
+        sock.connect((host, port))
+    finally:
+        sock.close()
+
+
+def tcp_rtt(host: str, ports: List[int], tries: int = 3, timeout: float = 2.0, iface: Optional[str] = None) -> Optional[int]:
+    """Round trip from this computer to a server, ms: the median time to open a TCP connection (one round trip),
+    on the first of `ports` that answers. None if none does. The ports are tried at once, so a server that
+    answers on none costs one `timeout`, not one per port."""
     import statistics
     import time as _t
+    if len(ports) > 1:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(len(ports)) as pool:
+            got = list(pool.map(lambda p: tcp_rtt(host, [p], tries, timeout, iface), ports))
+        return next((g for g in got if g is not None), None)
     for port in ports:
         times = []
         for _ in range(tries):
             start = _t.perf_counter()
             try:
-                socket.create_connection((host, port), timeout=timeout).close()
+                _connect(host, port, timeout, iface)
             except OSError:
                 break
             times.append((_t.perf_counter() - start) * 1000)
@@ -75,14 +96,15 @@ def parse_ping(out: bytes) -> List[float]:
     return [float((a or b).replace(b",", b".")) for a, b in PING_TIMES.findall(out)]
 
 
-def icmp_rtt(host: str, count: int = 3) -> Optional[int]:
+def icmp_rtt(host: str, count: int = 3, iface: Optional[str] = None) -> Optional[int]:
     """Network round trip to `host`, ms, by the system ping (what the person would see themselves); None when
     the host does not answer pings."""
     import statistics
     import subprocess
     import sys as _sys
     args = (["ping", "-n", str(count), "-w", "1000", host] if _sys.platform == "win32"
-            else ["ping", "-c", str(count), "-i", "0.2", "-W", "1", host])
+            else ["ping", "-c", str(count), "-i", "0.2", "-W", "1000", *(["-b", iface] if iface else []), host]
+            if _sys.platform == "darwin" else ["ping", "-c", str(count), "-i", "0.2", "-W", "1", host])
     try:
         out = subprocess.run(args, capture_output=True, timeout=count * 1.5 + 3,
                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
@@ -134,20 +156,41 @@ def real_routes(master: str, nodes: List[Dict[str, Any]], inbounds: List[Dict[st
 def route_rtts(cfg: Any) -> Dict[str, Any]:
     """From this computer (where the person is): to the RU master and straight to every foreign server, by ping —
     the time to open a TCP connection runs several ms higher (equipment on the way inspects new connections) and
-    is only the fallback for a server that ignores pings. Measured in parallel, a few seconds."""
+    is only the fallback for a server that ignores pings. Measured in parallel, a few seconds.
+
+    A VPN on this computer (Happ, v2RayTun… in TUN mode) answers every TCP connection itself, in 0–1 ms, and
+    swallows pings: the figures would be fake. On macOS the measurement goes around it, through the Wi-Fi or
+    cable interface; elsewhere a connection to an address that does not exist tells it, and then the figures are
+    left out (`vpn`: true) instead of being shown."""
     from concurrent.futures import ThreadPoolExecutor
+    from .ssh import _physical_interface
+    iface = _physical_interface()
     targets = {"__master": (cfg.master.host, [443, cfg.ssh_for(cfg.master).port or 22])}
     for n in cfg.nodes:
         d = cfg.direct_for(n)
         targets[n.name] = (n.host, [p for p in (d.port if d.enabled else None, 443, cfg.ssh_for(n).port or 22) if p])
 
+    targets["__fake"] = (FAKE_PROBE, [443])  # TEST-NET: nothing answers there, unless a VPN fakes it
+
     def one(t):
         host, ports = t
-        got = icmp_rtt(host)
-        return got if got is not None else tcp_rtt(host, ports)
+        if host == FAKE_PROBE:
+            return tcp_rtt(host, ports, tries=1, timeout=1.0, iface=iface)
+        # ping and the TCP fallback at once: a server that ignores pings does not wait for ping to give up
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(2) as pool:
+            ping = pool.submit(icmp_rtt, host, iface=iface)
+            tcp = pool.submit(tcp_rtt, host, ports, timeout=1.5, iface=iface)
+            got = ping.result()
+            return got if got is not None else tcp.result()
     with ThreadPoolExecutor(max(1, len(targets))) as pool:
         got = dict(zip(targets, pool.map(one, targets.values())))
+    if got.pop("__fake") is not None:
+        return {"master": None, "nodes": {k: None for k in got if k != "__master"}, "vpn": True}
     return {"master": got.pop("__master"), "nodes": got}
+
+
+FAKE_PROBE = "192.0.2.1"
 
 
 def domain_reachability(tls: Any, users: Dict[str, str]) -> Dict[str, bool]:
@@ -478,7 +521,12 @@ class App:
         fleet = self.fleet()
         if not fleet.state.get(fleet.cfg.master.name, "api_token") and not fleet.cfg.master.api_url:
             return {"ready": False}
-        nodes, inbounds = fleet.status()
+        # This computer → servers is measured here meanwhile (it does not need the master)
+        from concurrent.futures import ThreadPoolExecutor
+        pool = ThreadPoolExecutor(1)
+        rtt_future = pool.submit(route_rtts, fleet.cfg)
+        pool.shutdown(wait=False)
+        nodes, inbounds = fleet.status(with_subscriptions=True)
         by_tag = {i.get("tag"): i for i in inbounds}
         rows = {}
         for n in nodes:
@@ -498,12 +546,14 @@ class App:
                   "cpu": round(ms["cpu"]) if isinstance(ms.get("cpu"), (int, float)) else None,
                   "mem": pct(ms.get("mem")), "disk": pct(ms.get("disk")), "uptime": ms.get("uptime"),
                   "panel": ms.get("panelVersion", ""), "ip": (ms.get("publicIP") or {}).get("ipv4", "")}
-        users = fleet.subscriptions()
+        users = getattr(fleet, "live_subs", None)
+        if users is None:
+            users = fleet.subscriptions()
         return {"ready": True, "nodes": rows, "users": users, "master": master,
                 "routes": real_routes(fleet.cfg.master.name, nodes, inbounds),
                 "online": activity["online"], "lastOnline": activity["lastOnline"],
                 "domains": domain_reachability(fleet.cfg.tls_for(fleet.cfg.master), users),
-                "rtt": dict(route_rtts(fleet.cfg), fromMaster=getattr(fleet, "master_rtts", {}) or {}),
+                "rtt": dict(rtt_future.result(), fromMaster=getattr(fleet, "master_rtts", {}) or {}),
                 # WARP on each server, from the background check every 5 minutes (real traffic from the master)
                 "warp": __import__("xui_fleet.history", fromlist=["History"]).History(self.path).last_warp()}
 

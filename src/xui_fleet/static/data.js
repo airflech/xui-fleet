@@ -4,17 +4,19 @@
 // ---------- data ----------
 let liveRetry, liveAt = 0, statsAt = 0, liveLoading = false;
 // quiet: a background refresh — the cards keep their numbers until the new ones arrive (no skeletons).
+// The «Refresh» button keeps them too while there are numbers to keep: the icon spins until the new ones are in.
 async function loadLive(quiet) {
   clearTimeout(liveRetry);
   if (quiet && liveLoading) return;
   liveLoading = true;
-  if (!quiet) { live = null; renderServers(); renderUsers(); }
-  const btn = $('btnRefresh'); btn.disabled = true;
+  const have = live && live.ready && !live.busy && !live.failed;
+  if (!quiet && !have) { live = null; renderServers(); renderUsers(); }
+  const btn = $('btnRefresh'); btn.disabled = true; btn.classList.add('turning');
   let got;
   try { got = await api('/api/live'); }
   catch (e) { got = { ready: true, nodes: {}, users: {}, failed: e.message }; }
   liveLoading = false;
-  btn.disabled = false;
+  btn.disabled = false; btn.classList.remove('turning');
   if (quiet && got.failed && live && !live.failed) { paintLiveAge(); return; }  // keep the last good numbers
   live = got;
   if (!live.failed && live.ready && !live.busy) liveAt = Date.now();

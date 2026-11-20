@@ -499,7 +499,8 @@ function routeLegs(nodes, masterOk) {
   const rtt = ready ? live.rtt : null, fm = rtt && rtt.fromMaster ? rtt.fromMaster : null;
   const warp = ready && live.warp && live.warp.nodes ? live.warp.nodes : {};
   const st = (ok) => (ok == null ? 'idle' : ok ? 'live' : 'down');
-  const masterReach = rtt ? rtt.master != null : null;
+  // rtt.vpn: a VPN on this computer faked the figures (see route_rtts) — unknown, not «no connection»
+  const masterReach = rtt && !rtt.vpn ? rtt.master != null : null;
   const out = { master: masterOk === false || masterReach === false ? 'down' : st(masterOk == null && masterReach == null ? null : true), nodes: {} };
   for (const n of nodes) {
     const info = ready && live.nodes ? live.nodes[n.name] : null;
@@ -507,7 +508,7 @@ function routeLegs(nodes, masterOk) {
     const exit = st(nodeOk);
     const ruReach = fm && Object.keys(fm).length ? fm[n.name] != null : null;
     const ru = nodeOk === false || ruReach === false ? 'down' : st(nodeOk == null ? null : true);
-    const direct = !rtt ? 'idle' : nodeOk === false || rtt.nodes[n.name] == null ? 'down' : 'live';
+    const direct = !rtt ? 'idle' : nodeOk === false ? 'down' : rtt.vpn ? 'idle' : rtt.nodes[n.name] == null ? 'down' : 'live';
     const w = n.name in warp ? (warp[n.name] == null ? 'down' : 'live') : exit;
     out.nodes[n.name] = { ru, direct, exit, warp: exit === 'down' ? 'down' : w };
   }
@@ -538,7 +539,9 @@ function renderRouteDelays(box, nodes, ready) {
   const wrap = el('div', 'rdelay');
   const head = el('div', 'rdelay-h');
   head.appendChild(el('b', null, 'Задержка до серверов'));
-  head.appendChild(el('span', 'muted small', ' — ping с этого компьютера и с главного сервера, туда и обратно. Если на этом компьютере включён VPN, цифры неточные.'));
+  head.appendChild(el('span', 'muted small', rtt.vpn
+    ? ' — с этого компьютера не измерить: включённый VPN отвечает вместо серверов. Выключите его на минуту и нажмите «Обновить». От главного сервера — туда и обратно.'
+    : ' — ping с этого компьютера (в обход включённого VPN, если он есть) и с главного сервера, туда и обратно.'));
   wrap.appendChild(head);
   const ms = (v) => (v == null ? '—' : v + ' мс');
   const sign = (v) => (v > 0 ? '+' + v : v < 0 ? '−' + Math.abs(v) : '±0') + ' мс';

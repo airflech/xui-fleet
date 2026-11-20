@@ -1931,3 +1931,20 @@ def test_reality_failing_twice_in_a_row_asks_for_a_new_masking_site(tmp_path, mo
     f.reality = {"uk": None, "de": None}
     assert [d for d in hs.record(f, h, now=now + 300) if d.startswith("reality-dead")] == ["reality-dead:uk"]  # de failed once
     assert h.last_warp()["reality"] == {"uk": None, "de": None}
+
+
+def test_route_rtts_around_vpn_and_fake_answers(monkeypatch):
+    """A VPN in TUN mode answers every TCP connection itself in 0–1 ms: figures from it are fake. The measurement
+    goes through the physical interface (macOS); when an address that does not exist «answers», nothing is shown."""
+    import types
+    from xui_fleet import ui, ssh
+    cfg = _cfg([{"name": "de", "host": "de.example"}])
+    seen = []
+    monkeypatch.setattr(ssh, "_physical_interface", lambda: "en0")
+    monkeypatch.setattr(ui, "icmp_rtt", lambda host, count=3, iface=None: seen.append(iface) or (None if host == ui.FAKE_PROBE else 9))
+    monkeypatch.setattr(ui, "tcp_rtt", lambda host, ports, tries=3, timeout=2.0, iface=None: None)
+    got = ui.route_rtts(cfg)
+    assert got["master"] == 9 and set(seen) == {"en0"} and not got.get("vpn")
+    monkeypatch.setattr(ui, "tcp_rtt", lambda host, ports, tries=3, timeout=2.0, iface=None: 1)  # everything «answers»
+    got = ui.route_rtts(cfg)
+    assert got["vpn"] is True and got["master"] is None and all(v is None for v in got["nodes"].values())

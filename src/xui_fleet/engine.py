@@ -1755,8 +1755,15 @@ class Fleet:
         with self.master_panel(provision=False) as panel:
             panel.forget_device(name, device_id)
 
-    def status(self) -> Tuple[List[dict], List[dict]]:
+    def status(self, with_subscriptions: bool = False) -> Tuple[List[dict], List[dict]]:
+        """Nodes and entries from the master. With `with_subscriptions`, the users' links too (self.live_subs), in
+        the same SSH session: the «Refresh» button then costs one connection to the master, not two."""
+        import threading
         with self.master_panel(provision=False) as panel:
+            # RU → servers ping runs on the master meanwhile, over another channel of the same SSH connection
+            rtts: Dict[str, Any] = {}
+            pinger = threading.Thread(target=lambda: rtts.update(self._master_rtts()), daemon=True)
+            pinger.start()
             def probe(node):  # refresh, do not show a stale heartbeat; an offline node must not hold the rest
                 try:
                     panel.probe_node(node["id"])
@@ -1773,7 +1780,12 @@ class Fleet:
                                       "lastOnline": panel.post("/clients/lastOnline") or {}}
             except PanelError:
                 self.last_activity = {"online": [], "lastOnline": {}}
-            self.master_rtts = self._master_rtts()
+            if with_subscriptions:
+                rec = Reconciler(panel, self.cfg, countries=self.countries(), neighbors=self.neighbors(), health=self.health(), log=self.log)
+                rec._collect_subscriptions()
+                self.live_subs = rec.report.subscriptions
+            pinger.join(35)
+            self.master_rtts = dict(rtts)
             return nodes, inbounds
 
     def _master_rtts(self) -> Dict[str, int]:

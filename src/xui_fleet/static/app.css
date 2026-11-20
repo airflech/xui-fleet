@@ -205,6 +205,7 @@ label.f { display: block; font-size: 12.5px; font-weight: 550; color: var(--ink-
 .spin { width: 13px; height: 13px; border: 2px solid var(--line-2); border-top-color: var(--accent); border-radius: 50%;
   display: inline-block; animation: spin .8s linear infinite; flex: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.btn.turning svg { animation: spin .9s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } * { transition: none !important; } }
 .skeleton { background: linear-gradient(90deg, var(--sunken), var(--line), var(--sunken)); background-size: 200% 100%;
   animation: sk 1.4s ease-in-out infinite; border-radius: 6px; height: 12px; }

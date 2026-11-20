@@ -787,10 +787,12 @@ class Reconciler:
                 self._do(f"мастер: подключаю {email} к новым нодам", lambda: self.panel.attach_clients([email], missing))
         return _client_uuid(cur)
 
-    def _leg_works(self, outbound: Dict[str, Any]) -> bool:
-        """A real request through the outbound, run by the master's own Xray (two tries). A dry run trusts it."""
+    def _leg_works(self, outbound: Dict[str, Any], in_use: bool) -> bool:
+        """A real request through the outbound, run by the master's own Xray (two tries). A dry run (the «is
+        everything applied?» check) sends no traffic: it keeps what the last real run chose — `in_use`, the leg is
+        already in the master's config — so a leg that does not pass is not reported as a pending change forever."""
         if self.dry:
-            return True
+            return in_use
         for _ in range(2):
             try:
                 if (self.panel.test_outbound(dict(outbound, tag="fleet-leg-test")) or {}).get("success"):
@@ -840,9 +842,9 @@ class Reconciler:
                          if c.get("email") == bridge and c.get("auth")), None)
             if rh in routes and hy is not None and hy.get("nodeId") and auth:
                 cand = xc.hy2_outbound_for_inbound(hy, tag=xc.out_hy2_tag(name), address=node.panel_address or node.host, auth=auth)
-                if self._leg_works(cand):
+                if self._leg_works(cand, in_use=xc.out_hy2_tag(name) in existing_out):
                     routes[rh] = cand
-                else:
+                elif not self.dry:
                     self._warn(f"{name}: Hysteria2 от главного сервера до сервера не проходит (порт {hy.get('port')}/udp) — "
                                f"«через {self._hub} · Hysteria2» идёт к нему через Reality")
             # RU -> node -> WARP: its own exit, dialing the node's hidden WARP upstream.

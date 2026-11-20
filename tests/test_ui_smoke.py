@@ -205,8 +205,8 @@ def test_saving_the_user_card_shows_progress_and_the_result(page_url):
     assert not errors, errors
 
 
-def test_direct_sites_dialog_shows_the_current_list_and_saves_sets_and_own_lines(page_url):
-    """«Сайты напрямую»: the dialog says what goes direct now and where, ticks a ready-made set, keeps one's own lines."""
+def test_direct_sites_dialog_shows_sets_with_their_contents_and_saves_new_and_edited_ones(page_url):
+    """«Сайты напрямую»: what goes direct now and where; a set shows what is in it, can be edited, a new one made."""
     import json
     from xui_fleet.config import DIRECT_PRESETS
     errors, sent = [], []
@@ -224,13 +224,29 @@ def test_direct_sites_dialog_shows_the_current_list_and_saves_sets_and_own_lines
         page.evaluate("showTab('servers'); openDirect()")
         page.wait_for_selector("#dlgDirect[open]")
         text = page.inner_text("#dlgDirect")
-        assert "Сейчас напрямую" in text and "российские сайты" in text and "Happ и INCY" in text
-        assert "Steam" in text and "CS2" in text
-        page.check("#directPresets input[value=steam]")
-        page.fill("#direct_custom", "example.org\n10.1.0.0/16")
+        assert "Сейчас напрямую" in text and "Happ и INCY" in text and "Steam" in text and "CS2" in text
+        # what is in a set: its «Состав»
+        sets = page.locator("#directPresets .dset")
+        sets.nth(0).locator("button").click()
+        page.wait_for_selector("#dlgDirectSet[open]")
+        assert "steampowered.com" in page.input_value("#ds_entries")
+        page.fill("#ds_entries", page.input_value("#ds_entries") + "\nsteamdeck.com")
+        page.click("#directSetForm button[type=submit]")
+        # a new set of one's own
+        page.click("#dsNew")
+        page.fill("#ds_name", "Банк")
+        page.fill("#ds_entries", "bank.example.com")
+        page.click("#directSetForm button[type=submit]")
+        assert "Банк" in page.inner_text("#directPresets")
+        page.fill("#direct_custom", "10.1.0.0/16")
         page.click("#directForm button[type=submit]")
         page.wait_for_timeout(500)
         assert len(sent) == 1
-        assert sent[0]["entries"] == DIRECT_PRESETS["steam"]["entries"] + ["example.org", "10.1.0.0/16"]
+        by_name = {x["name"]: x for x in sent[0]["sets"]}
+        assert set(by_name) == {DIRECT_PRESETS["steam"]["title"], "Банк"}  # CS2 untouched and off: not stored
+        steam = by_name[DIRECT_PRESETS["steam"]["title"]]
+        assert steam["enabled"] and steam["entries"][-1] == "steamdeck.com" and len(steam["entries"]) == 10
+        assert by_name["Банк"] == {"name": "Банк", "note": "", "enabled": True, "entries": ["bank.example.com"]}
+        assert sent[0]["entries"] == ["10.1.0.0/16"]
         browser.close()
     assert not errors, errors

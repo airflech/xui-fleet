@@ -82,7 +82,7 @@ def main(config: Path) -> int:
         step("настройки и серверы совпадают", not drift.get("changes"), "; ".join(drift.get("changes") or []))
         # «Сайты напрямую»: the list from the settings is in the master's rules and in the subscription's profiles
         from xui_fleet import xrayconf as xc
-        extra = list(app.fleet().cfg.routing.extra_direct)
+        extra = app.fleet().cfg.routing.direct_all()
         with fleet.master_panel(provision=False) as p:
             rules = [r for r in p.xray_template()["routing"]["rules"] if str(r.get("ruleTag", "")).startswith(xc.RU_RULE_TAG)]
             on_master = {e for r in rules for e in (r.get("domain") or []) + (r.get("ip") or [])}

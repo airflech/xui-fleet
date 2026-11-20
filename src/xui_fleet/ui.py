@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "«Сайты напрямую, мимо VPN» в меню главного сервера: видно, что идёт напрямую, готовые наборы Steam и CS2, свои сайты и сети"
+WHATS_NEW = "«Сайты напрямую»: свои наборы — создать, посмотреть состав, изменить, включить или выключить целиком"
 
 
 def _last_backup(fleet: Any) -> int:
@@ -576,7 +576,7 @@ class App:
                            "tls": tls.mode, "domain": tls.domain or "", "reserveDomains": list(tls.reserve_domains),
                            "addressMode": tls.address_mode, "allowedApps": list(cfg.clients.allowed_apps),
                            "vpnName": cfg.clients.vpn_name, "supportUrl": cfg.clients.support_url,
-                           "routing": {"extraDirect": list(cfg.routing.extra_direct), "ruOnMaster": cfg.routing.ru_direct_on_master,
+                           "routing": {"extraDirect": list(cfg.routing.extra_direct), "sets": [x.model_dump() for x in cfg.routing.direct_sets], "ruOnMaster": cfg.routing.ru_direct_on_master,
                                        "clientProfile": cfg.routing.client_profile,
                                        "presets": [dict(v, id=k) for k, v in DIRECT_PRESETS.items()]},
                            "access": access(cfg.master), "vpn": cfg.master.vpn, "cascades": cfg.master.cascades, "warp": cfg.master.warp,

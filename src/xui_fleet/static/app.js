@@ -187,26 +187,51 @@ $('vpnNameForm').addEventListener('submit', (e) => {
   if (name === (overview.master.vpnName || '')) { $('dlgVpnName').close(); return; }
   start('/api/master/title', { name }, e.target);
 });
-// «Сайты напрямую»: ready-made sets (Steam, CS2…) plus one's own lines; Russian sites are always direct.
+// «Сайты напрямую»: named sets (ready-made Steam and CS2, or one's own) plus single lines; Russian sites are always direct.
+// The dialog edits a draft; «Сохранить» sends it whole and the servers get it in one go.
+const directLine = (e) => e.startsWith('domain:') ? e.slice(7) : e;
 function directState() {
-  const r = (overview && overview.master && overview.master.routing) || { extraDirect: [], presets: [] };
-  const have = new Set(r.extraDirect || []);
-  const presets = (r.presets || []).map((p) => ({ ...p, on: p.entries.every((e) => have.has(e)) }));
-  const inPreset = new Set(presets.filter((p) => p.on).flatMap((p) => p.entries));
-  const custom = (r.extraDirect || []).filter((e) => !inPreset.has(e));
-  return { r, presets, custom };
+  const r = (overview && overview.master && overview.master.routing) || { extraDirect: [], presets: [], sets: [] };
+  const sets = (r.sets || []).map((x) => ({ name: x.name, note: x.note || '', enabled: x.enabled, entries: [...x.entries] }));
+  let custom = [...(r.extraDirect || [])];
+  for (const p of r.presets || []) {
+    if (sets.some((x) => x.name.toLowerCase() === p.title.toLowerCase())) continue;
+    const all = p.entries.every((e) => custom.includes(e));
+    if (all) custom = custom.filter((e) => !p.entries.includes(e));  // put in by hand earlier: shown as the set it is
+    sets.push({ name: p.title, note: p.hint, enabled: all, entries: [...p.entries], template: !all });
+  }
+  return { r, sets, custom };
 }
 function directSummary() {
-  const { presets, custom } = directState();
-  const parts = ['российские сайты'].concat(presets.filter((p) => p.on).map((p) => p.title.split(' ')[0]));
+  const { sets, custom } = directState();
+  const parts = ['российские сайты'].concat(sets.filter((x) => x.enabled).map((x) => x.name));
   if (custom.length) parts.push(plural(custom.length, 'своя запись', 'свои записи', 'своих записей'));
   return parts.join(', ');
 }
-const directLine = (e) => e.startsWith('domain:') ? e.slice(7) : e;
+function directWhat(entries) {
+  const n = entries.filter((e) => /\//.test(e) || /^[\d.:]+$/.test(e)).length, d = entries.length - n;
+  return [d ? plural(d, 'сайт', 'сайта', 'сайтов') : '', n ? plural(n, 'сеть', 'сети', 'сетей') : ''].filter(Boolean).join(' и ') || 'пусто';
+}
+let directDraft = null, directEditing = -1;
+function renderDirectSets() {
+  const box = $('directPresets'); box.textContent = '';
+  directDraft.sets.forEach((x, i) => {
+    const row = el('div', 'role dset' + (x.enabled ? ' on' : ''));
+    const cb = el('input'); cb.type = 'checkbox'; cb.checked = x.enabled; cb.setAttribute('aria-label', 'Включить набор ' + x.name);
+    cb.addEventListener('change', () => { x.enabled = cb.checked; x.template = false; row.classList.toggle('on', cb.checked); });
+    const sp = el('span', 'grow'); sp.appendChild(el('b', null, x.name));
+    sp.appendChild(document.createTextNode((x.note ? x.note + ' — ' : '') + directWhat(x.entries)));
+    const peek = el('div', 'dpeek', x.entries.slice(0, 4).map(directLine).join(', ') + (x.entries.length > 4 ? ' и ещё ' + (x.entries.length - 4) : ''));
+    sp.appendChild(peek);
+    const b = el('button', 'btn sm', 'Состав'); b.type = 'button'; b.addEventListener('click', () => openDirectSet(i));
+    row.appendChild(cb); row.appendChild(sp); row.appendChild(b); box.appendChild(row);
+  });
+}
 function openDirect() {
   closeMenus();
   const form = $('directForm'); resetForm(form);
-  const { r, presets, custom } = directState();
+  const { r, sets, custom } = directState();
+  directDraft = { sets };
   const rows = $('directNowRows'); rows.textContent = '';
   const row = (k, v) => { const d = el('div'); const g = el('div', 'grow'); g.appendChild(el('div', 'k', k)); g.appendChild(el('div', 'v', v)); d.appendChild(g); rows.appendChild(d); };
   row('Сейчас напрямую', directSummary());
@@ -215,30 +240,49 @@ function openDirect() {
     : 'выключено: подписка не передаёт приложениям профиль маршрутизации');
   row('На главном сервере', r.ruOnMaster ? 'если профиль на устройстве не применился — сервер выпускает эти сайты сам, из России, а не за границу'
     : 'выключено');
-  const box = $('directPresets'); box.textContent = '';
-  for (const p of presets) {
-    const lab = el('label', 'role'); const cb = el('input'); cb.type = 'checkbox'; cb.value = p.id; cb.checked = p.on;
-    const sp = el('span'); sp.appendChild(el('b', null, p.title));
-    const n = p.entries.filter((e) => !e.startsWith('domain:')).length, d = p.entries.length - n;
-    const what = [d ? plural(d, 'сайт', 'сайта', 'сайтов') : '', n ? plural(n, 'сеть', 'сети', 'сетей') : ''].filter(Boolean).join(' и ');
-    sp.appendChild(document.createTextNode(p.hint + ' — ' + what));
-    lab.appendChild(cb); lab.appendChild(sp); box.appendChild(lab);
-  }
+  renderDirectSets();
   $('direct_custom').value = custom.map(directLine).join('\n');
   $('dlgDirect').showModal();
 }
+function openDirectSet(i) {
+  directEditing = i;
+  const form = $('directSetForm'); resetForm(form);
+  const x = i >= 0 ? directDraft.sets[i] : { name: '', note: '', entries: [] };
+  const preset = ((overview.master.routing || {}).presets || []).find((p) => p.title.toLowerCase() === (x.name || '').toLowerCase());
+  $('dsTitle').textContent = i >= 0 ? 'Набор «' + x.name + '»' : 'Новый набор';
+  $('ds_name').value = x.name; $('ds_note').value = x.note || '';
+  $('ds_entries').value = x.entries.map(directLine).join('\n');
+  $('dsCount').textContent = i >= 0 ? 'Сейчас: ' + directWhat(x.entries) + '.' : '';
+  $('dsDelete').classList.toggle('hidden', i < 0);
+  $('dsReset').classList.toggle('hidden', !preset);
+  $('dsReset').onclick = () => { $('ds_entries').value = preset.entries.map(directLine).join('\n'); if (!$('ds_note').value) $('ds_note').value = preset.hint; };
+  $('dlgDirectSet').showModal();
+  const ta = $('ds_entries'); ta.scrollTop = 0;
+  if (i >= 0) { ta.focus(); ta.setSelectionRange(0, 0); ta.scrollTop = 0; } else $('ds_name').focus();
+}
+$('dsNew').addEventListener('click', () => openDirectSet(-1));
+$('dsDelete').addEventListener('click', () => {
+  directDraft.sets.splice(directEditing, 1); $('dlgDirectSet').close(); renderDirectSets();
+});
+$('directSetForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const err = e.target.querySelector('.formerr'); err.textContent = '';
+  const name = $('ds_name').value.trim().replace(/\s+/g, ' ');
+  const entries = [...new Set($('ds_entries').value.split('\n').map((l) => l.split('#')[0].trim()).filter(Boolean))];
+  if (!name) { err.textContent = 'Укажите название набора'; return; }
+  if (directDraft.sets.some((x, k) => k !== directEditing && x.name.toLowerCase() === name.toLowerCase())) { err.textContent = 'Набор «' + name + '» уже есть'; return; }
+  if (!entries.length) { err.textContent = 'Добавьте хотя бы один сайт или сеть'; return; }
+  const item = { name, note: $('ds_note').value.trim(), entries, enabled: true };
+  if (directEditing >= 0) directDraft.sets[directEditing] = item; else directDraft.sets.push(item);
+  $('dlgDirectSet').close(); renderDirectSets();
+});
 $('btnDirect').addEventListener('click', openDirect);
 $('directForm').addEventListener('submit', (e) => {
   e.preventDefault();
-  const { presets } = directState();
-  const on = new Set([...e.target.querySelectorAll('#directPresets input:checked')].map((c) => c.value));
-  const entries = presets.filter((p) => on.has(p.id)).flatMap((p) => p.entries)
-    .concat($('direct_custom').value.split('\n').map((l) => l.trim()).filter(Boolean));
-  const cur = ((overview.master.routing || {}).extraDirect || []);
-  const norm = (l) => /^(domain|full):|\//.test(l) ? l : (/^[\d.]+$/.test(l) ? l + '/32' : 'domain:' + l.toLowerCase());
-  const a = [...new Set(entries.map(norm))].sort().join('\n'), b = [...cur].sort().join('\n');
-  if (a === b) { $('dlgDirect').close(); return; }
-  start('/api/routing/direct', { entries }, e.target);
+  const sets = directDraft.sets.filter((x) => !x.template || x.enabled)
+    .map((x) => ({ name: x.name, note: x.note || '', enabled: !!x.enabled, entries: x.entries }));
+  const entries = $('direct_custom').value.split('\n').map((l) => l.trim()).filter(Boolean);
+  start('/api/routing/direct', { entries, sets }, e.target);
 });
 function switchToReserve() {
   closeMenus(); $('dlgDomains').close();

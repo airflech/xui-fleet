@@ -82,3 +82,44 @@ def test_the_page_saves_through_apply_and_refuses_a_bad_line_before_writing(cfg_
     # the same set in another order: nothing to restart
     assert api.dispatch(app, "POST", "/api/routing/direct", {"entries": ["1.2.3.0/24", "x.com"]})["unchanged"] is True
     assert len(app.started) == 1
+
+
+def test_sets_are_checked_named_once_and_only_switched_on_ones_go_direct(cfg_path):
+    with pytest.raises(ValueError, match="набор «Банк»: «geosite:x»"):
+        config.normalize_direct_sets([{"name": "Банк", "entries": ["geosite:x"]}])
+    with pytest.raises(ValueError, match="два набора"):
+        config.normalize_direct_sets([{"name": "Игры", "entries": ["a.com"]}, {"name": "игры", "entries": ["b.com"]}])
+    with pytest.raises(ValueError, match="пустой"):
+        config.normalize_direct_sets([{"name": "Пусто", "entries": ["  "]}])
+    with pytest.raises(ValueError, match="название"):
+        config.normalize_direct_sets([{"name": " ", "entries": ["a.com"]}])
+    assert config.set_direct(cfg_path, ["own.com"], [
+        {"name": "Банк", "note": "  личный  кабинет ", "entries": "bank.example.com\n10.0.0.0/8", "enabled": True},
+        {"name": "Работа", "entries": ["work.example.com"], "enabled": False}])
+    r = config.load_config(cfg_path).routing
+    assert [(s.name, s.note, s.enabled) for s in r.direct_sets] == [("Банк", "личный кабинет", True), ("Работа", "", False)]
+    assert r.direct_all() == ["domain:own.com", "domain:bank.example.com", "10.0.0.0/8"]  # «Работа» is off
+    assert not config.set_direct(cfg_path, ["own.com"], [s.model_dump() for s in r.direct_sets])  # the same: no change
+
+
+def test_the_servers_get_own_lines_and_the_switched_on_sets():
+    from xui_fleet.config import FleetConfig
+    cfg = FleetConfig.model_validate({"version": 1, "master": {"name": "ru", "host": "1.1.1.1"}, "routing": {
+        "extra_direct": ["domain:own.com"],
+        "direct_sets": [{"name": "Игры", "entries": ["155.133.224.0/21"]}, {"name": "Выкл", "enabled": False, "entries": ["domain:off.com"]}]}})
+    tpl = xc.merge_template({"routing": {"rules": []}, "outbounds": []}, {"in-1": {"tag": "fleet-out-x"}}, True, cfg.routing.direct_all())
+    rules = {r.get("ruleTag"): r for r in tpl["routing"]["rules"]}
+    assert "domain:own.com" in rules[xc.RU_RULE_TAG]["domain"] and "155.133.224.0/21" in rules[xc.RU_RULE_TAG + "-ip"]["ip"]
+    assert "domain:off.com" not in rules[xc.RU_RULE_TAG]["domain"]
+
+
+def test_the_page_saves_sets_and_an_older_page_without_sets_keeps_them(cfg_path):
+    app = _App(cfg_path)
+    body = {"entries": [], "sets": [{"name": "Steam", "enabled": True, "entries": config.DIRECT_PRESETS["steam"]["entries"]}]}
+    assert api.dispatch(app, "POST", "/api/routing/direct", body) == {"ok": True}
+    assert app.started == ["Сайты напрямую: 9 записей (Steam)"]
+    assert api.dispatch(app, "POST", "/api/routing/direct", {"entries": ["x.com"]}) == {"ok": True}
+    r = config.load_config(cfg_path).routing
+    assert [s.name for s in r.direct_sets] == ["Steam"] and r.extra_direct == ["domain:x.com"]
+    with pytest.raises(ValueError, match="пустой"):
+        api.dispatch(app, "POST", "/api/routing/direct", {"entries": [], "sets": [{"name": "A", "entries": []}]})

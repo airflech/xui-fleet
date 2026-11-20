@@ -867,7 +867,7 @@ class Reconciler:
             rw = xc.rwarp_tag(name)
             if w_out is not None and (live_tags is None or rw in live_tags or rw in new_hy2):
                 routes[rw] = w_out
-        merged = xc.merge_template(template, routes, self.cfg.routing.ru_direct_on_master, self.cfg.routing.extra_direct)
+        merged = xc.merge_template(template, routes, self.cfg.routing.ru_direct_on_master, self.cfg.routing.direct_all())
         if merged != template:
             def apply() -> None:
                 self.panel.save_xray_template(merged)
@@ -951,7 +951,7 @@ class Reconciler:
             changed.append("в названиях подключений больше нет имени учётной записи")
         r = self.cfg.routing
         if r.client_profile:
-            link = xc.happ_routing_link(r.extra_direct)
+            link = xc.happ_routing_link(r.direct_all())
             if not settings.get("subEnableRouting") or settings.get("subRoutingRules") != link:
                 settings["subEnableRouting"], settings["subRoutingRules"] = True, link
                 changed.append("подписка передаёт Happ профиль «RU напрямую»")
@@ -1016,9 +1016,9 @@ class Reconciler:
         old = xc.profile_from_link(cur) if cur.startswith("incy://") else None
         if r.client_profile:
             stamp = int(old.get("LastUpdated") or 0) if old else 0
-            if xc.incy_routing_link(r.extra_direct, updated=stamp) != cur:
+            if xc.incy_routing_link(r.direct_all(), updated=stamp) != cur:
                 stamp = _now()
-            link = xc.incy_routing_link(r.extra_direct, updated=stamp)
+            link = xc.incy_routing_link(r.direct_all(), updated=stamp)
             if not _truthy(settings.get("subIncyEnableRouting")) or cur != link:
                 settings["subIncyEnableRouting"], settings["subIncyRoutingRules"] = True, link
                 changed.append("подписка передаёт INCY профиль «RU напрямую»")
@@ -1068,7 +1068,7 @@ class Reconciler:
         routes.pop(xc.rhy2_tag(name), None)
         routes.pop(xc.rwarp_tag(name), None)
         routes.pop(xc.rxh_tag(name), None)
-        merged = xc.merge_template(template, routes, self.cfg.routing.ru_direct_on_master, self.cfg.routing.extra_direct)
+        merged = xc.merge_template(template, routes, self.cfg.routing.ru_direct_on_master, self.cfg.routing.direct_all())
         if merged != template:
             def apply() -> None:
                 self.panel.save_xray_template(merged)

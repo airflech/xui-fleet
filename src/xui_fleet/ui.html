@@ -576,15 +576,34 @@
     так быстрее и с российским адресом. Подходит для игр, банков и сервисов, которым VPN мешает.</p></div>
   <div class="dlg-b">
     <div class="rows domrows" id="directNowRows"></div>
-    <label class="f">Готовые наборы</label>
+    <label class="f">Наборы</label>
     <div class="roles" id="directPresets"></div>
-    <label class="f" for="direct_custom">Свои сайты и сети</label>
-    <textarea id="direct_custom" rows="6" spellcheck="false" placeholder="example.com&#10;155.133.224.0/21"></textarea>
+    <button type="button" class="btn sm dsnew" id="dsNew"><svg class="i"><use href="#i-plus"/></svg>Новый набор</button>
+    <label class="f" for="direct_custom">Отдельные сайты и сети <span class="muted">— вне наборов</span></label>
+    <textarea id="direct_custom" class="dlist" rows="4" spellcheck="false" placeholder="example.com&#10;155.133.224.0/21"></textarea>
     <div class="hint">По одному на строку: сайт (example.com — вместе со всеми его поддоменами) или адрес и сеть (1.2.3.4, 1.2.3.0/24).
       При сохранении главный сервер перезапустит Xray — связь прервётся на пару секунд. На устройствах список появится после обновления подписки.</div>
     <div class="formerr" role="alert"></div>
   </div>
   <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Сохранить</button></div>
+</form></dialog>
+
+<dialog id="dlgDirectSet"><form id="directSetForm">
+  <div class="dlg-h"><h2 id="dsTitle">Набор</h2><p>Набор включается и выключается целиком — например, «Steam», «Банк», «Работа».</p></div>
+  <div class="dlg-b">
+    <label class="f" for="ds_name">Название</label>
+    <input type="text" id="ds_name" maxlength="40" placeholder="Например: Банк">
+    <label class="f" for="ds_note">Описание <span class="muted">— необязательно</span></label>
+    <input type="text" id="ds_note" maxlength="120" placeholder="Что это и зачем">
+    <label class="f" for="ds_entries">Сайты и сети</label>
+    <textarea id="ds_entries" class="dlist" rows="10" spellcheck="false" placeholder="example.com&#10;155.133.224.0/21"></textarea>
+    <div class="hint"><span id="dsCount"></span> По одному на строку: сайт (вместе со всеми поддоменами) или адрес и сеть.
+      Изменения попадут на серверы после «Сохранить» в окне «Сайты напрямую».</div>
+    <div class="formerr" role="alert"></div>
+  </div>
+  <div class="dlg-f"><button type="button" class="btn danger" id="dsDelete">Удалить набор</button>
+    <button type="button" class="btn" id="dsReset">Вернуть исходный состав</button><div class="spacer"></div>
+    <button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Готово</button></div>
 </form></dialog>
 
 <dialog id="dlgApps"><form id="appsForm">

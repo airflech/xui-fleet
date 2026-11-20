@@ -432,20 +432,28 @@ def _master_vpn_name(c: Call):
 
 @post("/api/routing/direct")
 def _routing_direct(c: Call):
-    """«Сайты напрямую»: the list goes to the master's rules and to the routing profile of the subscription."""
-    from .config import normalize_direct, set_extra_direct
-    entries = c.body.get("entries")
+    """«Сайты напрямую»: own lines and named sets go to the master's rules and to the subscription's routing profile."""
+    import tempfile
+    from pathlib import Path
+    from .config import load_config, set_direct
+    entries, sets = c.body.get("entries") or [], c.body.get("sets")
     if isinstance(entries, str):
         entries = entries.splitlines()
-    if not isinstance(entries, list):
+    if not isinstance(entries, list) or not isinstance(sets, (list, type(None))):
         raise ValueError("список сайтов: по одному на строку")
-    current = list(c.app.fleet().cfg.routing.extra_direct)
-    entries = normalize_direct(entries, keep=current)  # a bad line is refused before anything is written
-    if sorted(entries) == sorted(current):  # the same set: nothing to restart
-        return {"ok": True, "unchanged": True}
-    title = f"Сайты напрямую: {len(entries)} {_plural(len(entries), 'запись', 'записи', 'записей')}" if entries \
+    if sets is None:  # an older page: only own lines, the sets stay as they are
+        sets = [s.model_dump() for s in c.app.fleet().cfg.routing.direct_sets]
+    # Tried on a copy first: a bad line is refused and «nothing changed» is known before the real file is touched.
+    with tempfile.TemporaryDirectory() as tmp:
+        trial = Path(tmp) / "fleet.yaml"
+        trial.write_text(c.app.path.read_text(encoding="utf-8"), encoding="utf-8")
+        if not set_direct(trial, entries, sets):
+            return {"ok": True, "unchanged": True}
+        new = load_config(trial).routing
+    n, on = len(new.direct_all()), [s.name for s in new.direct_sets if s.enabled]
+    title = (f"Сайты напрямую: {n} {_plural(n, 'запись', 'записи', 'записей')}" + (f" ({', '.join(on)})" if on else "")) if n \
         else "Сайты напрямую: только российские"
-    return c.run_change(title, lambda: set_extra_direct(c.app.path, entries),
+    return c.run_change(title, lambda: set_direct(c.app.path, entries, sets),
                         lambda log: c.app.fleet(log).apply(skip_provision=True))
 
 

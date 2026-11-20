@@ -406,20 +406,66 @@ def normalize_direct(entries: List[str], keep: Optional[List[str]] = None) -> Li
     return out
 
 
-def set_extra_direct(path: Path, entries: List[str]) -> List[str]:
+def normalize_direct_sets(sets: list, keep: Optional[List[str]] = None) -> List[dict]:
+    """The sets as the page sends them: a name (unique, up to 40 letters), a note, on/off and checked lines."""
+    out: List[dict] = []
+    seen: Set[str] = set()
+    for raw in sets or []:
+        if not isinstance(raw, dict):
+            raise ValueError("набор: неверный формат")
+        name = " ".join(str(raw.get("name") or "").split())
+        if not name:
+            raise ValueError("у набора должно быть название")
+        if len(name) > 40:
+            raise ValueError(f"название набора «{name[:40]}…» длиннее 40 букв")
+        if name.lower() in seen:
+            raise ValueError(f"два набора с названием «{name}» — переименуйте один")
+        seen.add(name.lower())
+        lines = raw.get("entries") or []
+        if isinstance(lines, str):
+            lines = lines.splitlines()
+        try:
+            entries = normalize_direct(list(lines), keep=keep)
+        except ValueError as exc:
+            raise ValueError(f"набор «{name}»: {exc}") from None
+        if not entries:
+            raise ValueError(f"набор «{name}» пустой — добавьте сайты или сети или удалите набор")
+        item = {"name": name, "enabled": bool(raw.get("enabled", True)), "entries": entries}
+        note = " ".join(str(raw.get("note") or "").split())[:120]
+        if note:
+            item["note"] = note
+        out.append(item)
+    return out
+
+
+def set_direct(path: Path, entries: List[str], sets: Optional[list] = None) -> bool:
+    """Own lines and the sets of «Сайты напрямую» into fleet.yaml. False: nothing changed."""
     doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    routing = doc.get("routing") or {}
-    entries = normalize_direct(entries, keep=list(routing.get("extra_direct") or []))
+    routing = dict(doc.get("routing") or {})
+    keep = list(routing.get("extra_direct") or []) + [e for s in routing.get("direct_sets") or [] for e in s.get("entries") or []]
+    entries = normalize_direct(entries, keep=keep)
+    sets = normalize_direct_sets(sets or [], keep=keep)
+    if sorted(entries) == sorted(routing.get("extra_direct") or []):  # only the order differs: nothing to restart
+        entries = list(routing.get("extra_direct") or [])
+    new = {k: v for k, v in routing.items() if k not in ("extra_direct", "direct_sets")}
     if entries:
-        routing["extra_direct"] = entries
-    else:
-        routing.pop("extra_direct", None)
-    if routing:
-        doc["routing"] = routing
+        new["extra_direct"] = entries
+    if sets:
+        new["direct_sets"] = sets
+    if new == routing:
+        return False
+    if new:
+        doc["routing"] = new
     else:
         doc.pop("routing", None)
     _save_doc(path, doc)
-    return entries
+    return True
+
+
+def set_extra_direct(path: Path, entries: List[str]) -> List[str]:
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    set_direct(path, entries, (doc.get("routing") or {}).get("direct_sets") or [])
+    return list(load_config(path).routing.extra_direct)
 
 
 def set_allowed_apps(path: Path, apps: List[str]) -> None:
@@ -437,6 +483,14 @@ def set_allowed_apps(path: Path, apps: List[str]) -> None:
     _save_doc(path, doc)
 
 
+class DirectSet(Strict):
+    """A named set of «Сайты напрямую» (Steam, a bank, work…): switched on and off as one."""
+    name: str
+    note: str = ""
+    enabled: bool = True
+    entries: List[str] = Field(default_factory=list)
+
+
 class RoutingConfig(Strict):
     """Russian traffic never needs the VPN: banks, Gosuslugi, marketplaces work better (or only) from a
     Russian address, and it saves the foreign servers' bandwidth."""
@@ -447,6 +501,16 @@ class RoutingConfig(Strict):
     client_profile: bool = True
     # Extra destinations to send directly from both, e.g. "domain:example.com", "geosite:apple", "geoip:by".
     extra_direct: List[str] = Field(default_factory=list)
+    # Named sets of the same kind of lines; the switched-on ones go direct together with extra_direct.
+    direct_sets: List[DirectSet] = Field(default_factory=list)
+
+    def direct_all(self) -> List[str]:
+        """Everything that goes direct besides the Russian sites: own lines, then the switched-on sets."""
+        out: List[str] = []
+        for e in list(self.extra_direct) + [e for s in self.direct_sets if s.enabled for e in s.entries]:
+            if e not in out:
+                out.append(e)
+        return out
 
 
 class PanelConfig(Strict):

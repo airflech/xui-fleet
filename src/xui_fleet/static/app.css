@@ -335,7 +335,14 @@ details.more summary { cursor: pointer; color: var(--ink-2); font-size: 13px; fo
 .role b { display: block; color: var(--ink); font-size: 14px; margin-bottom: 2px; }
 .role input { margin-top: 3px; accent-color: var(--accent); }
 .role:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
-#direct_custom { width: 100%; box-sizing: border-box; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 8px 10px;
+#directPresets { grid-template-columns: minmax(0, 1fr); }
+.dset { align-items: center; cursor: default; min-width: 0; }
+.dset > input { margin-top: 0; }
+.dset .dpeek { color: var(--muted); font-size: 12px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dset .grow { flex: 1; min-width: 0; }
+.dset.on { border-color: var(--accent); background: var(--accent-soft); }
+.dsnew { margin-top: 8px; }
+.dlist { width: 100%; box-sizing: border-box; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 8px 10px;
   border: 1px solid var(--line-2); border-radius: 8px; background: var(--surface); color: var(--ink); resize: vertical; }
 .card.main-srv { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }

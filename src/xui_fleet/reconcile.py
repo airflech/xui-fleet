@@ -841,7 +841,8 @@ class Reconciler:
             bridge = self.cfg.clients.bridge_email
             auth = next((c.get("auth") for c in ((hy or {}).get("settings") or {}).get("clients") or []
                          if c.get("email") == bridge and c.get("auth")), None)
-            if rh in routes and hy is not None and hy.get("nodeId") and auth:
+            # An entry switched off in «Входящие» has nothing listening: no leg to try (and nothing to warn about).
+            if rh in routes and hy is not None and hy.get("nodeId") and hy.get("enable", True) and auth:
                 cand = xc.hy2_outbound_for_inbound(hy, tag=xc.out_hy2_tag(name), address=node.panel_address or node.host, auth=auth)
                 if self._leg_works(cand, in_use=xc.out_hy2_tag(name) in existing_out):
                     routes[rh] = cand

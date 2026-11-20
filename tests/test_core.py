@@ -1896,6 +1896,10 @@ def test_via_ru_hysteria2_reaches_the_node_over_its_own_hysteria2_entry():
     rep = Reconciler(panel, cfg).run(_stale(access))
     assert rules()[(xc.rhy2_tag("de"),)] == xc.out_tag("de")  # the leg does not pass (e.g. UDP 443 cut): Reality stays
     assert any("Hysteria2 от главного сервера до сервера не проходит" in w for w in rep.warnings)
+    hy["enable"] = False  # switched off on the server: nothing to try, no warning about the network
+    rep = Reconciler(panel, cfg).run(_stale(access))
+    assert not any("Hysteria2 от главного" in w for w in rep.warnings)
+    hy["enable"] = True
     leg["ok"] = True
     Reconciler(panel, cfg).run(_stale(access))
     assert rules()[(xc.rhy2_tag("de"),)] == xc.out_hy2_tag("de")

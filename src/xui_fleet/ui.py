@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "WARP чинится сам; срок доступа при создании пользователя; «Продлить на месяц» в поиске; «Перенастроить этот сервер»; честная статистика трафика и доступность WARP"
+WHATS_NEW = "нет ложного предупреждения о Hysteria2 для выключенного подключения; WARP чинится сам; срок доступа при создании пользователя"
 
 
 def _last_backup(fleet: Any) -> int:

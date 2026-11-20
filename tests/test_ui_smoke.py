@@ -170,7 +170,6 @@ def test_saving_the_user_card_shows_progress_and_the_result(page_url):
     """«Save» takes a few seconds on real servers: the button must say it is saving (and not take a second press),
     then «Сохранено» — never a button that seems to do nothing while the change goes through."""
     import json
-    import time
     errors, edits = [], []
     with playwright.sync_playwright() as p:
         browser = p.chromium.launch()
@@ -180,10 +179,11 @@ def test_saving_the_user_card_shows_progress_and_the_result(page_url):
         def user(route):
             route.fulfill(json=USER)
 
-        def edit(route):
+        held = []
+
+        def edit(route):  # held until the test lets it go: the main server is reached over SSH, it takes seconds
             edits.append(json.loads(route.request.post_data or "{}"))
-            time.sleep(1.5)  # the main server is reached over SSH
-            route.fulfill(json={"ok": True, "user": dict(USER, comment=edits[-1].get("comment", ""))})
+            held.append(route)
         page.route("**/api/user?*", user)
         page.route("**/api/user/edit", edit)
         page.goto(page_url)
@@ -194,9 +194,12 @@ def test_saving_the_user_card_shows_progress_and_the_result(page_url):
         save = page.locator("#uiBody form.uform button[type=submit]")
         save.click()
         page.wait_for_function("[...document.querySelectorAll('#uiBody form.uform button[type=submit]')].some(b => b.disabled && b.textContent.includes('Сохраняю'))")
-        save.click(force=True)  # a second press while saving does nothing
+        page.evaluate("document.querySelector('#uiBody form.uform').requestSubmit()")  # a second press while saving
+        page.wait_for_timeout(300)
+        assert len(edits) == 1 and edits[0]["comment"] == "работа"  # ...does nothing
+        held[0].fulfill(json={"ok": True, "user": dict(USER, comment="работа")})
         page.wait_for_function("document.body.innerText.includes('Сохранено')", timeout=10000)
-        assert len(edits) == 1 and edits[0]["comment"] == "работа"
+        assert len(edits) == 1
         assert page.locator("#uiBody form.uform [name=comment]").input_value() == "работа"
         browser.close()
     assert not errors, errors

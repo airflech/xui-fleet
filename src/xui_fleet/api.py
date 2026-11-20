@@ -480,10 +480,9 @@ def _user_delete(c: Call):
 @post("/api/user/edit", needs={"name": "str", "devices": "int?", "ips": "int?"}, idle=True)
 def _user_edit(c: Call):
     fleet, name = c.app.fleet(), c.body["name"]
-    fleet.edit_user(name, c.body)
-    if "devices" in c.body or "ips" in c.body:  # the dialog saves settings and limits with one button
-        fleet.set_user_limits(name, c.body.get("devices"), c.body.get("ips"))
-    return {"ok": True, "user": fleet.user_detail(name)}
+    # the dialog saves settings and limits with one button: one change in the panel, one connection
+    limits = (c.body.get("devices"), c.body.get("ips")) if "devices" in c.body or "ips" in c.body else None
+    return {"ok": True, "user": fleet.edit_user(name, c.body, limits=limits, detail=True)}
 
 
 @post("/api/user/limits", needs={"name": "str", "devices": "int?", "ips": "int?"}, idle=True)

@@ -159,3 +159,44 @@ def test_first_run_goes_step_by_step_and_draws_the_network(tmp_path, monkeypatch
     finally:
         server.shutdown()
     assert not errors, "\n".join(errors)
+
+
+USER = {"enabled": True, "comment": "", "up": 1, "down": 2, "used": 3, "quota": 0, "expiry": 0, "lastOnline": 0,
+        "lastSubFetch": 0, "limitDevices": 0, "limitIp": 0, "devices": 0, "ips": 0, "servers": [], "over": False,
+        "deviceList": [], "ipList": []}
+
+
+def test_saving_the_user_card_shows_progress_and_the_result(page_url):
+    """«Save» takes a few seconds on real servers: the button must say it is saving (and not take a second press),
+    then «Сохранено» — never a button that seems to do nothing while the change goes through."""
+    import json
+    import time
+    errors, edits = [], []
+    with playwright.sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1100, "height": 800})
+        page.on("pageerror", lambda exc: errors.append(f"pageerror: {exc}"))
+
+        def user(route):
+            route.fulfill(json=USER)
+
+        def edit(route):
+            edits.append(json.loads(route.request.post_data or "{}"))
+            time.sleep(1.5)  # the main server is reached over SSH
+            route.fulfill(json={"ok": True, "user": dict(USER, comment=edits[-1].get("comment", ""))})
+        page.route("**/api/user?*", user)
+        page.route("**/api/user/edit", edit)
+        page.goto(page_url)
+        page.wait_for_function("typeof overview !== 'undefined' && overview && overview.configured")
+        page.evaluate("showTab('users'); openUserInfo('alice')")
+        page.wait_for_selector("#uiBody form.uform")
+        page.fill("#uiBody form.uform [name=comment]", "работа")
+        save = page.locator("#uiBody form.uform button[type=submit]")
+        save.click()
+        page.wait_for_function("[...document.querySelectorAll('#uiBody form.uform button[type=submit]')].some(b => b.disabled && b.textContent.includes('Сохраняю'))")
+        save.click(force=True)  # a second press while saving does nothing
+        page.wait_for_function("document.body.innerText.includes('Сохранено')", timeout=10000)
+        assert len(edits) == 1 and edits[0]["comment"] == "работа"
+        assert page.locator("#uiBody form.uform [name=comment]").input_value() == "работа"
+        browser.close()
+    assert not errors, errors

@@ -155,7 +155,7 @@ function renderUserInfo(u) {
       base.setMonth(base.getMonth() + months); base.setHours(23, 59, 59, 0);
       userAction('/api/user/edit', { name: infoUser, comment: u.comment || '', totalGb: u.quota ? +(u.quota / 1024 ** 3).toFixed(3) : 0,
         expiry: base.getTime(), enabled: true, devices: u.limitDevices || 0, ips: u.limitIp || 0 }, uerr,
-        'Продлено до ' + base.toLocaleDateString('ru-RU'));
+        'Продлено до ' + base.toLocaleDateString('ru-RU'), b);
     });
     quick.appendChild(b);
   }
@@ -175,7 +175,7 @@ function renderUserInfo(u) {
     e.preventDefault();
     const d = uf.expiry.value ? new Date(uf.expiry.value + 'T23:59:59') : null;
     userAction('/api/user/edit', { name: infoUser, comment: uf.comment.value, totalGb: uf.totalGb.value || 0,
-      expiry: d ? d.getTime() : 0, enabled: uf.enabled.checked, devices: uf.devices.value || 0, ips: uf.ips.value || 0 }, uerr, 'Сохранено');
+      expiry: d ? d.getTime() : 0, enabled: uf.enabled.checked, devices: uf.devices.value || 0, ips: uf.ips.value || 0 }, uerr, 'Сохранено', usave);
   });
   ss.appendChild(uf);
   body.appendChild(ss);
@@ -196,8 +196,17 @@ function renderUserInfo(u) {
   acts.appendChild(reset); acts.appendChild(el('div', 'spacer')); acts.appendChild(del);
   dz.appendChild(acts); body.appendChild(dz);
 }
-async function userAction(path, body, errBox, done) {
+// `btn`: the button pressed — it shows that the change is on its way (a save takes a few seconds: the main server
+// is reached over SSH) and cannot be pressed twice; without one (quick search, confirmations) a note says so.
+let userBusy = false;
+async function userAction(path, body, errBox, done, btn) {
+  if (userBusy) return;
+  userBusy = true;
   if (errBox) errBox.textContent = '';
+  const was = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = ''; btn.appendChild(el('span', 'spin')); btn.appendChild(document.createTextNode(' Сохраняю…')); }
+  else toast('Сохраняю…');
+  $('uiBody').classList.add('saving');
   try {
     const r = await api(path, body);
     const f = $('uiBody').querySelector('form.uform'); if (f) delete f.dataset.dirty;  // saved: show what the server has
@@ -205,5 +214,9 @@ async function userAction(path, body, errBox, done) {
     loadUserStats();  // the list shows the new date / traffic too (and the quick search, which has no card open)
     if (done) toast(done);
   }
-  catch (e) { if (errBox) errBox.textContent = e.message; else toast(e.message); }
+  catch (e) { if (errBox && errBox.isConnected) errBox.textContent = e.message; else toast(e.message); }
+  finally {
+    userBusy = false; $('uiBody').classList.remove('saving');
+    if (btn && btn.isConnected) { btn.disabled = false; btn.textContent = was; }
+  }
 }

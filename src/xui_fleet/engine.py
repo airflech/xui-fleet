@@ -1621,20 +1621,23 @@ class Fleet:
 
     def user_detail(self, name: str) -> Dict[str, Any]:
         """One user: the list row plus every device and recent IP with its server."""
-        from . import stats
         with self.master_panel(provision=False) as panel:
-            client = next((c for c in panel.clients_with_traffic() if c.get("email") == name), None)
-            if not client:
-                raise FleetError(f"пользователя {name} нет на главном сервере")
-            names = stats.server_names(panel.nodes(), self.cfg.master.name)
-            devices = panel.client_devices(name)
-            row = stats.summarize([client], names, panel.onlines_by_server(), panel.ips_by_server(),
-                                  {name: len([d for d in devices if not stats.is_service_device(d)])})[name]
-            ips = sorted(panel.client_ips(name), key=lambda x: str(x.get("time") or ""), reverse=True)
-            row["deviceList"] = sorted((stats.device_view(d) for d in devices), key=lambda d: -d["lastSeen"])
-            row["ipList"] = [{"ip": i.get("ip", ""), "time": i.get("time", ""), "server": i.get("node") or self.cfg.master.name}
-                             for i in ips]
-            return row
+            return self._user_detail(panel, name)
+
+    def _user_detail(self, panel: Panel, name: str) -> Dict[str, Any]:
+        from . import stats
+        client = next((c for c in panel.clients_with_traffic() if c.get("email") == name), None)
+        if not client:
+            raise FleetError(f"пользователя {name} нет на главном сервере")
+        names = stats.server_names(panel.nodes(), self.cfg.master.name)
+        devices = panel.client_devices(name)
+        row = stats.summarize([client], names, panel.onlines_by_server(), panel.ips_by_server(),
+                              {name: len([d for d in devices if not stats.is_service_device(d)])})[name]
+        ips = sorted(panel.client_ips(name), key=lambda x: str(x.get("time") or ""), reverse=True)
+        row["deviceList"] = sorted((stats.device_view(d) for d in devices), key=lambda d: -d["lastSeen"])
+        row["ipList"] = [{"ip": i.get("ip", ""), "time": i.get("time", ""), "server": i.get("node") or self.cfg.master.name}
+                         for i in ips]
+        return row
 
     def set_user_limits(self, name: str, devices: Any, ips: Any) -> None:
         """Limits live in the panel (fleet.yaml only seeds new users), so `apply` never undoes them."""
@@ -1645,15 +1648,23 @@ class Fleet:
             panel.update_client(name, fields)
         self.log(f"{name}: устройств — {fields['limitHwid'] or 'без ограничения'}, IP — {fields['limitIp'] or 'без ограничения'}")
 
-    def edit_user(self, name: str, body: Dict[str, Any]) -> None:
-        """Comment, traffic limit, expiry and on/off — in the panel, and in fleet.yaml when the user is listed there."""
+    def edit_user(self, name: str, body: Dict[str, Any], limits: Optional[Tuple[Any, Any]] = None,
+                  detail: bool = False) -> Optional[Dict[str, Any]]:
+        """Comment, traffic limit, expiry and on/off (and the device / IP limits, when given) — in the panel with one
+        change, and in fleet.yaml when the user is listed there. With `detail`, the card as it is now, read in the
+        same connection: the «Save» button costs one trip to the master, not three."""
         from . import stats
         from .config import update_user_entry
         fields = stats.user_fields(body)
+        if limits is not None:
+            fields["limitHwid"] = stats.validate_limit(limits[0], "устройств")
+            fields["limitIp"] = stats.validate_limit(limits[1], "IP-адресов")
         self.backup_before(f"перед изменением пользователя {name}")
         with self.master_panel(provision=False) as panel:
             panel.update_client(name, fields)
+            out = self._user_detail(panel, name) if detail else None
         update_user_entry(self.config_path, name, fields["comment"], round(fields["totalGB"] / 1024 ** 3, 3))
+        return out
 
     def reset_user_traffic(self, name: str) -> None:
         self.backup_before(f"перед сбросом трафика {name}", max_age_hours=0)

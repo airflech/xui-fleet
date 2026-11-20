@@ -109,8 +109,9 @@ def fleet(tmp_path, monkeypatch, real):
 def test_saving_the_user_card_stores_everything_and_breaks_nothing(fleet, real):
     """The dialog saves settings, then limits — two updates; the second must not undo the first."""
     body = {"comment": "работа", "totalGb": 10, "expiry": 2_000_000_000_000, "enabled": True}
-    fleet.edit_user("anna", body)
-    fleet.set_user_limits("anna", 3, 4)
+    fleet.edit_user("anna", body, limits=(3, 4))
+    assert len(real.updates) == 1  # settings and limits in one change: half of it can never be lost
+    fleet.set_user_limits("anna", 3, 4)  # the limits alone (their own button) keep the rest too
     rec = real.records["anna"]
     assert (rec["comment"], rec["totalGB"], rec["expiryTime"], rec["enable"]) == ("работа", 10 * 1024 ** 3, 2_000_000_000_000, True)
     assert (rec["limitHwid"], rec["limitIp"], rec["group"]) == (3, 4, "Friends")

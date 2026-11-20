@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "исправлено редактирование пользователя (сохранение выключало его и стирало комментарий и срок)"
+WHATS_NEW = "сохранение пользователя: кнопка показывает «Сохраняю…», а само сохранение вчетверо быстрее (одно подключение к серверу)"
 
 
 def _last_backup(fleet: Any) -> int:

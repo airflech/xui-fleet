@@ -634,3 +634,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
   .dlg-f > .spacer { display: none; }
   .dlg-f > .btn { flex: 1 1 auto; }
 }
+
+/* the user card while a change is being saved: nothing else can be pressed */
+#uiBody.saving button, #uiBody.saving input, #uiBody.saving select { pointer-events: none; }
+#uiBody.saving { opacity: .85; }

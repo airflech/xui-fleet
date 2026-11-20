@@ -66,6 +66,8 @@ def test_every_tab_and_main_dialog_opens_without_errors(page_url):
         assert page.locator("#routeMap svg .rm-line.idle").count() >= 2
         page.set_viewport_size({"width": 390, "height": 800})  # phones get the vertical map
         page.wait_for_function("document.querySelector('#routeMap svg').viewBox.baseVal.width === 360")
+        # nothing on a phone may make the page wider than the screen (the header once did, and every dialog got cut)
+        assert page.evaluate("document.documentElement.scrollWidth - innerWidth") <= 0
         page.set_viewport_size({"width": 1100, "height": 800})
         # the brand fonts come from the app itself, Cyrillic included (a missing file rejects the load)
         loaded = page.evaluate("""Promise.all([document.fonts.load("16px 'Inter Tight'", 'Серверы UK'),

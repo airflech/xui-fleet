@@ -615,3 +615,19 @@ pre.invite { white-space: pre-wrap; font: 13px/1.55 var(--font); background: var
 .verdict.warn { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 35%, var(--line)); }
 .verdict.bad { background: var(--bad-soft); border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); } .verdict.bad b { color: var(--bad); }
 .quick { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+
+/* phones: the header must fit the screen, or the whole page (and every dialog) gets wider than it */
+@media (max-width: 640px) {
+  .top-in { gap: 8px; padding: 0 12px; min-width: 0; }
+  .top-in > .master, .top-in .ver { display: none; }
+  .profbtn .txt, .profbtn .chev { display: none; }
+  .profbtn { padding: 0; width: 30px; justify-content: center; }
+  .upd { font-size: 11px; padding: 3px 8px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .brand { font-size: 15px; }
+}
+html, body { max-width: 100%; overflow-x: hidden; }
+@media (max-width: 640px) {
+  .dlg-f { flex-wrap: wrap; }
+  .dlg-f > .spacer { display: none; }
+  .dlg-f > .btn { flex: 1 1 auto; }
+}

@@ -430,6 +430,31 @@ def _master_vpn_name(c: Call):
                         lambda: set_vpn_name(c.app.path, name), lambda log: c.app.fleet(log).set_vpn_name())
 
 
+@post("/api/routing/direct")
+def _routing_direct(c: Call):
+    """«Сайты напрямую»: the list goes to the master's rules and to the routing profile of the subscription."""
+    from .config import normalize_direct, set_extra_direct
+    entries = c.body.get("entries")
+    if isinstance(entries, str):
+        entries = entries.splitlines()
+    if not isinstance(entries, list):
+        raise ValueError("список сайтов: по одному на строку")
+    current = list(c.app.fleet().cfg.routing.extra_direct)
+    entries = normalize_direct(entries, keep=current)  # a bad line is refused before anything is written
+    if sorted(entries) == sorted(current):  # the same set: nothing to restart
+        return {"ok": True, "unchanged": True}
+    title = f"Сайты напрямую: {len(entries)} {_plural(len(entries), 'запись', 'записи', 'записей')}" if entries \
+        else "Сайты напрямую: только российские"
+    return c.run_change(title, lambda: set_extra_direct(c.app.path, entries),
+                        lambda log: c.app.fleet(log).apply(skip_provision=True))
+
+
+def _plural(n: int, one: str, few: str, many: str) -> str:
+    if n % 10 == 1 and n % 100 != 11:
+        return one
+    return few if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else many
+
+
 @post("/api/domain", needs={"domain": "str"})
 def _domain(c: Call):
     domain = c.body["domain"]

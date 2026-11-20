@@ -80,6 +80,16 @@ def main(config: Path) -> int:
     try:
         drift = app.fleet().drift()
         step("настройки и серверы совпадают", not drift.get("changes"), "; ".join(drift.get("changes") or []))
+        # «Сайты напрямую»: the list from the settings is in the master's rules and in the subscription's profiles
+        from xui_fleet import xrayconf as xc
+        extra = list(app.fleet().cfg.routing.extra_direct)
+        with fleet.master_panel(provision=False) as p:
+            rules = [r for r in p.xray_template()["routing"]["rules"] if str(r.get("ruleTag", "")).startswith(xc.RU_RULE_TAG)]
+            on_master = {e for r in rules for e in (r.get("domain") or []) + (r.get("ip") or [])}
+            profiles = [xc.profile_from_link(v) for v in p.settings().values()
+                        if isinstance(v, str) and v.startswith(("happ://routing", "incy://routing"))]
+        in_profiles = all(set(extra) <= set(pr["DirectSites"]) | set(pr["DirectIp"]) for pr in profiles if pr)
+        step(f"сайты напрямую ({len(extra)}) — на главном сервере и в подписке", set(extra) <= on_master and in_profiles and bool(profiles))
         report = app.fleet(lambda *a: None).check_links()
         step(f"все подключения подписки работают", not report.warnings, "; ".join(report.warnings[:5]))
     except Exception as exc:  # noqa: BLE001

@@ -61,6 +61,8 @@ async function refresh() {
     const rsv = (m.reserveDomains || [])[0];
     $('domainsNow').textContent = m.domain ? m.domain + (rsv ? ' · резерв ' + rsv : ' · без резерва') : 'домен не задан';
     $('btnDomains').disabled = !m.prepared;
+    $('directNow').textContent = directSummary();
+    $('btnDirect').disabled = !m.prepared;
     if ($('dlgDomains').open) renderDomains();
   }
   $('notready').classList.toggle('hidden', !configured || overview.master.prepared || running);

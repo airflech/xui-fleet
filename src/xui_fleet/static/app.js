@@ -187,6 +187,59 @@ $('vpnNameForm').addEventListener('submit', (e) => {
   if (name === (overview.master.vpnName || '')) { $('dlgVpnName').close(); return; }
   start('/api/master/title', { name }, e.target);
 });
+// «Сайты напрямую»: ready-made sets (Steam, CS2…) plus one's own lines; Russian sites are always direct.
+function directState() {
+  const r = (overview && overview.master && overview.master.routing) || { extraDirect: [], presets: [] };
+  const have = new Set(r.extraDirect || []);
+  const presets = (r.presets || []).map((p) => ({ ...p, on: p.entries.every((e) => have.has(e)) }));
+  const inPreset = new Set(presets.filter((p) => p.on).flatMap((p) => p.entries));
+  const custom = (r.extraDirect || []).filter((e) => !inPreset.has(e));
+  return { r, presets, custom };
+}
+function directSummary() {
+  const { presets, custom } = directState();
+  const parts = ['российские сайты'].concat(presets.filter((p) => p.on).map((p) => p.title.split(' ')[0]));
+  if (custom.length) parts.push(plural(custom.length, 'своя запись', 'свои записи', 'своих записей'));
+  return parts.join(', ');
+}
+const directLine = (e) => e.startsWith('domain:') ? e.slice(7) : e;
+function openDirect() {
+  closeMenus();
+  const form = $('directForm'); resetForm(form);
+  const { r, presets, custom } = directState();
+  const rows = $('directNowRows'); rows.textContent = '';
+  const row = (k, v) => { const d = el('div'); const g = el('div', 'grow'); g.appendChild(el('div', 'k', k)); g.appendChild(el('div', 'v', v)); d.appendChild(g); rows.appendChild(d); };
+  row('Сейчас напрямую', directSummary());
+  row('Всегда напрямую', 'российские сайты (.ru, .рф, .su и др.), российские IP-адреса, локальная сеть');
+  row('На устройствах', r.clientProfile ? 'профиль маршрутизации «RU напрямую» в Happ и INCY — трафик идёт сразу от пользователя, мимо всех серверов'
+    : 'выключено: подписка не передаёт приложениям профиль маршрутизации');
+  row('На главном сервере', r.ruOnMaster ? 'если профиль на устройстве не применился — сервер выпускает эти сайты сам, из России, а не за границу'
+    : 'выключено');
+  const box = $('directPresets'); box.textContent = '';
+  for (const p of presets) {
+    const lab = el('label', 'role'); const cb = el('input'); cb.type = 'checkbox'; cb.value = p.id; cb.checked = p.on;
+    const sp = el('span'); sp.appendChild(el('b', null, p.title));
+    const n = p.entries.filter((e) => !e.startsWith('domain:')).length, d = p.entries.length - n;
+    const what = [d ? plural(d, 'сайт', 'сайта', 'сайтов') : '', n ? plural(n, 'сеть', 'сети', 'сетей') : ''].filter(Boolean).join(' и ');
+    sp.appendChild(document.createTextNode(p.hint + ' — ' + what));
+    lab.appendChild(cb); lab.appendChild(sp); box.appendChild(lab);
+  }
+  $('direct_custom').value = custom.map(directLine).join('\n');
+  $('dlgDirect').showModal();
+}
+$('btnDirect').addEventListener('click', openDirect);
+$('directForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const { presets } = directState();
+  const on = new Set([...e.target.querySelectorAll('#directPresets input:checked')].map((c) => c.value));
+  const entries = presets.filter((p) => on.has(p.id)).flatMap((p) => p.entries)
+    .concat($('direct_custom').value.split('\n').map((l) => l.trim()).filter(Boolean));
+  const cur = ((overview.master.routing || {}).extraDirect || []);
+  const norm = (l) => /^(domain|full):|\//.test(l) ? l : (/^[\d.]+$/.test(l) ? l + '/32' : 'domain:' + l.toLowerCase());
+  const a = [...new Set(entries.map(norm))].sort().join('\n'), b = [...cur].sort().join('\n');
+  if (a === b) { $('dlgDirect').close(); return; }
+  start('/api/routing/direct', { entries }, e.target);
+});
 function switchToReserve() {
   closeMenus(); $('dlgDomains').close();
   const rsv = overview.master.reserveDomains[0], cur = overview.master.domain;

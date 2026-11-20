@@ -432,6 +432,7 @@
   <button role="menuitem" id="btnRole"><svg class="i"><use href="#i-net"/></svg><span>Роль и подключения<small>VPN-сервер, каскады, название</small></span></button>
   <hr>
   <button role="menuitem" id="btnDomains"><svg class="i"><use href="#i-globe"/></svg><span>Домены и адреса<small id="domainsNow"></small></span></button>
+  <button role="menuitem" id="btnDirect"><svg class="i"><use href="#i-ext"/></svg><span>Сайты напрямую, мимо VPN<small id="directNow"></small></span></button>
   <hr>
   <button role="menuitem" id="btnMasterAccess"><svg class="i"><use href="#i-key"/></svg><span>Адрес и доступ по SSH</span></button>
   <button role="menuitem" id="btnMasterRotate"><svg class="i"><use href="#i-refresh"/></svg><span>Сменить маскировку<small>Новые ключи подключений главного сервера</small></span></button>
@@ -565,6 +566,22 @@
     <input type="text" id="vpn_name" name="name" maxlength="40" placeholder="Например: Семейный VPN">
     <div class="hint">Одно название для всех пользователей. Приложения покажут его после следующего обновления подписки.
       Пустое поле — убрать название. Панель 3x-ui при сохранении перезапустится на несколько секунд.</div>
+    <div class="formerr" role="alert"></div>
+  </div>
+  <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Сохранить</button></div>
+</form></dialog>
+
+<dialog id="dlgDirect" class="wide"><form id="directForm">
+  <div class="dlg-h"><h2>Сайты напрямую, мимо VPN</h2><p>Эти сайты и сети открываются через обычный интернет пользователя, без VPN:
+    так быстрее и с российским адресом. Подходит для игр, банков и сервисов, которым VPN мешает.</p></div>
+  <div class="dlg-b">
+    <div class="rows domrows" id="directNowRows"></div>
+    <label class="f">Готовые наборы</label>
+    <div class="roles" id="directPresets"></div>
+    <label class="f" for="direct_custom">Свои сайты и сети</label>
+    <textarea id="direct_custom" rows="6" spellcheck="false" placeholder="example.com&#10;155.133.224.0/21"></textarea>
+    <div class="hint">По одному на строку: сайт (example.com — вместе со всеми его поддоменами) или адрес и сеть (1.2.3.4, 1.2.3.0/24).
+      При сохранении главный сервер перезапустит Xray — связь прервётся на пару секунд. На устройствах список появится после обновления подписки.</div>
     <div class="formerr" role="alert"></div>
   </div>
   <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Сохранить</button></div>

@@ -2,7 +2,7 @@
 // Classic scripts in order (see ui.html): top-level names are shared between the files.
 
 // ---------- job ----------
-const BUSY_IDS = ['btnRole', 'btnAppExport', 'btnAppImport', 'btnDomains', 'btnApply', 'btnUpgrade', 'btnAddNode', 'btnAddUser', 'btnRefresh', 'btnMasterAccess', 'btnFixAccess', 'btnRetry', 'btnPanels', 'btnBackup', 'btnMigrate', 'btnCheck', 'btnForce', 'btnMasterRotate'];
+const BUSY_IDS = ['btnRole', 'btnAppExport', 'btnAppImport', 'btnDomains', 'btnDirect', 'btnApply', 'btnUpgrade', 'btnAddNode', 'btnAddUser', 'btnRefresh', 'btnMasterAccess', 'btnFixAccess', 'btnRetry', 'btnPanels', 'btnBackup', 'btnMigrate', 'btnCheck', 'btnForce', 'btnMasterRotate'];
 function setBusy(busy) {
   for (const id of BUSY_IDS) if ($(id)) $(id).disabled = busy;
   document.querySelectorAll('[data-access], [data-click]').forEach((b) => { b.disabled = busy; });

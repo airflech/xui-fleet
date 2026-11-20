@@ -24,14 +24,14 @@ import yaml
 from . import api
 from . import geo
 from . import xrayconf as xc
-from .config import FleetConfig, append_node, set_node_label, update_server_access
+from .config import DIRECT_PRESETS, FleetConfig, append_node, set_node_label, update_server_access
 from .engine import Fleet
 from .reconcile import Report
 from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "сохранение пользователя: кнопка показывает «Сохраняю…», а само сохранение вчетверо быстрее (одно подключение к серверу)"
+WHATS_NEW = "«Сайты напрямую, мимо VPN» в меню главного сервера: видно, что идёт напрямую, готовые наборы Steam и CS2, свои сайты и сети"
 
 
 def _last_backup(fleet: Any) -> int:
@@ -576,6 +576,9 @@ class App:
                            "tls": tls.mode, "domain": tls.domain or "", "reserveDomains": list(tls.reserve_domains),
                            "addressMode": tls.address_mode, "allowedApps": list(cfg.clients.allowed_apps),
                            "vpnName": cfg.clients.vpn_name, "supportUrl": cfg.clients.support_url,
+                           "routing": {"extraDirect": list(cfg.routing.extra_direct), "ruOnMaster": cfg.routing.ru_direct_on_master,
+                                       "clientProfile": cfg.routing.client_profile,
+                                       "presets": [dict(v, id=k) for k, v in DIRECT_PRESETS.items()]},
                            "access": access(cfg.master), "vpn": cfg.master.vpn, "cascades": cfg.master.cascades, "warp": cfg.master.warp,
                            "labelText": cfg.master.label or "", "flag": cfg.master.flag or "auto", "hide": list(cfg.master.hide),
                            "country": state.get(cfg.master.name, "country") or "",

@@ -341,6 +341,87 @@ def set_vpn_name(path: Path, name: str) -> None:
     _save_doc(path, doc)
 
 
+# Ready-made sets for «Сайты напрямую». Domains only where a name is known; games reach their servers by address,
+# so CS2 carries Valve's own networks (AS32590, announced IPv4 prefixes, 2026-11).
+DIRECT_PRESETS = {
+    "steam": {"title": "Steam", "hint": "магазин, библиотека, сообщество, загрузка игр",
+              "entries": ["domain:steampowered.com", "domain:steamcommunity.com", "domain:steamstatic.com",
+                          "domain:steamcontent.com", "domain:steamserver.net", "domain:steamgames.com",
+                          "domain:steamusercontent.com", "domain:steam-chat.com", "domain:valvesoftware.com"]},
+    "cs2": {"title": "CS2 и игровые серверы Valve", "hint": "матчи CS2, Dota 2 и других игр Valve",
+            "entries": ["domain:counter-strike.net", "45.121.184.0/24", "103.10.124.0/23", "103.28.54.0/24",
+                        "146.66.152.0/24", "146.66.155.0/24", "155.133.224.0/21", "155.133.236.0/22", "155.133.240.0/23",
+                        "155.133.244.0/24", "155.133.246.0/24", "155.133.248.0/22", "155.133.252.0/24",
+                        "155.133.254.0/23", "162.254.192.0/21", "185.25.180.0/24", "185.25.182.0/23", "192.69.96.0/22",
+                        "205.196.6.0/24", "208.64.200.0/22", "208.78.164.0/22"]},
+}
+
+
+def normalize_direct_entry(value: str) -> str:
+    """One line of «Сайты напрямую» in the form Xray and the apps read: a site (steampowered.com, a link or
+    domain:/full: as is), an address or a network (1.2.3.4, 10.0.0.0/8, IPv6). Categories (geosite:, geoip:) are
+    refused here: a name missing from the geo files of Xray or of the app stops the whole connection."""
+    import ipaddress
+    import re as _re
+    v = str(value or "").strip()
+    low = v.lower()
+    if low.startswith(("geosite:", "geoip:")):
+        raise ValueError(f"«{v}»: категории geosite/geoip не принимаются — если такой нет в базе сервера или приложения, "
+                         "VPN перестанет работать. Укажите сайты или сети")
+    try:
+        net = ipaddress.ip_network(v, strict=False)
+    except ValueError:
+        net = None
+    if net is not None:
+        return str(net) if "/" in v else (str(net.network_address) + ("/32" if net.version == 4 else "/128"))
+    kind = "domain"
+    m = _re.match(r"^(domain|full):(.*)$", low)
+    if m:
+        kind, low = m.group(1), m.group(2).strip()
+    host = _re.sub(r"^[a-z][a-z0-9+.-]*://", "", low).split("/")[0].split("?")[0].split(":")[0].strip(".")
+    if host.startswith("*."):
+        host = host[2:]
+    try:
+        host = host.encode("idna").decode("ascii")  # кириллические домены: сайт.рф → xn--…
+    except UnicodeError:
+        raise ValueError(f"«{v}»: не похоже на сайт или сеть") from None
+    if not _re.fullmatch(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9-]{2,63}", host):
+        raise ValueError(f"«{v}»: не похоже на сайт или сеть — пример: steampowered.com, 155.133.224.0/21")
+    return f"{kind}:{host}"
+
+
+def normalize_direct(entries: List[str], keep: Optional[List[str]] = None) -> List[str]:
+    """Every line checked and written the same way; empty lines and repeats dropped, the order kept. Lines already
+    in the settings (`keep`, e.g. a geosite: written into fleet.yaml by hand) stay as they are."""
+    out: List[str] = []
+    for line in entries or []:
+        line = str(line or "").split("#", 1)[0].strip()
+        if not line:
+            continue
+        entry = line if line in (keep or []) else normalize_direct_entry(line)
+        if entry not in out:
+            out.append(entry)
+    if len(out) > 1000:
+        raise ValueError("слишком длинный список: не больше 1000 строк")
+    return out
+
+
+def set_extra_direct(path: Path, entries: List[str]) -> List[str]:
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    routing = doc.get("routing") or {}
+    entries = normalize_direct(entries, keep=list(routing.get("extra_direct") or []))
+    if entries:
+        routing["extra_direct"] = entries
+    else:
+        routing.pop("extra_direct", None)
+    if routing:
+        doc["routing"] = routing
+    else:
+        doc.pop("routing", None)
+    _save_doc(path, doc)
+    return entries
+
+
 def set_allowed_apps(path: Path, apps: List[str]) -> None:
     doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     clients = doc.get("clients") or {}

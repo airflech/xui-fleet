@@ -203,3 +203,34 @@ def test_saving_the_user_card_shows_progress_and_the_result(page_url):
         assert page.locator("#uiBody form.uform [name=comment]").input_value() == "работа"
         browser.close()
     assert not errors, errors
+
+
+def test_direct_sites_dialog_shows_the_current_list_and_saves_sets_and_own_lines(page_url):
+    """«Сайты напрямую»: the dialog says what goes direct now and where, ticks a ready-made set, keeps one's own lines."""
+    import json
+    from xui_fleet.config import DIRECT_PRESETS
+    errors, sent = [], []
+    with playwright.sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1100, "height": 800})
+        page.on("pageerror", lambda exc: errors.append(f"pageerror: {exc}"))
+
+        def save(route):
+            sent.append(json.loads(route.request.post_data or "{}"))
+            route.fulfill(json={"ok": True})
+        page.route("**/api/routing/direct", save)
+        page.goto(page_url)
+        page.wait_for_function("typeof overview !== 'undefined' && overview && overview.configured")
+        page.evaluate("showTab('servers'); openDirect()")
+        page.wait_for_selector("#dlgDirect[open]")
+        text = page.inner_text("#dlgDirect")
+        assert "Сейчас напрямую" in text and "российские сайты" in text and "Happ и INCY" in text
+        assert "Steam" in text and "CS2" in text
+        page.check("#directPresets input[value=steam]")
+        page.fill("#direct_custom", "example.org\n10.1.0.0/16")
+        page.click("#directForm button[type=submit]")
+        page.wait_for_timeout(500)
+        assert len(sent) == 1
+        assert sent[0]["entries"] == DIRECT_PRESETS["steam"]["entries"] + ["example.org", "10.1.0.0/16"]
+        browser.close()
+    assert not errors, errors

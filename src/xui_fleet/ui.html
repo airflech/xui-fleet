@@ -456,6 +456,7 @@
 <div class="menu hidden" id="nodeMenu" role="menu">
   <button role="menuitem" data-act="label"><span>Название и подключения</span></button>
   <button role="menuitem" data-act="access"><span>Адрес и доступ по SSH</span></button>
+  <button role="menuitem" data-act="apply"><span>Перенастроить этот сервер<small>Проверить по SSH и вернуть его настройки и каскад; другие не трогаются</small></span></button>
   <button role="menuitem" data-act="rotate"><span>Сменить маскировку<small>Если подключения к серверу начали блокировать</small></span></button>
   <hr>
   <button role="menuitem" data-act="remove" class="danger"><span>Удалить сервер</span></button>
@@ -495,6 +496,12 @@
     <label class="f" for="u_name">Имя</label>
     <input type="text" id="u_name" name="name" required pattern="[\p{L}\p{N}._@\-]+" placeholder="Например, Аня-phone">
     <div class="hint">Буквы (можно кириллицей), цифры, точка, дефис — без пробелов.</div>
+    <div class="grid2" style="margin-top:12px">
+      <div><label class="f" for="u_term">Доступ</label>
+        <select id="u_term"><option value="0">без срока</option><option value="1">на 1 месяц</option><option value="3">на 3 месяца</option><option value="12">на 1 год</option></select></div>
+      <div><label class="f" for="u_comment">Комментарий</label><input type="text" id="u_comment" name="comment" maxlength="200" placeholder="Например: телефон мамы"></div>
+    </div>
+    <div class="hint">Срок можно продлить потом в карточке пользователя; Happ заранее напомнит об окончании.</div>
     <div class="formerr" role="alert"></div>
   </div>
   <div class="dlg-f"><button type="button" class="btn" data-close>Отмена</button><button class="btn primary" type="submit">Создать</button></div>

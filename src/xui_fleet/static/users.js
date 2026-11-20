@@ -9,8 +9,14 @@ function lastSeen(ts) {
   if (min < 1) return 'был только что';
   if (min < 60) return 'был ' + min + ' мин назад';
   const h = Math.round(min / 60);
-  if (h < 48) return 'был ' + h + ' ч назад';
-  return 'был ' + new Date(ms).toLocaleDateString('ru-RU');
+  if (h < 12) return 'был ' + h + ' ч назад';
+  // older: a day and a time people read at a glance — «вчера в 17:15», «пн в 09:40», then the date
+  const d = new Date(ms), t = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(ms).setHours(0, 0, 0, 0)) / 86400000);
+  if (days === 0) return 'был сегодня в ' + t;
+  if (days === 1) return 'был вчера в ' + t;
+  if (days < 7) return 'был ' + d.toLocaleDateString('ru-RU', { weekday: 'short' }) + ' в ' + t;
+  return 'был ' + d.toLocaleDateString('ru-RU');
 }
 function deviceOf(name) {
   const m = name.toLowerCase().match(/[-_ .](iphone|phone|android|ipad|tablet|pc|laptop|notebook|macbook|mac-?os|mac|windows|win|linux|tv)$/);
@@ -137,7 +143,11 @@ function renderUsers() {
     const dev = deviceOf(name); if (dev) t.appendChild(el('span', 'device', dev));
     g.appendChild(t);
     const st = userStats && userStats[name];
-    g.appendChild(el('div', 'meta', on ? 'онлайн сейчас' + (st && st.servers.length ? ' · ' + st.servers.map(serverLabel).join(', ') : '') : lastSeen(seen[name])));
+    // the server only when it says something: with cascades everyone comes in through the main one
+    const mname = overview && overview.master ? overview.master.name : '';
+    const where = st && st.servers.length && !(st.servers.length === 1 && st.servers[0] === mname) ? ' · ' + st.servers.map(serverLabel).join(', ') : '';
+    const until = st && st.expiry > 0 && st.expiry - Date.now() > 7 * DAY ? ' · до ' + new Date(st.expiry).toLocaleDateString('ru-RU') : '';
+    g.appendChild(el('div', 'meta', (on ? 'онлайн сейчас' + where : lastSeen(seen[name])) + until));
     if (st) g.appendChild(statLine(st));
     r.appendChild(g);
     const b = el('button', 'btn sm'); b.appendChild(icon('copy')); b.appendChild(document.createTextNode('Ссылка'));

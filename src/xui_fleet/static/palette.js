@@ -20,13 +20,23 @@ function paletteItems(q) {
   for (const [name, url] of users) {
     const st = userStats && userStats[name];
     const sub = online.has(name) ? 'онлайн' : (st ? fmtBytes(st.used) : '');
-    add('Пользователи', name, sub, () => { showTab('users'); openUserInfo(name); }, 'пользователь открыть карточка');
+    const short = shortName(name);  // as in the list; the full name still matches the search
+    add('Пользователи', short, sub, () => { showTab('users'); openUserInfo(name); }, 'пользователь открыть карточка ' + name);
     if (q) {
-      add('Пользователи', 'Скопировать ссылку: ' + name, 'подписка', () => copy(url, 'Подписка ' + name), 'ссылка подписка копировать');
-      add('Пользователи', 'Приглашение: ' + name, 'ссылка и три шага', () => openInvite(name, url, false), 'приглашение отправить инструкция');
-      add('Пользователи', 'Сбросить трафик: ' + name, st ? 'сейчас ' + fmtBytes(st.used) : '', () => confirmAction('Сбросить трафик ' + name + '?',
+      add('Пользователи', 'Скопировать ссылку: ' + short, 'подписка', () => copy(url, 'Подписка ' + short), 'ссылка подписка копировать ' + name);
+      add('Пользователи', 'Приглашение: ' + short, 'ссылка и три шага', () => openInvite(name, url, false), 'приглашение отправить инструкция ' + name);
+      if (st) {  // the everyday one: a month more, counted from the current end (or from today if it has passed)
+        const end = new Date(Math.max(Date.now(), st.expiry > 0 ? st.expiry : 0));
+        end.setMonth(end.getMonth() + 1); end.setHours(23, 59, 59, 0);
+        add('Пользователи', 'Продлить на месяц: ' + short, st.expiry > 0 ? 'сейчас до ' + new Date(st.expiry).toLocaleDateString('ru-RU') : 'сейчас бессрочно',
+          () => confirmAction('Продлить ' + short + ' до ' + end.toLocaleDateString('ru-RU') + '?', 'Подписка будет работать до конца этого дня.',
+            () => userAction('/api/user/edit', { name, comment: st.comment || '', totalGb: st.quota ? +(st.quota / 1024 ** 3).toFixed(3) : 0,
+              expiry: end.getTime(), enabled: true, devices: st.limitDevices || 0, ips: st.limitIp || 0 }, null,
+              'Продлено до ' + end.toLocaleDateString('ru-RU')), 'Продлить'), 'продлить срок месяц оплата ' + name);
+      }
+      add('Пользователи', 'Сбросить трафик: ' + short, st ? 'сейчас ' + fmtBytes(st.used) : '', () => confirmAction('Сбросить трафик ' + short + '?',
         'Счётчик начнётся с нуля. Если пользователь был выключен из-за лимита трафика, он снова заработает.',
-        () => userAction('/api/user/reset', { name }, null, 'Трафик сброшен')), 'сбросить трафик обнулить');
+        () => userAction('/api/user/reset', { name }, null, 'Трафик сброшен')), 'сбросить трафик обнулить ' + name);
     }
   }
   // servers: show the card (and its place on the map)

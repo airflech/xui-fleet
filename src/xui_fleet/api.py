@@ -308,6 +308,10 @@ def _panel_password(c: Call):
 
 @post("/api/apply")
 def _apply(c: Call):
+    name = c.body.get("name")
+    if name:  # one server: its own setup and its cascade; the others are left as they are
+        c.app.fleet().cfg.node(name)  # an unknown name fails here, before a job starts
+        return c.run(f"Перенастройка сервера {name}", lambda log: c.app.fleet(log).apply({name}))
     title = "Исправление расхождений" if c.body.get("fix") else "Перенастройка всех серверов"
     return c.run(title, lambda log: c.app.fleet(log).apply())
 
@@ -458,10 +462,13 @@ def _inbound(c: Call):
 
 
 # ---------------------------------------------------------------- users
-@post("/api/user", needs={"name": "str"})
+@post("/api/user", needs={"name": "str", "expiry": "int?", "comment": "str?"})
 def _user_add(c: Call):
     name = c.body["name"]
-    return c.run(f"Создание пользователя {name}", lambda log: "Подписка создана: " + c.app.fleet(log).add_user(name))
+    from . import stats
+    fields = stats.user_fields({"comment": c.body.get("comment"), "expiry": c.body.get("expiry")})  # checked before a job starts
+    return c.run(f"Создание пользователя {name}", lambda log: "Подписка создана: " + c.app.fleet(log).add_user(
+        name, comment=fields["comment"], expiry_ms=fields["expiryTime"]))
 
 
 @post("/api/user/delete", needs={"name": "str"})

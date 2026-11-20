@@ -33,12 +33,13 @@ function renderInbounds() {
       if (!i.enabled) t.appendChild(el('span', 'tag bad', 'выключено'));
       else if (i.hidden) t.appendChild(el('span', 'tag', 'скрыто из подписки'));
       g.appendChild(t);
-      const proto = [i.managed ? KIND[i.kind] : null, i.protocol, i.network, i.security].filter(Boolean).join(' · ');
+      // the transport only when it says more than the protocol (Hysteria runs over its own: «hysteria · hysteria»)
+      const proto = [i.managed ? KIND[i.kind] : null, i.protocol, i.network !== i.protocol ? i.network : null, i.security].filter(Boolean).join(' · ');
       g.appendChild(el('div', 'meta', proto + ' · порт ' + i.port + (i.protocol === 'hysteria' ? '/udp' : '/tcp')));
       const st = el('div', 'ustats');
       const add = (ic, text, title) => { const sp = el('span'); sp.appendChild(icon(ic)); sp.appendChild(document.createTextNode(text)); sp.title = title; st.appendChild(sp); };
       add('chart', fmtBytes(i.up + i.down), 'Трафик через это входящее: отдано ' + fmtBytes(i.up) + ', получено ' + fmtBytes(i.down));
-      add('user', String(i.clients), 'Клиентов в этом входящем');
+      add('user', i.clients + ' клиент' + (i.clients % 10 === 1 && i.clients % 100 !== 11 ? '' : [2, 3, 4].includes(i.clients % 10) && ![12, 13, 14].includes(i.clients % 100) ? 'а' : 'ов'), 'Клиентов в этом входящем');
       g.appendChild(st);
       r.appendChild(g);
       if (!i.service) {

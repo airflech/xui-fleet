@@ -1578,7 +1578,9 @@ class Fleet:
         finally:
             ssh.close()
 
-    def add_user(self, name: str, comment: str = "", total_gb: float = 0) -> str:
+    def add_user(self, name: str, comment: str = "", total_gb: float = 0, expiry_ms: int = 0) -> str:
+        """Create a user; `expiry_ms` (epoch ms, 0 — no end) is set in the panel right away, so a person given a
+        month gets exactly a month without a second step in the card."""
         from .config import UserConfig
         self.cfg.users.append(UserConfig(name=name, comment=comment, total_gb=total_gb))
         with self.master_panel(provision=False) as panel:
@@ -1587,6 +1589,9 @@ class Fleet:
             rec._collect_subscriptions()
             if name not in rec.report.subscriptions:
                 raise FleetError("пользователь не создан: на мастере ещё нет ни одного inbound (сначала `apply`)")
+            if expiry_ms > 0:
+                panel.update_client(name, {"expiryTime": int(expiry_ms)})
+                self.log(f"{name}: доступ до {time.strftime('%d.%m.%Y', time.localtime(expiry_ms / 1000))}")
             return rec.report.subscriptions[name]
 
     def subscriptions(self) -> Dict[str, str]:

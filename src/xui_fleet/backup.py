@@ -55,7 +55,11 @@ def db_summary(data: bytes) -> Dict[str, int]:
             if con.execute("pragma integrity_check").fetchone()[0] != "ok":
                 raise ValueError("база в бэкапе повреждена")
             count = lambda t: con.execute(f"select count(*) from {t}").fetchone()[0]  # noqa: E731
-            return {"inbounds": count("inbounds"), "clients": count("clients"), "nodes": count("nodes")}
+            try:  # people, as the «Пользователи» tab counts them: xui-fleet's own service clients left out
+                clients = con.execute("select count(*) from clients where email not like 'fleet-%'").fetchone()[0]
+            except sqlite3.Error:  # a panel without that column: all of them
+                clients = count("clients")
+            return {"inbounds": count("inbounds"), "clients": clients, "nodes": count("nodes")}
         finally:
             con.close()
 

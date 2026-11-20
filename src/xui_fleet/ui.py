@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "кнопка «Обновить» вдвое быстрее и не стирает карточки; задержка с этого компьютера меряется в обход включённого VPN (раньше VPN подменял цифры)"
+WHATS_NEW = "WARP чинится сам; срок доступа при создании пользователя; «Продлить на месяц» в поиске; «Перенастроить этот сервер»; честная статистика трафика и доступность WARP"
 
 
 def _last_backup(fleet: Any) -> int:
@@ -193,6 +193,64 @@ def route_rtts(cfg: Any) -> Dict[str, Any]:
 FAKE_PROBE = "192.0.2.1"
 
 
+def resolve_direct(name: str, iface: str, servers: Tuple[str, ...] = ("77.88.8.8", "1.1.1.1")) -> Optional[str]:
+    """IPv4 address of `name` asked straight from a public DNS through `iface`. A VPN in TUN mode answers the
+    system's own lookups with made-up addresses (198.18.x.x), which lead nowhere outside it."""
+    import random
+    import socket
+    import struct
+    qid = random.randint(0, 0xFFFF)
+    q = struct.pack(">HHHHHH", qid, 0x0100, 1, 0, 0, 0) + b"".join(
+        bytes([len(p)]) + p.encode("idna") for p in name.rstrip(".").split(".")) + b"\0" + struct.pack(">HH", 1, 1)
+    from .ssh import _IP_BOUND_IF
+    for server in servers:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.setsockopt(socket.IPPROTO_IP, _IP_BOUND_IF, socket.if_nametoindex(iface))
+            sock.settimeout(2)
+            sock.sendto(q, (server, 53))
+            data = sock.recv(1500)
+        except OSError:
+            continue
+        finally:
+            sock.close()
+        got = parse_dns_a(data, qid)
+        if got:
+            return got
+    return None
+
+
+def parse_dns_a(data: bytes, qid: int) -> Optional[str]:
+    """The first A record of a DNS answer to query `qid`, or None."""
+    import struct
+    if len(data) < 12 or struct.unpack(">H", data[:2])[0] != qid:
+        return None
+    qd, an = struct.unpack(">HH", data[4:8])
+    pos = 12
+
+    def skip_name(i: int) -> int:
+        while i < len(data):
+            n = data[i]
+            if n == 0:
+                return i + 1
+            if n & 0xC0 == 0xC0:
+                return i + 2
+            i += n + 1
+        return i
+    for _ in range(qd):
+        pos = skip_name(pos) + 4
+    for _ in range(an):
+        pos = skip_name(pos)
+        if pos + 10 > len(data):
+            return None
+        rtype, _cls, _ttl, rdlen = struct.unpack(">HHIH", data[pos:pos + 10])
+        pos += 10
+        if rtype == 1 and rdlen == 4:
+            return ".".join(str(b) for b in data[pos:pos + 4])
+        pos += rdlen
+    return None
+
+
 def domain_reachability(tls: Any, users: Dict[str, str]) -> Dict[str, bool]:
     """Does the subscription answer on each domain from this computer (DNS, TCP and a valid certificate)?
     This is the user's own network, so a domain blocked by the provider shows up here first."""
@@ -204,10 +262,22 @@ def domain_reachability(tls: Any, users: Dict[str, str]) -> Dict[str, bool]:
         return {}
     port = urlparse(next(iter(users.values()))).port or 443
     domains = [tls.domain] + [d for d in tls.reserve_domains if d != tls.domain]
+    from .ssh import _IP_BOUND_IF, _physical_interface
+    iface = _physical_interface()  # macOS: around a running VPN, as the users' own network sees it
 
     def check(domain: str) -> bool:
         try:
-            with socket.create_connection((domain, port), timeout=4) as raw:
+            if iface:
+                ip = resolve_direct(domain, iface)
+                if not ip:
+                    return False
+                raw = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                raw.setsockopt(socket.IPPROTO_IP, _IP_BOUND_IF, socket.if_nametoindex(iface))
+                raw.settimeout(4)
+                raw.connect((ip, port))
+            else:
+                raw = socket.create_connection((domain, port), timeout=4)
+            with raw:
                 with ssl.create_default_context().wrap_socket(raw, server_hostname=domain):
                     return True
         except (OSError, ssl.SSLError):
@@ -850,16 +920,21 @@ def serve(config_path: Path, port: int = 8787, open_browser: bool = True, servic
                         done = hs.record(fleet, hs.History(app.path))
                         # A server whose Reality failed twice in a row: switch its masking site by itself (at most
                         # once an hour per server), as an operation everyone sees in the log and the history.
+                        # The same for WARP that stopped passing traffic: its entry point is picked again (at most
+                        # once in 3 hours per server: Cloudflare's own trouble passes by itself, and each try
+                        # restarts Xray on that server for a moment).
+                        heals = {"reality-dead": ("reality_heal_at", 3600, "Автозамена сайта маскировки на {}", "heal_reality"),
+                                 "warp-dead": ("warp_heal_at", 3 * 3600, "Автопочинка WARP на {}", "fix_warp")}
                         for item in done:
-                            if not item.startswith("reality-dead:") or app.job.running:
+                            kind, _, name = item.partition(":")
+                            if kind not in heals or app.job.running:
                                 continue
-                            name = item.split(":", 1)[1]
-                            last = float(fleet.state.get(name, "reality_heal_at") or 0)
-                            if time.time() - last < 3600:
+                            key, pause, title, method = heals[kind]
+                            if time.time() - float(fleet.state.get(name, key) or 0) < pause:
                                 continue
-                            fleet.state.update(name, reality_heal_at=time.time())
-                            app.job.start(f"Автозамена сайта маскировки на {name}",
-                                          lambda log, n=name: app.fleet(log).heal_reality(n), scope=str(app.path))
+                            fleet.state.update(name, **{key: time.time()})
+                            app.job.start(title.format(name), lambda log, n=name, m=method: getattr(app.fleet(log), m)(n),
+                                          scope=str(app.path))
             except Exception as exc:  # a server that does not answer is just a gap in the history
                 print(f"история: {exc}", flush=True)
             time.sleep(60)

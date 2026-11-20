@@ -56,7 +56,7 @@ function renderAttention() {
       const label = name === m.name ? 'WARP с главного сервера' : (splitFlag(nd ? nd.display || nd.name : name)[1] || name) + ': WARP';
       add(label + ' не работает — починить', true, () => confirmAction('Починить ' + label + '?',
         'Приложение заново выберет точку входа Cloudflare (с выходом за границей), перезапустит Xray на этом сервере и проверит WARP '
-        + 'настоящим трафиком. Займёт около минуты; остальные подключения сервера на пару секунд переподключатся.',
+        + 'настоящим трафиком. Займёт около минуты; остальные подключения сервера на пару секунд переподключатся. После двух неудачных проверок подряд (10 минут) это делается само — не чаще раза в 3 часа.',
         () => start('/api/warp/fix', { name }), 'Починить'));
     }
     // Reality on a server stopped answering (the same 5-minute check): usually its borrowed masking site died; the
@@ -640,17 +640,24 @@ function renderServers() {
       const s = el('div', 'stats');
       // Users connected straight to this server (from the user statistics); people who come through RU
       // are counted on the main server. Before the statistics arrive: the panel's own counter.
-      const direct = userStats ? Object.values(userStats).filter((u) => (u.servers || []).includes(n.name)).length : null;
-      const os = stat(direct == null ? 'Онлайн' : 'Напрямую', String(direct == null ? (info.online ?? 0) : direct));
-      os.title = direct == null ? 'Клиентов на сервере сейчас (по данным панели)'
-        : 'Пользователей, подключённых прямо к этому серверу; кто идёт через ' + hub() + ' — в «Онлайн всего» главного сервера';
-      s.appendChild(os);
+      // ...shown only when users can connect straight to it: with its direct entries hidden, it would be a lasting 0
+      const way = live.routes && live.routes.nodes ? live.routes.nodes[n.name] : null;
+      if (!way || way.direct) {
+        const direct = userStats ? Object.values(userStats).filter((u) => (u.servers || []).includes(n.name)).length : null;
+        const os = stat(direct == null ? 'Онлайн' : 'Напрямую', String(direct == null ? (info.online ?? 0) : direct));
+        os.title = direct == null ? 'Клиентов на сервере сейчас (по данным панели)'
+          : 'Пользователей, подключённых прямо к этому серверу; кто идёт через ' + hub() + ' — в «Онлайн всего» главного сервера';
+        s.appendChild(os);
+      }
       s.appendChild(stat('CPU', (info.cpu ?? 0) + '%', info.cpu));
       s.appendChild(stat('Память', (info.mem ?? 0) + '%', info.mem));
       card.appendChild(s);
     }
     const f = el('div', 'card-f');
-    const way = n.cascade && n.direct ? 'через ' + hub() + ' и напрямую' : n.cascade ? 'только через ' + hub() : n.direct ? 'только напрямую' : 'подключений нет';
+    // what users really have (entries switched on and in subscriptions), not just what the settings allow
+    const real = live && live.routes && live.routes.nodes ? live.routes.nodes[n.name] : null;
+    const viaRu = real ? real.cascade : n.cascade, straight = real ? real.direct : n.direct;
+    const way = viaRu && straight ? 'через ' + hub() + ' и напрямую' : viaRu ? 'только через ' + hub() : straight ? 'только напрямую' : 'подключений нет';
     f.appendChild(el('span', null, way));
     if (info && info.panel) { const sp = el('span'); sp.style.flex = '1'; f.appendChild(sp); const v = el('span', 'mono', 'v' + info.panel); v.title = 'Версия 3x-ui'; f.appendChild(v); }
     card.appendChild(f);

@@ -6,12 +6,14 @@ document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('cli
 document.querySelectorAll('[data-click]').forEach((b) => b.addEventListener('click', () => $(b.dataset.click).click()));
 document.querySelectorAll('dialog').forEach((d) => d.addEventListener('click', (e) => { if (e.target === d) d.close(); }));
 $('s_tls').addEventListener('change', () => $('s_domain_box').classList.toggle('hidden', $('s_tls').value !== 'domain'));
-$('setupForm').addEventListener('submit', (e) => { e.preventDefault(); start('/api/setup', formData(e.target), e.target); });
+$('setupForm').addEventListener('submit', (e) => { e.preventDefault(); showTab('servers'); start('/api/setup', formData(e.target), e.target); });  // a new network opens on its servers, not on the tab the last one was left on
 $('nodeForm').addEventListener('submit', async (e) => { e.preventDefault(); if (await start('/api/node', formData(e.target), e.target)) resetForm(e.target); });
 $('userForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const name = e.target.querySelector('[name=name]').value.trim();
-  if (await start('/api/user', formData(e.target), e.target)) { pendingInvite = name; resetForm(e.target); }
+  const body = formData(e.target), months = +$('u_term').value;
+  if (months) { const end = new Date(); end.setMonth(end.getMonth() + months); end.setHours(23, 59, 59, 0); body.expiry = end.getTime(); }
+  if (await start('/api/user', body, e.target)) { pendingInvite = name; resetForm(e.target); $('u_term').value = '0'; }
 });
 $('accessForm').addEventListener('submit', (e) => { e.preventDefault(); start('/api/access', formData(e.target), e.target); });
 $('btnMasterAccess').addEventListener('click', () => { closeMenus(); openAccess(overview.master, 'Доступ к главному серверу'); });
@@ -223,7 +225,7 @@ function renderDomains() {
     if (!(mainDown && rsvUp)) row('Если основной заблокируют', 'Резервный станет основным', null, 'Перейти на ' + rsv, switchToReserve);
   }
   $('domHint').textContent = !live || !live.domains ? 'Доступность появится после загрузки состояния серверов.'
-    : 'Проверка с этого компьютера: если здесь включён VPN, результат может отличаться от сети пользователей.';
+    : 'Проверка с этого компьютера, в обход включённого VPN (на macOS; на Windows и Linux VPN может исказить результат).';
 }
 $('btnDomains').addEventListener('click', () => { closeMenus(); renderDomains(); $('dlgDomains').showModal(); });
 $('domCheck').addEventListener('click', async () => { await loadLive(true); renderDomains(); });

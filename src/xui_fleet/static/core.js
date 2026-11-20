@@ -73,7 +73,12 @@ $('nodeMenu').addEventListener('click', (e) => {
   const n = menuNode; closeMenus();
   if (b.dataset.act === 'label') openLabel(n);
   else if (b.dataset.act === 'access') openAccess(n, 'Доступ к серверу ' + (n.display || n.name));
-  else if (b.dataset.act === 'rotate') askRotate(n.name, splitFlag(n.display || n.name)[1] || n.name, true);
+  else if (b.dataset.act === 'apply') {
+    const label = splitFlag(n.display || n.name)[1] || n.name;
+    confirmAction('Перенастроить ' + label + '?', 'Приложение зайдёт на сервер по SSH, проверит 3x-ui, подключения и WARP и вернёт то, что разошлось с настройками; '
+      + 'затем обновит каскад с главного сервера. Остальные серверы не трогаются. Подключения к этому серверу могут прерваться на несколько секунд.',
+      () => start('/api/apply', { name: n.name }), 'Перенастроить');
+  } else if (b.dataset.act === 'rotate') askRotate(n.name, splitFlag(n.display || n.name)[1] || n.name, true);
   else openRemove(n);
 });
 
@@ -139,8 +144,26 @@ function openLabel(n) {
   form.querySelector('[name=name]').value = n.name;
   form.querySelector('[name=label]').value = splitFlag(n.label)[1];
   const sel = form.querySelector('[name=flag]'); fillFlags(sel, n.country); sel.value = n.flag || 'auto';
-  for (const k of ['cascade', 'cascade_xhttp', 'cascade_hy2', 'cascade_warp', 'direct', 'xhttp', 'hy2', 'warp'])
-    form.querySelector('[name=show_' + k + ']').checked = !(n.hide || []).includes(k);
+  for (const k of ['cascade', 'cascade_xhttp', 'cascade_hy2', 'cascade_warp', 'direct', 'xhttp', 'hy2', 'warp']) {
+    const box = form.querySelector('[name=show_' + k + ']');
+    box.checked = !(n.hide || []).includes(k);
+    const note = box.parentElement.querySelector('.state'); if (note) note.remove();
+  }
+  // A ticked box does not mean users have it: the entry may be switched off in «Входящие» or not exist at all
+  // (that kind is off for the server). Say so next to it, from the panel itself.
+  const KINDS = { cascade: 'cascade', cascade_xhttp: 'rxh', cascade_hy2: 'rhy2', cascade_warp: 'rwarp', direct: 'direct', xhttp: 'xhttp', hy2: 'hy2', warp: 'warp' };
+  api('/api/inbounds').then((d) => {
+    if (!d || !d.inbounds || !$('dlgLabel').open) return;
+    for (const [k, kind] of Object.entries(KINDS)) {
+      const ib = d.inbounds.find((i) => i.managed && i.owner === n.name && i.kind === kind);
+      const text = !ib ? 'нет на сервере' : !ib.enabled ? 'выключено во «Входящих»' : '';
+      if (!text) continue;
+      const lab = form.querySelector('[name=show_' + k + ']').parentElement;
+      const sp = el('small', 'state muted', ' — ' + text); sp.title = !ib ? 'Этот тип подключения у сервера не создан'
+        : 'Подключение есть, но выключено: пользователи его не получат, даже с галочкой. Включается во вкладке «Входящие»';
+      lab.appendChild(sp);
+    }
+  }).catch(() => {});
   $('labelTitle').textContent = 'Название и подключения';
   $('labelPreview').textContent = 'Сейчас у пользователей: «' + (n.display || n.name) + '» · ' + n.name;
   $('dlgLabel').showModal();

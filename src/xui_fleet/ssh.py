@@ -119,6 +119,16 @@ class SSH:
                 f"{self.name}: сервер {self.host}:{kwargs['port']} недоступен по SSH ({exc}). "
                 f"Проверьте адрес и порт."
             ) from exc
+        except paramiko.SSHException as exc:
+            text = str(exc)
+            if any(k in text for k in ("No existing session", "banner", "EOF", "reset")):
+                # The connection opened and closed at once: nothing answers there (a VPN on this computer accepts
+                # every connection itself and then drops it), or the port is not SSH.
+                raise SSHError(
+                    f"{self.name}: сервер {self.host}:{kwargs['port']} не ответил по SSH — соединение сразу закрылось. "
+                    f"Проверьте адрес и порт SSH; сервер может быть ещё выключен или недоступен из вашей сети."
+                ) from exc
+            raise SSHError(f"{self.name}: не удалось подключиться по SSH к {self.host}: {text}") from exc
         except Exception as exc:  # paramiko raises a zoo of types
             raise SSHError(f"{self.name}: не удалось подключиться по SSH к {self.host}: {exc}") from exc
         client.get_transport().set_keepalive(20)  # type: ignore[union-attr]

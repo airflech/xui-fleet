@@ -50,7 +50,7 @@ async function loadUserStats() {
 let infoUser = null;
 async function openUserInfo(name) {
   infoUser = name;
-  $('uiName').textContent = name; $('uiLead').textContent = 'Загружаю с главного сервера…';
+  $('uiName').textContent = shortName(name); $('uiName').title = name; $('uiLead').textContent = 'Загружаю с главного сервера…';
   const body = $('uiBody'); body.textContent = '';
   // What the list already knows shows at once; devices and IPs follow from the master.
   if (userStats && userStats[name]) renderUserInfo(Object.assign({}, userStats[name], { partial: true }));
@@ -201,7 +201,9 @@ async function userAction(path, body, errBox, done) {
   try {
     const r = await api(path, body);
     const f = $('uiBody').querySelector('form.uform'); if (f) delete f.dataset.dirty;  // saved: show what the server has
-    renderUserInfo(r.user); if (done) toast(done);
+    if ($('dlgUserInfo').open) renderUserInfo(r.user);
+    loadUserStats();  // the list shows the new date / traffic too (and the quick search, which has no card open)
+    if (done) toast(done);
   }
   catch (e) { if (errBox) errBox.textContent = e.message; else toast(e.message); }
 }

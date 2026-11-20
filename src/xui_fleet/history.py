@@ -114,9 +114,12 @@ def traffic_sample(clients: Iterable[Dict[str, Any]], inbounds: Iterable[Dict[st
         total = int(i.get("up") or 0) + int(i.get("down") or 0)
         name = kind[1]
         if kind[0] in CASCADE_KINDS and not i.get("nodeId"):
-            routes.setdefault(name, {"ru": 0, "d": 0})["ru"] += total
+            r = routes.setdefault(name, {"ru": 0, "d": 0, "rb": 0})
+            r["ru"] += total
+            if kind[0] != "rwarp":  # this part reaches the node through its own entries (the bridge), see traffic()
+                r["rb"] += total
         elif kind[0] in DIRECT_KINDS and i.get("nodeId"):
-            routes.setdefault(node_names.get(i.get("nodeId"), name), {"ru": 0, "d": 0})["d"] += total
+            routes.setdefault(node_names.get(i.get("nodeId"), name), {"ru": 0, "d": 0, "rb": 0})["d"] += total
     return {"t": int(time.time()), "u": users, "r": routes}
 
 
@@ -178,7 +181,15 @@ class History:
                          "median": lat[len(lat) // 2] if lat else None,
                          "p95": lat[min(len(lat) - 1, int(len(lat) * 0.95))] if lat else None}
         master = [r.get("m", 1) for r in rows]
-        return {"nodes": out, "master": round(100 * sum(master) / len(master), 2) if master else None,
+        # WARP on each server (real traffic from the master every 5 minutes, warp.jsonl): the least steady way
+        warp: Dict[str, Any] = {}
+        wrows = _read(self.dir / "warp.jsonl", since)
+        for name in sorted({n for r in wrows for n in r.get("w") or {}}):
+            seen = [r["w"][name] for r in wrows if name in (r.get("w") or {})]
+            lat = sorted(v for v in seen if v is not None)
+            warp[name] = {"uptime": round(100 * len(lat) / len(seen), 2), "median": lat[len(lat) // 2] if lat else None,
+                          "p95": lat[min(len(lat) - 1, int(len(lat) * 0.95))] if lat else None}
+        return {"nodes": out, "warp": warp, "master": round(100 * sum(master) / len(master), 2) if master else None,
                 "from": rows[0]["t"] if rows else None, "samples": len(rows), "every": HEALTH_EVERY}
 
     def traffic(self, days: int) -> Dict[str, Any]:
@@ -204,8 +215,13 @@ class History:
                 p = prev.get("r", {}).get(node)
                 if p is None:
                     continue
-                for k in ("ru", "d"):
-                    add(routes.setdefault(node, {}).setdefault(k, {}), day, r[k] - p[k] if r[k] >= p[k] else r[k])
+                delta = {k: r.get(k, 0) - p.get(k, 0) if r.get(k, 0) >= p.get(k, 0) else r.get(k, 0) for k in ("ru", "d", "rb")}
+                # Traffic via RU goes on to the node through the node's own entries (the bridge client), so the
+                # node counts it once more: what is really direct is the rest. Older samples have no "rb"
+                # (the part without RU → WARP, which uses a hidden entry of its own): all of "ru" then.
+                bridge = delta["rb"] if "rb" in r and "rb" in p else delta["ru"]
+                add(routes.setdefault(node, {}).setdefault("ru", {}), day, delta["ru"])
+                add(routes.setdefault(node, {}).setdefault("d", {}), day, max(0, delta["d"] - bridge))
         cutoff = time.strftime("%Y-%m-%d", time.localtime(time.time() - (days - 1) * 86400))
         day_keys = [d for d in day_keys if d >= cutoff]
         return {"days": day_keys,
@@ -236,13 +252,18 @@ def record(fleet: Any, hist: History, now: Optional[float] = None) -> List[str]:
         done.append("health")
     if want_warp:
         try:  # does WARP carry traffic on each server: {server: ms | null}; what it adds: {server: ms}
-            before = hist.last_warp(max_age=3 * HEALTH_EVERY).get("reality") or {}
+            last = hist.last_warp(max_age=3 * HEALTH_EVERY)
+            before, warp_before = last.get("reality") or {}, last.get("nodes") or {}
             warp = fleet.probe_warp()
             reality = getattr(fleet, "reality", None) or {}
             hist.add_warp({"t": int(now), "w": warp or {}, "wa": getattr(fleet, "warp_added", None) or {}, "r": reality})
             done.append("warp")
             # Reality failed twice in a row on a server: the caller may switch its masking site (heal_reality)
-            done += [f"reality-dead:{n}" for n, ms in reality.items() if ms is None and n in before and before[n] is None]
+            dead = [n for n, ms in reality.items() if ms is None and n in before and before[n] is None]
+            done += [f"reality-dead:{n}" for n in dead]
+            # WARP failed twice in a row on a server that is otherwise fine: the caller may re-pick its entry (fix_warp)
+            done += [f"warp-dead:{n}" for n, ms in (warp or {}).items()
+                     if ms is None and n in warp_before and warp_before[n] is None and n not in dead]
         except Exception:
             pass  # a gap in the WARP history, not in the rest
     if want_traffic:

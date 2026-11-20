@@ -54,6 +54,7 @@ def _on(inbound: Dict[str, Any], node_id: Any) -> bool:
     return (inbound.get("nodeId") or None) == _nid(node_id)
 
 
+STOCK_REMARK = "{{INBOUND}}-{{EMAIL}}|📊{{TRAFFIC_LEFT}}|⏳{{DAYS_LEFT}}D"  # 3x-ui's default remarkTemplate
 STOCK_EXPIRED = "⛔ {{EMAIL}} | Expired: {{EXPIRE_DATE}}"
 STOCK_DEPLETED = "🚫 {{EMAIL}} | Traffic Depleted | {{TRAFFIC_USED}}/{{TRAFFIC_TOTAL}}"
 
@@ -934,6 +935,12 @@ class Reconciler:
             # Links of the reserve/main hosts must be told apart: put the host's name right after the entry's.
             settings["remarkTemplate"] = tmpl.replace("{{INBOUND}}", "{{INBOUND}}{{HOST}}", 1) if "{{INBOUND}}" in tmpl else tmpl + "{{HOST}}"
             changed.append("в именах подключений появится пометка основного или резервного адреса")
+        # 3x-ui's stock template glues the account name to an entry («UK · основной-Main-Денис-phone»): users see an
+        # internal name in the app. Drop it from the stock template; a template written in the panel by hand stays.
+        tmpl = settings.get("remarkTemplate") or ""
+        if tmpl in (STOCK_REMARK, STOCK_REMARK.replace("{{INBOUND}}", "{{INBOUND}}{{HOST}}", 1)):
+            settings["remarkTemplate"] = tmpl.replace("-{{EMAIL}}", "")
+            changed.append("в названиях подключений больше нет имени учётной записи")
         r = self.cfg.routing
         if r.client_profile:
             link = xc.happ_routing_link(r.extra_direct)

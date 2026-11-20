@@ -76,7 +76,7 @@ async function loadBackups() {
     const why = (b.reason || 'причина не записана').replace(/^./, (c) => c.toUpperCase());
     const w = el('div', 'title', why); w.title = why; w.style.fontWeight = '550';
     g.appendChild(w);
-    g.appendChild(el('div', 'meta', [plural(b.clients, 'клиент', 'клиента', 'клиентов'), plural(b.inbounds, 'подключение', 'подключения', 'подключений'),
+    g.appendChild(el('div', 'meta', [plural(b.clients, 'пользователь', 'пользователя', 'пользователей'), plural(b.inbounds, 'подключение', 'подключения', 'подключений'),
       plural(b.nodes, 'сервер', 'сервера', 'серверов'), b.domain || b.host].join(' · ')));
     r.appendChild(g);
     r.appendChild(el('div', 'muted small num size', Math.round(b.size / 1024) + ' КБ'));
@@ -87,6 +87,6 @@ function openMigrate() {
   const form = $('migrateForm'); resetForm(form);
   const sel = $('m_backup'); sel.textContent = '';
   const fresh = el('option', null, 'Свежий со старого сервера, иначе последний'); fresh.value = ''; sel.appendChild(fresh);
-  for (const b of backupList) { const o = el('option', null, new Date(b.created * 1000).toLocaleString('ru-RU') + ' — клиентов ' + b.clients); o.value = b.file; sel.appendChild(o); }
+  for (const b of backupList) { const o = el('option', null, new Date(b.created * 1000).toLocaleString('ru-RU') + ' — пользователей: ' + b.clients); o.value = b.file; sel.appendChild(o); }
   $('dlgMigrate').showModal();
 }

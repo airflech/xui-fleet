@@ -163,6 +163,21 @@ async function loadStats() {
     r.addEventListener('click', () => openRoute(n.name));
     tb.appendChild(r);
   }
+  // WARP on each server: a real request through it from the main server every 5 minutes
+  const w24 = (h24 && h24.warp) || {}, w7 = (h7 && h7.warp) || {};
+  const pct = (x) => (x == null ? '—' : x.toFixed(x >= 99.95 ? 0 : 1) + '%');
+  const master = overview && overview.master ? overview.master.name : '';
+  for (const name of Object.keys(w7).sort((x, y) => (x === master) - (y === master))) {
+    const a = w24[name], b = w7[name];
+    const r = el('div', 'arow');
+    r.title = 'Запрос в интернет через WARP этого сервера, с главного сервера раз в 5 минут';
+    const nm = el('span', 'nm'); const sw = el('i'); sw.style.background = 'var(--warp, #f38020)'; nm.appendChild(sw);
+    nm.appendChild(document.createTextNode((name === master ? hub() : serverText(name)) + ' · WARP')); r.appendChild(nm);
+    for (const [v, bad] of [[a && a.uptime, a && a.uptime < 99], [b && b.uptime, b && b.uptime < 99]]) r.appendChild(el('span', bad ? 'num bad' : 'num', pct(v)));
+    r.appendChild(el('span', 'num', a && a.median != null ? a.median + ' мс' : '—'));
+    r.appendChild(el('span', 'num', a && a.p95 != null ? a.p95 + ' мс' : '—'));
+    tb.appendChild(r);
+  }
   // traffic by day, by server
   if (tr) {
     const names = nodes.map((n) => n.name);

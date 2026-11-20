@@ -1307,17 +1307,18 @@ def test_history_turns_counters_into_days_and_probes_into_uptime(tmp_path, monke
     got = h.health(24)["nodes"]["uk"]
     assert got["uptime"] == 75.0 and got["median"] == 22 and [p[1] for p in got["points"]] == [20, 22, None, 25]
     # traffic: cumulative counters; a reset in the panel (counter went down) counts from zero
-    for k, (alice, ru, d) in enumerate([(100, 10, 5), (160, 30, 5), (40, 35, 9)]):
-        h.add_traffic({"t": int(now - (2 - k) * 60), "u": {"alice": alice}, "r": {"uk": {"ru": ru, "d": d}}})
+    # the node's own entries also carry what came via RU (the bridge): direct is the rest
+    for k, (alice, ru, d) in enumerate([(100, 10, 15), (160, 30, 40), (40, 35, 50)]):
+        h.add_traffic({"t": int(now - (2 - k) * 60), "u": {"alice": alice}, "r": {"uk": {"ru": ru, "d": d, "rb": ru}}})
     tr = h.traffic(7)
     assert sum(tr["users"]["alice"]) == 60 + 40  # +60, then reset to 40
-    assert sum(tr["routes"]["uk"]["ru"]) == 25 and sum(tr["routes"]["uk"]["d"]) == 4
+    assert sum(tr["routes"]["uk"]["ru"]) == 25 and sum(tr["routes"]["uk"]["d"]) == (25 - 20) + (10 - 5)
     sample = hs.traffic_sample(
         [{"email": "alice", "traffic": {"up": 1, "down": 2}}, {"email": "fleet-check", "traffic": {"up": 9, "down": 9}}],
         [{"tag": "fleet-rxh-uk", "up": 5, "down": 5}, {"tag": "fleet-xhttp-uk", "nodeId": 3, "up": 1, "down": 1},
          {"tag": "fleet-warpup-uk", "nodeId": 3, "up": 50, "down": 50}, {"tag": "mine", "up": 7, "down": 7}],
         {3: "uk"}, {"fleet-check", "fleet-bridge"})
-    assert sample["u"] == {"alice": 3} and sample["r"] == {"uk": {"ru": 10, "d": 2}}  # service traffic left out
+    assert sample["u"] == {"alice": 3} and sample["r"] == {"uk": {"ru": 10, "d": 2, "rb": 10}}  # service traffic left out
 
 
 def test_health_counts_a_node_with_xray_down_as_a_down_route():
@@ -1918,10 +1919,13 @@ def test_reality_failing_twice_in_a_row_asks_for_a_new_masking_site(tmp_path, mo
     h = hs.History(tmp_path / "fleet.yaml")
 
     class F:
-        reality, warp_added = {}, {}
+        reality, warp_added, master_status = {}, {}, {}
 
         def probe_warp(self):
             return {}
+
+        def status(self):
+            return [], []
     f = F()
     now = _t.time()
     h.add_health({"t": int(now + 400), "n": {}, "m": 1})  # health and traffic not due: only the WARP/Reality check runs
@@ -1931,6 +1935,12 @@ def test_reality_failing_twice_in_a_row_asks_for_a_new_masking_site(tmp_path, mo
     f.reality = {"uk": None, "de": None}
     assert [d for d in hs.record(f, h, now=now + 300) if d.startswith("reality-dead")] == ["reality-dead:uk"]  # de failed once
     assert h.last_warp()["reality"] == {"uk": None, "de": None}
+    # WARP failing twice on a server whose Reality is fine asks for fix_warp; on one whose Reality is dead it does not
+    f.reality = {"uk": None, "de": 40}
+    f.probe_warp = lambda: {"uk": None, "de": None}
+    hs.record(f, h, now=now + 600)
+    got = hs.record(f, h, now=now + 900)
+    assert [d for d in got if d.startswith("warp-dead")] == ["warp-dead:de"] and "reality-dead:uk" in got
 
 
 def test_route_rtts_around_vpn_and_fake_answers(monkeypatch):
@@ -1948,3 +1958,25 @@ def test_route_rtts_around_vpn_and_fake_answers(monkeypatch):
     monkeypatch.setattr(ui, "tcp_rtt", lambda host, ports, tries=3, timeout=2.0, iface=None: 1)  # everything «answers»
     got = ui.route_rtts(cfg)
     assert got["vpn"] is True and got["master"] is None and all(v is None for v in got["nodes"].values())
+
+
+def test_stock_remark_template_loses_the_account_name():
+    from xui_fleet.reconcile import STOCK_REMARK
+    panel = FakePanel()
+    panel._settings = {"subEnable": True, "subPort": 2096, "subPath": "/s/", "remarkTemplate": STOCK_REMARK}
+    cfg = _cfg([{"name": "de", "host": "de.example"}])
+    Reconciler(panel, cfg).run(_access(["de"]))
+    assert panel.settings()["remarkTemplate"] == "{{INBOUND}}|📊{{TRAFFIC_LEFT}}|⏳{{DAYS_LEFT}}D"
+    panel._settings["remarkTemplate"] = "{{INBOUND}} · {{EMAIL}}"  # written by hand: left alone
+    Reconciler(panel, cfg).run(_stale(_access(["de"])))
+    assert panel.settings()["remarkTemplate"] == "{{INBOUND}} · {{EMAIL}}"
+
+
+def test_dns_answer_parsing_for_the_check_around_a_vpn():
+    import struct
+    from xui_fleet.ui import parse_dns_a
+    q = struct.pack(">HHHHHH", 7, 0x8180, 1, 2, 0, 0) + b"\x01a\x07example\x00" + struct.pack(">HH", 1, 1)
+    cname = b"\xc0\x0c" + struct.pack(">HHIH", 5, 1, 60, 2) + b"\xc0\x0c"
+    a = b"\xc0\x0c" + struct.pack(">HHIH", 1, 1, 60, 4) + bytes([77, 105, 146, 193])
+    assert parse_dns_a(q + cname + a, 7) == "77.105.146.193"
+    assert parse_dns_a(q + cname + a, 8) is None and parse_dns_a(b"\x00", 7) is None

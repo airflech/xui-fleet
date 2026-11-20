@@ -61,6 +61,9 @@ def test_panel_calls_for_one_user_keep_any_name_in_one_path_segment():
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append((request.method, request.url.raw_path.decode(), request.content.decode() or None))
+        if "/clients/get/" in request.url.path:
+            return httpx.Response(200, json={"success": True, "obj": {"client": {"email": "a.b@c", "uuid": "u-1", "enable": True,
+                                                                               "comment": "c", "id": 7}}})
         return httpx.Response(200, json={"success": True, "obj": []})
 
     panel = Panel("http://panel", "tok")
@@ -70,4 +73,7 @@ def test_panel_calls_for_one_user_keep_any_name_in_one_path_segment():
     panel.update_client("a.b@c", {"limitHwid": 2, "limitIp": 0})
     assert seen[0][1] == "/panel/api/clients/hwids/%D0%9C%D0%B0%D0%BC%D0%B0%2Fphone%3Fx"
     assert seen[1][:2] == ("DELETE", "/panel/api/clients/hwids/%D0%9C%D0%B0%D0%BC%D0%B0-phone/5")
-    assert seen[2][1] == "/panel/api/clients/update/a.b@c" and json.loads(seen[2][2]) == {"limitHwid": 2, "limitIp": 0}
+    assert seen[2][1] == "/panel/api/clients/get/a.b@c"
+    # the whole record goes back with the change on top (3x-ui 3.11 replaces the record with the body)
+    assert seen[3][1] == "/panel/api/clients/update/a.b@c" and json.loads(seen[3][2]) == {
+        "email": "a.b@c", "id": "u-1", "enable": True, "comment": "c", "limitHwid": 2, "limitIp": 0}

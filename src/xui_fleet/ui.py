@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "проверки подключений ждут своей очереди в панели (раньше параллельная проверка давала ложные сбои и ложную автопочинку)"
+WHATS_NEW = "исправлено редактирование пользователя (сохранение выключало его и стирало комментарий и срок)"
 
 
 def _last_backup(fleet: Any) -> int:

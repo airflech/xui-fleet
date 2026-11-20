@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
@@ -126,7 +127,7 @@ class Panel:
         (another copy of the app, or its own 5-minute check, may be probing right now): wait for the turn
         instead of reporting a working link as broken."""
         busy = "already running"
-        for attempt in range(15):
+        for attempt in range(45):  # up to ~90 s: a probe through a dead way waits for its own timeout
             if attempt:
                 time.sleep(2)
             try:
@@ -182,7 +183,7 @@ class Panel:
 
     def client(self, email: str) -> Optional[Dict[str, Any]]:
         try:
-            return self.get(f"/clients/get/{email}")
+            return self.get(f"/clients/get/{_seg(email)}")
         except PanelError:
             return None
 
@@ -235,8 +236,36 @@ class Panel:
         self.post(f"/clients/resetTraffic/{_seg(email)}")
 
     def update_client(self, email: str, fields: Dict[str, Any]) -> None:
-        """Change only the given fields (3x-ui keeps everything that is not in the body)."""
-        self.post(f"/clients/update/{_seg(email)}", json_body=fields)
+        """Change only the given fields. 3x-ui 3.11 replaces the whole record with the body (a field left out becomes
+        empty: the user is switched off, the comment, the term and the group are lost) and refuses a body without the
+        email. So the current record is read and sent back whole, with `fields` on top."""
+        cur = self.client(email)
+        record = cur.get("client") if isinstance(cur, dict) and isinstance(cur.get("client"), dict) else cur
+        if not isinstance(record, dict) or not record.get("email"):
+            raise PanelError(f"клиент {email} не найден в панели — обновите список")
+        # The record as the panel shows it is not quite the form it takes back: «id» is the database number there and
+        # the client's key here, WireGuard lists come as strings… Send what is ours and the scalars; a field the
+        # panel cannot read is dropped (named in its error) — the panel then keeps it as it is.
+        body = {k: v for k, v in record.items() if k not in CLIENT_RECORD_ONLY and v is not None}
+        if "uuid" in record:
+            body["id"] = record.get("uuid") or ""
+        body.update(fields)
+        body["email"] = email
+        for _ in range(12):
+            try:
+                self.post(f"/clients/update/{_seg(email)}", json_body=body)
+                return
+            except PanelError as exc:
+                m = re.search(r"Go struct field \.?(\w+) of type", str(exc))
+                if not m or m.group(1) not in body or m.group(1) in fields or m.group(1) in ("email", "id", "enable"):
+                    raise
+                body.pop(m.group(1))
+        raise PanelError(f"панель не принимает изменения клиента {email}")
+
+
+# Fields of the panel's client record that the update form does not take (or takes in another shape).
+CLIENT_RECORD_ONLY = {"createdAt", "updatedAt", "uuid", "allowedIPs", "privateKey", "publicKey", "preSharedKey",
+                      "keepAlive", "forwardedPorts", "reverse"}
 
 
 def _seg(value: str) -> str:

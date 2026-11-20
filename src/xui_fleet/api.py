@@ -359,6 +359,12 @@ def _node_rotate(c: Call):
     return c.run(f"Смена маскировки {name}", lambda log: c.app.fleet(log).rotate_masking(name, new_site=site))
 
 
+@post("/api/warp/fix", needs={"name": "str"})
+def _warp_fix(c: Call):
+    name = c.body["name"]
+    return c.run(f"Починка WARP на {name}", lambda log: c.app.fleet(log).fix_warp(name))
+
+
 @post("/api/master/remove")
 def _master_remove(c: Call):
     master = c.app.fleet().cfg.master

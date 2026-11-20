@@ -1847,4 +1847,21 @@ def test_what_a_person_sees_when_the_subscription_ends_is_russian_and_leads_to_s
     assert s["subTrafficDepletedTemplate"] == "мой текст"  # written by someone in the panel: left alone
     assert s["subHappNotificationExpire"] is True and s["subHappSubExpireButtonLink"] == "https://t.me/help_me"
     assert s["subUpdates"] == 4
+    assert "subHostSortMode" not in s  # a panel without the setting is left alone
     assert Reconciler(panel, cfg).run(_stale(_access(["de"]))).changes == []  # and it stays that way
+
+
+
+def test_with_main_and_reserve_addresses_the_main_entries_come_first():
+    panel = FakePanel()
+    panel.hosts = []
+    panel._settings = {"subEnable": True, "subPort": 2096, "subPath": "/s/", "subCertFile": "/c", "webCertFile": "/c",
+                       "subHostSortMode": "inbound-first"}
+    doc = {"master": {"name": "ru", "host": "9.9.9.9", "tls": {"mode": "domain", "domain": "a.example", "reserve_domains": ["b.example"],
+                                                               "address_mode": "both"}},
+           "users": [{"name": "x"}], "nodes": [{"name": "de", "host": "de.example"}]}
+    Reconciler(panel, FleetConfig.model_validate(doc)).run(_access(["de"]))
+    assert panel.settings()["subHostSortMode"] == "hosts-first"
+    doc["master"]["tls"]["address_mode"] = "main"
+    Reconciler(panel, FleetConfig.model_validate(doc)).run(_stale(_access(["de"])))
+    assert panel.settings()["subHostSortMode"] == "inbound-first"

@@ -936,6 +936,15 @@ class Reconciler:
         if support and "subHappSubExpireButtonLink" in settings and not settings.get("subHappSubExpireButtonLink"):
             settings["subHappSubExpireButtonLink"] = support
             changed.append("кнопка продления в Happ ведёт в поддержку")
+        # With «main and reserve» every entry via the master comes twice. The list reads better with all the main ones
+        # first (by country, best first), then the reserve copies, then the direct entries — 3x-ui's «hosts first».
+        both = self.cfg.tls_for(self.cfg.master).address_mode == "both"
+        if "subHostSortMode" in settings:
+            want = "hosts-first" if both else "inbound-first"
+            if settings.get("subHostSortMode") != want and (both or settings.get("subHostSortMode") == "hosts-first"):
+                settings["subHostSortMode"] = want
+                changed.append("в подписке сначала основные подключения, резервные копии ниже" if both
+                               else "обычный порядок подключений в подписке")
         if int(settings.get("subUpdates") or 0) == 12:  # 3x-ui's default: changes reach people within 4 hours, not 12
             settings["subUpdates"] = 4
             changed.append("приложения обновляют подписку раз в 4 часа")

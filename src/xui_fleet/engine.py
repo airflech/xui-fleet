@@ -939,6 +939,22 @@ class Fleet:
                                  "peers": [{"publicKey": "", "endpoint": "engage.cloudflareclient.com:2408",
                                             "allowedIPs": ["0.0.0.0/0", "::/0"]}]}}
 
+    def fix_warp(self, name: str) -> str:
+        """WARP on one server stopped passing traffic: choose its entry point again (abroad, measured now) and restart
+        its Xray, then check it with real traffic. Same identity, no new registration."""
+        is_master = name == self.cfg.master.name
+        node = None if is_master else self.cfg.node(name)
+        self.state.drop(name, "warp_endpoint")
+        with self.master_panel(provision=False) as panel:
+            warn = self.ensure_master_warp(panel) if is_master else self.ensure_node_warp(panel, node)
+        if warn:
+            self.log(f"⚠ {warn}")
+        time.sleep(6)
+        got = self.probe_warp().get(name)
+        if got is None:
+            raise FleetError(f"{name}: WARP всё ещё не пропускает трафик — попробуйте «Перенастроить все серверы»")
+        return f"Готово: WARP на {name} работает ({got} мс через главный сервер)"
+
     def ensure_node_warp(self, panel: Panel, node, fresh: bool = False) -> Optional[str]:
         """Own WARP registration on the node, and its WARP entries routed into it. Returns a warning or None."""
         from . import migrate as mg

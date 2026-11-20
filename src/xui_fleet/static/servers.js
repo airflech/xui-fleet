@@ -48,6 +48,17 @@ function renderAttention() {
         showTab('users'); renderUsers();
       });
     }
+    // WARP that stopped passing traffic (the 5-minute check through the real entries), with the fix one click away.
+    const wc = live.warp && live.warp.nodes ? live.warp.nodes : {};
+    for (const [name, ms] of Object.entries(wc)) {
+      if (ms !== null) continue;
+      const nd = (overview.nodes || []).find((x) => x.name === name);
+      const label = name === m.name ? 'WARP с главного сервера' : (splitFlag(nd ? nd.display || nd.name : name)[1] || name) + ': WARP';
+      add(label + ' не работает — починить', true, () => confirmAction('Починить ' + label + '?',
+        'Приложение заново выберет точку входа Cloudflare (с выходом за границей), перезапустит Xray на этом сервере и проверит WARP '
+        + 'настоящим трафиком. Займёт около минуты; остальные подключения сервера на пару секунд переподключатся.',
+        () => start('/api/warp/fix', { name }), 'Починить'));
+    }
     const lb = m.lastBackup;
     if (m.prepared && (!lb || Date.now() / 1000 - lb > 3 * 86400)) add(lb ? 'Последнему бэкапу больше 3 дней' : 'Бэкапов главного сервера ещё нет', false, () => showTab('backups'));
   }

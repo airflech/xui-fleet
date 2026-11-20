@@ -243,3 +243,18 @@ def test_a_warp_measurement_is_followed_by_an_xray_restart_even_when_the_entry_s
     restarts.clear()
     fleet.ensure_master_warp(fleet.panel)  # the next time within a day: nothing measured, nothing restarted
     assert restarts == []
+
+
+def test_fixing_warp_chooses_the_entry_again_and_checks_it_with_traffic(fleet, monkeypatch):
+    import pytest
+    import time as _t
+    monkeypatch.setattr(_t, "sleep", lambda s: None)
+    fleet.state.update("de", warp_endpoint={"endpoint": "162.159.195.1:2408"})
+    seen = []
+    monkeypatch.setattr(fleet, "ensure_node_warp", lambda panel, node, fresh=False: seen.append((node.name, fleet.state.get("de", "warp_endpoint"))))
+    monkeypatch.setattr(fleet, "probe_warp", lambda: {"de": 52})
+    assert "работает (52 мс" in fleet.fix_warp("de")
+    assert seen == [("de", None)]  # the old choice was dropped before choosing again
+    monkeypatch.setattr(fleet, "probe_warp", lambda: {"de": None})
+    with pytest.raises(Exception, match="всё ещё не пропускает"):
+        fleet.fix_warp("de")

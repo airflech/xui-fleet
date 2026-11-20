@@ -1874,10 +1874,12 @@ def test_with_main_and_reserve_addresses_the_main_entries_come_first():
 
 
 
-def test_via_ru_hysteria2_reaches_the_node_over_its_own_hysteria2_entry():
+def test_via_ru_hysteria2_reaches_the_node_over_its_own_hysteria2_entry(monkeypatch):
     """The RU → node leg of «via RU · Hysteria2» must not depend on the node's Reality entry (whose borrowed site may
     die): it dials the node's Hysteria2 entry with the bridge's own auth; the Reality-based ways stay on Reality."""
+    from xui_fleet import reconcile as rc
     from xui_fleet import xrayconf as xc
+    monkeypatch.setattr(rc.time, "sleep", lambda s: None)
     panel = FakePanel()
     access = _access(["de"])
     a = access["de"]
@@ -1984,3 +1986,19 @@ def test_dns_answer_parsing_for_the_check_around_a_vpn():
     a = b"\xc0\x0c" + struct.pack(">HHIH", 1, 1, 60, 4) + bytes([77, 105, 146, 193])
     assert parse_dns_a(q + cname + a, 7) == "77.105.146.193"
     assert parse_dns_a(q + cname + a, 8) is None and parse_dns_a(b"\x00", 7) is None
+
+
+def test_outbound_probe_waits_for_the_panels_single_slot(monkeypatch):
+    from xui_fleet import panel as pm
+    monkeypatch.setattr(pm.time, "sleep", lambda s: None)
+    replies = [pm.PanelError("Another outbound test is already running, please wait"), {"success": False, "msg": "Another outbound test is already running"},
+               {"success": True, "delay": 20}]
+    p = pm.Panel.__new__(pm.Panel)
+
+    def post(*a, **k):
+        r = replies.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        return r
+    p.post = post
+    assert p.test_outbound({"tag": "x"}) == {"success": True, "delay": 20}

@@ -794,12 +794,19 @@ class Reconciler:
         already in the master's config — so a leg that does not pass is not reported as a pending change forever."""
         if self.dry:
             return in_use
-        for _ in range(2):
+        why = ""
+        for attempt in range(3):  # a server that has just restarted its entry needs a few seconds
+            if attempt:
+                time.sleep(4)
             try:
-                if (self.panel.test_outbound(dict(outbound, tag="fleet-leg-test")) or {}).get("success"):
+                got = self.panel.test_outbound(dict(outbound, tag="fleet-leg-test")) or {}
+                if got.get("success"):
                     return True
-            except Exception:
-                pass
+                why = str(got.get("msg") or got.get("error") or got.get("httpStatus") or "")
+            except Exception as exc:
+                why = str(exc)
+        if why:
+            self.log(f"проверка Hysteria2 до {outbound['settings']['address']}: {why[:160]}")
         return False
 
     def _ensure_routes(self, direct: Dict[str, Dict[str, Any]], cascade: Dict[str, Dict[str, Any]],

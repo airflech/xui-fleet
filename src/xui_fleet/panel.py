@@ -122,8 +122,23 @@ class Panel:
         return json.loads(tpl) if isinstance(tpl, str) else tpl
 
     def test_outbound(self, outbound: Dict[str, Any]) -> Dict[str, Any]:
-        """Real HTTP probe through the outbound, run by the panel's own Xray."""
-        return self.post("/xray/testOutbound", form={"outbound": json.dumps(outbound)}) or {}
+        """Real HTTP probe through the outbound, run by the panel's own Xray. The panel runs one probe at a time
+        (another copy of the app, or its own 5-minute check, may be probing right now): wait for the turn
+        instead of reporting a working link as broken."""
+        busy = "already running"
+        for attempt in range(15):
+            if attempt:
+                time.sleep(2)
+            try:
+                got = self.post("/xray/testOutbound", form={"outbound": json.dumps(outbound)}) or {}
+            except PanelError as exc:
+                if busy in str(exc):
+                    continue
+                raise
+            if busy in str(got.get("msg") or got.get("error") or ""):
+                continue
+            return got
+        raise PanelError("панель занята другими проверками подключений — попробуйте через минуту")
 
     def save_xray_template(self, template: Dict[str, Any]) -> None:
         self.post("/xray/update", form={"xraySetting": json.dumps(template, ensure_ascii=False, indent=2)})

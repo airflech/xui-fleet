@@ -59,6 +59,25 @@ function renderAttention() {
         + 'настоящим трафиком. Займёт около минуты; остальные подключения сервера на пару секунд переподключатся.',
         () => start('/api/warp/fix', { name }), 'Починить'));
     }
+    // Reality on a server stopped answering (the same 5-minute check): usually its borrowed masking site died; the
+    // app switches it by itself after two failed checks — and offers it here right away.
+    const rc = live.warp && live.warp.reality ? live.warp.reality : {};
+    for (const [name, ms] of Object.entries(rc)) {
+      if (ms !== null) continue;
+      const nd = (overview.nodes || []).find((x) => x.name === name);
+      const label = splitFlag(nd ? nd.display || nd.name : name)[1] || name;
+      add(label + ': подключения Reality не отвечают — сменить сайт маскировки', true, () => confirmAction('Сменить сайт маскировки на ' + label + '?',
+        'Подключения Reality (прямое, XHTTP и все «через ' + hub() + '», кроме Hysteria2) маскируются под настоящий сайт в подсети сервера. '
+        + 'Если он пропал, они перестают работать. Приложение проверит сайт и, если он не отвечает, выберет другой; ключи останутся, '
+        + 'приложения подхватят изменение при обновлении подписки. Через 10 минут сбоя это делается само.',
+        () => start('/api/reality/fix', { name }), 'Сменить'));
+    }
+    for (const nd of overview.nodes || []) {
+      const sw = nd.realitySwitched;
+      if (sw && Date.now() / 1000 - sw.at < 86400) {
+        add((splitFlag(nd.display || nd.name)[1] || nd.name) + ': сайт маскировки сменён на ' + sw.to + ' — прежний пропал', false, () => { $('drawer').classList.remove('hidden'); openHistory(); });
+      }
+    }
     const lb = m.lastBackup;
     if (m.prepared && (!lb || Date.now() / 1000 - lb > 3 * 86400)) add(lb ? 'Последнему бэкапу больше 3 дней' : 'Бэкапов главного сервера ещё нет', false, () => showTab('backups'));
   }

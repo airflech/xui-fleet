@@ -31,7 +31,7 @@ from .state import State
 
 
 # Shown once on the page right after it reloads itself for a new version.
-WHATS_NEW = "сломанный WARP — в «Требует внимания» с кнопкой «починить»; в подписке сначала основные подключения, резервные копии ниже"
+WHATS_NEW = "если сайт, под который маскируется Reality, пропал — приложение само выбирает другой; «через RU · Hysteria2» идёт до сервера отдельным путём Hysteria2 (если он проходит)"
 
 
 def _last_backup(fleet: Any) -> int:
@@ -444,6 +444,7 @@ class App:
                           "flag": n.flag or "auto", "country": state.get(n.name, "country") or "", "hide": list(n.hide),
                           "direct": d.port if d.enabled else None, "cascade": bool(c.enabled),
                           "warp": bool(cfg.set_for(n).warp) and "warp" not in n.hide,
+                          "realitySwitched": state.get(n.name, "reality_switched"),
                           # what WARP adds to each round trip from this server (measured daily), ms or None
                           "warpMs": (state.get(n.name, "warp_endpoint") or {}).get("added_ms"),
                           "prepared": bool(state.get(n.name, "api_token")), "access": access(n)})
@@ -796,7 +797,19 @@ def serve(config_path: Path, port: int = 8787, open_browser: bool = True, servic
                 if not app.job.running and app.path.exists():
                     fleet = app.fleet()
                     if fleet.state.get(fleet.cfg.master.name, "api_token") or fleet.cfg.master.api_url:
-                        hs.record(fleet, hs.History(app.path))
+                        done = hs.record(fleet, hs.History(app.path))
+                        # A server whose Reality failed twice in a row: switch its masking site by itself (at most
+                        # once an hour per server), as an operation everyone sees in the log and the history.
+                        for item in done:
+                            if not item.startswith("reality-dead:") or app.job.running:
+                                continue
+                            name = item.split(":", 1)[1]
+                            last = float(fleet.state.get(name, "reality_heal_at") or 0)
+                            if time.time() - last < 3600:
+                                continue
+                            fleet.state.update(name, reality_heal_at=time.time())
+                            app.job.start(f"Автозамена сайта маскировки на {name}",
+                                          lambda log, n=name: app.fleet(log).heal_reality(n), scope=str(app.path))
             except Exception as exc:  # a server that does not answer is just a gap in the history
                 print(f"история: {exc}", flush=True)
             time.sleep(60)

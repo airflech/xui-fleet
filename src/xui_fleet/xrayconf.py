@@ -66,6 +66,31 @@ def out_warp_tag(node: str) -> str:
     return f"{PREFIX}out-warp-{node}"
 
 
+def out_hy2_tag(node: str) -> str:
+    return f"{PREFIX}out-hy2-{node}"
+
+
+def hy2_outbound_for_inbound(inbound: Dict[str, Any], *, tag: str, address: str, auth: str) -> Dict[str, Any]:
+    """Hysteria2 outbound on the master that dials a node's own Hysteria2 entry (the RU → node leg of «via RU ·
+    Hysteria2»). It does not touch the node's Reality entry, so a dead masking site leaves this way working.
+    Same certificate pin, the same salamander password and the bridge client's auth as any app would use."""
+    stream = inbound.get("streamSettings") or {}
+    tls = stream.get("tlsSettings") or {}
+    pins = (tls.get("settings") or {}).get("pinnedPeerCertSha256") or []
+    salamander = next((m for m in ((stream.get("finalmask") or {}).get("udp") or []) if m.get("type") == "salamander"), None)
+    out_stream: Dict[str, Any] = {
+        "network": "hysteria", "security": "tls",
+        "tlsSettings": {"serverName": tls.get("serverName") or address, "alpn": ["h3"], "fingerprint": "chrome"},
+        "hysteriaSettings": {"version": 2, "auth": auth, "udpIdleTimeout": 60},
+    }
+    if pins:
+        out_stream["tlsSettings"]["pinnedPeerCertSha256"] = pins[0]
+    if salamander:
+        out_stream["finalmask"] = {"udp": [{"type": "salamander", "settings": {"password": salamander["settings"]["password"]}}]}
+    return {"tag": tag, "protocol": "hysteria", "settings": {"address": address, "port": int(inbound["port"]), "version": 2},
+            "streamSettings": out_stream}
+
+
 def remark_warp(label: str) -> str:
     return f"{label} · WARP"
 

@@ -768,6 +768,9 @@ class Reconciler:
         wanted = [direct[n.name]["id"] for n in nodes if self.cfg.cascade_for(n).enabled and n.name in direct]
         live = self._inbounds_by_tag()
         wanted += [live[xc.warpup_tag(n.name)]["id"] for n in nodes if xc.warpup_tag(n.name) in live]
+        # The node's own Hysteria2 entry carries «via RU · Hysteria2» on its own leg (see _ensure_routes).
+        wanted += [live[xc.hy2_tag(n.name)]["id"] for n in nodes
+                   if self.cfg.cascade_for(n).enabled and xc.hy2_tag(n.name) in live and live[xc.hy2_tag(n.name)].get("nodeId")]
         email = self.cfg.clients.bridge_email
         if not wanted:
             return _client_uuid(self.panel.client(email))
@@ -783,6 +786,18 @@ class Reconciler:
             if missing:
                 self._do(f"мастер: подключаю {email} к новым нодам", lambda: self.panel.attach_clients([email], missing))
         return _client_uuid(cur)
+
+    def _leg_works(self, outbound: Dict[str, Any]) -> bool:
+        """A real request through the outbound, run by the master's own Xray (two tries). A dry run trusts it."""
+        if self.dry:
+            return True
+        for _ in range(2):
+            try:
+                if (self.panel.test_outbound(dict(outbound, tag="fleet-leg-test")) or {}).get("success"):
+                    return True
+            except Exception:
+                pass
+        return False
 
     def _ensure_routes(self, direct: Dict[str, Dict[str, Any]], cascade: Dict[str, Dict[str, Any]],
                        bridge_id: Optional[str]) -> None:
@@ -813,6 +828,23 @@ class Reconciler:
             for tag in (in_tag, xc.rhy2_tag(name), xc.rxh_tag(name)):
                 if name in cascade and tag == in_tag or live_tags is None or tag in live_tags or tag in new_hy2:
                     routes[tag] = out
+            # «via RU · Hysteria2» goes on to the node over the node's own Hysteria2 entry, not over its Reality entry:
+            # two independent legs, so a dead masking site (or a Reality block) leaves this way working.
+            # The bridge's password is the one the node's entry holds (the panel makes it when the bridge is attached),
+            # and the leg is switched only after a real request through it from the master succeeds: UDP to some
+            # ports (443 above all — it looks like QUIC) is cut on the way out of Russia, and then Reality stays.
+            hy = (live_by_tag or {}).get(xc.hy2_tag(name))
+            rh = xc.rhy2_tag(name)
+            bridge = self.cfg.clients.bridge_email
+            auth = next((c.get("auth") for c in ((hy or {}).get("settings") or {}).get("clients") or []
+                         if c.get("email") == bridge and c.get("auth")), None)
+            if rh in routes and hy is not None and hy.get("nodeId") and auth:
+                cand = xc.hy2_outbound_for_inbound(hy, tag=xc.out_hy2_tag(name), address=node.panel_address or node.host, auth=auth)
+                if self._leg_works(cand):
+                    routes[rh] = cand
+                else:
+                    self._warn(f"{name}: Hysteria2 от главного сервера до сервера не проходит (порт {hy.get('port')}/udp) — "
+                               f"«через {self._hub} · Hysteria2» идёт к нему через Reality")
             # RU -> node -> WARP: its own exit, dialing the node's hidden WARP upstream.
             up = (live_by_tag or {}).get(xc.warpup_tag(name))
             w_out = None

@@ -148,7 +148,7 @@ class History:
         if not rows:
             return {}
         row = max(rows, key=lambda r: r.get("t", 0))
-        return {"at": row["t"], "nodes": row.get("w") or {}, "added": row.get("wa") or {}}
+        return {"at": row["t"], "nodes": row.get("w") or {}, "added": row.get("wa") or {}, "reality": row.get("r") or {}}
 
     def forget(self) -> None:
         for p in self.dir.glob("*.jsonl"):
@@ -236,9 +236,13 @@ def record(fleet: Any, hist: History, now: Optional[float] = None) -> List[str]:
         done.append("health")
     if want_warp:
         try:  # does WARP carry traffic on each server: {server: ms | null}; what it adds: {server: ms}
+            before = hist.last_warp(max_age=3 * HEALTH_EVERY).get("reality") or {}
             warp = fleet.probe_warp()
-            hist.add_warp({"t": int(now), "w": warp or {}, "wa": getattr(fleet, "warp_added", None) or {}})
+            reality = getattr(fleet, "reality", None) or {}
+            hist.add_warp({"t": int(now), "w": warp or {}, "wa": getattr(fleet, "warp_added", None) or {}, "r": reality})
             done.append("warp")
+            # Reality failed twice in a row on a server: the caller may switch its masking site (heal_reality)
+            done += [f"reality-dead:{n}" for n, ms in reality.items() if ms is None and n in before and before[n] is None]
         except Exception:
             pass  # a gap in the WARP history, not in the rest
     if want_traffic:

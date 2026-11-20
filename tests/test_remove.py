@@ -258,3 +258,22 @@ def test_fixing_warp_chooses_the_entry_again_and_checks_it_with_traffic(fleet, m
     monkeypatch.setattr(fleet, "probe_warp", lambda: {"de": None})
     with pytest.raises(Exception, match="всё ещё не пропускает"):
         fleet.fix_warp("de")
+
+
+def test_healing_reality_switches_the_site_only_when_the_old_one_is_gone(fleet, monkeypatch):
+    import pytest
+    from xui_fleet import provision as pv
+    fleet.state.update("de", reality_neighbor={"ip": "10.0.0.5", "name": "old.example", "checked": 1})
+    applied = []
+    monkeypatch.setattr(fleet, "apply", lambda only=None, **kw: applied.append(only))
+    monkeypatch.setattr(pv, "neighbor_alive", lambda ssh, ip, name: True)
+    assert "отвечает" in fleet.heal_reality("de") and applied == []  # the site is fine: not the cause, nothing changed
+    monkeypatch.setattr(pv, "neighbor_alive", lambda ssh, ip, name: False)
+    monkeypatch.setattr(pv, "find_reality_neighbor", lambda ssh, exclude=(): ("10.0.0.9", "new.example"))
+    msg = fleet.heal_reality("de")
+    assert "new.example" in msg and applied == [{"de"}]
+    assert fleet.state.get("de", "reality_switched")["to"] == "new.example"
+    monkeypatch.setattr(pv, "find_reality_neighbor", lambda ssh, exclude=(): None)
+    fleet.state.update("de", reality_neighbor={"ip": "10.0.0.9", "name": "new.example", "checked": 1})
+    with pytest.raises(Exception, match="другого подходящего"):
+        fleet.heal_reality("de")

@@ -787,8 +787,10 @@ def neighbor_alive(ssh: SSH, ip: str, name: str) -> bool:
 
 # Cloudflare WARP entry points (same service, different routes). From some networks one of them is
 # 50x slower than another, so each server measures them with its own WARP identity and keeps the best.
+# Port 1701 is left out: from a server in Russia WARP over it answered a short measurement and then stopped carrying
+# traffic, twice (UDP on the L2TP port is evidently filtered after a while).
 WARP_ENDPOINTS = ["188.114.96.1:2408", "162.159.192.1:2408", "162.159.192.1:500", "188.114.97.1:2408",
-                  "162.159.195.1:2408", "162.159.192.1:1701"]
+                  "162.159.195.1:2408"]
 
 
 # Cloudflare points of presence in Russia. WARP traffic that leaves Cloudflare there is Russian traffic: YouTube

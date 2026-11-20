@@ -359,6 +359,12 @@ def _node_rotate(c: Call):
     return c.run(f"Смена маскировки {name}", lambda log: c.app.fleet(log).rotate_masking(name, new_site=site))
 
 
+@post("/api/reality/fix", needs={"name": "str"})
+def _reality_fix(c: Call):
+    name = c.body["name"]
+    return c.run(f"Замена сайта маскировки на {name}", lambda log: c.app.fleet(log).heal_reality(name))
+
+
 @post("/api/warp/fix", needs={"name": "str"})
 def _warp_fix(c: Call):
     name = c.body["name"]

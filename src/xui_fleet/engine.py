@@ -939,6 +939,32 @@ class Fleet:
                                  "peers": [{"publicKey": "", "endpoint": "engage.cloudflareclient.com:2408",
                                             "allowedIPs": ["0.0.0.0/0", "::/0"]}]}}
 
+    def heal_reality(self, name: str) -> str:
+        """A server's Reality entries stopped answering: if the real site they borrow the handshake from is gone,
+        take another site of the same subnet and reconfigure that server (its entries and the master's cascades).
+        Keys stay; only the site name in the links changes, so apps pick it up with the next subscription update."""
+        node = self.cfg.node(name)
+        old = self.state.get(name, "reality_neighbor") or {}
+        if not old.get("ip"):
+            return f"{name}: сайт для маскировки задан в настройках или не выбирался — менять нечего"
+        ssh = self.ssh(node).connect()
+        try:
+            if pv.neighbor_alive(ssh, old["ip"], old["name"]):
+                return f"{name}: сайт маскировки {old['name']} отвечает — причина сбоя в другом"
+            self.log(f"{name}: сайт маскировки {old['name']} не отвечает — ищу другой в подсети")
+            self.state.update(name, reality_neighbor=dict(old, checked=0))
+            self._ensure_neighbor(node, ssh)
+        finally:
+            ssh.close()
+        new = self.state.get(name, "reality_neighbor") or {}
+        if not new.get("ip") or new.get("ip") == old.get("ip"):
+            raise FleetError(f"{name}: сайт маскировки не отвечает, а другого подходящего в подсети нет — "
+                             f"«Сменить маскировку» или подключения через Hysteria2")
+        self.apply({name}, skip_provision=True)
+        self.state.update(name, reality_switched={"from": old.get("name"), "to": new.get("name"), "at": time.time()})
+        return (f"Готово: подключения {name} теперь маскируются под {new['name']} (прежний сайт {old['name']} пропал). "
+                "Приложения подхватят это при обновлении подписки")
+
     def fix_warp(self, name: str) -> str:
         """WARP on one server stopped passing traffic: choose its entry point again (abroad, measured now) and restart
         its Xray, then check it with real traffic. Same identity, no new registration."""
@@ -1164,6 +1190,9 @@ class Fleet:
         from .xrayconf import inbound_kind
         got: Dict[str, Optional[int]] = {}
         self.warp_added: Dict[str, int] = {}
+        # Each server's own Reality entry, checked the same way: {server: ms | None}. When it fails while the server
+        # is up, the borrowed masking site has usually died (see heal_reality).
+        self.reality: Dict[str, Optional[int]] = {}
         with self.master_panel(provision=False) as panel:
             check = self.cfg.clients.check_email
             user = next((c for c in panel.clients() if c.get("email") == check and c.get("subId")), None)
@@ -1216,6 +1245,13 @@ class Fleet:
                     if r.get("success"):
                         times.append(int(r.get("delay") or 0))
                 return min(times) if times else None
+            for name, kinds in found.items():
+                # the server's own Reality entry; if the subscription has none (hidden), «via RU · XHTTP» reaches the
+                # server through the same Reality entry, so it tells the same
+                own = [e for e in (kinds.get("direct") or []) + (kinds.get("xhttp") or []) + (kinds.get("rxh") or [])
+                       + (kinds.get("cascade") or []) if e[0] == "vless"]
+                if own:
+                    self.reality[name] = best(own[0][2], f"reality-probe-{own[0][1]}")
             for name, kinds in found.items():
                 for wkind in ("warp", "rwarp"):
                     if wkind not in kinds or got.get(name) is not None:

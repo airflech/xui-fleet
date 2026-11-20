@@ -238,6 +238,10 @@ class FakePanel:
         self._clients[client["email"]] = dict(client, uuid="uuid-" + client["email"], inboundIds=list(inbound_ids))
         self.calls.append("add_client")
 
+    def update_client(self, email, fields):
+        self._clients[email].update(fields)
+        self.calls.append("update_client")
+
     def attach_clients(self, emails, inbound_ids):
         for email in emails:
             ids = self._clients[email]["inboundIds"]
@@ -632,7 +636,8 @@ def test_warp_entry_and_ru_to_node_to_warp_chain():
     assert rwarp["remark"] == "🇩🇪 Germany · через RU → WARP" and "nodeId" not in rwarp and rwarp["protocol"] == "hysteria"
     assert rwarp["port"] != by_tag["fleet-rhy2-de"]["port"]  # two RU Hysteria2 entries cannot share a UDP port
     rules = {r["inboundTag"][0]: r["outboundTag"] for r in panel.template["routing"]["rules"] if r.get("inboundTag")}
-    assert rules["fleet-rwarp-de"] == "fleet-out-warp-de" and rules["fleet-rhy2-de"] == "fleet-out-de"
+    # «via RU · Hysteria2» goes to the node over the node's own Hysteria2 entry, not its Reality entry
+    assert rules["fleet-rwarp-de"] == "fleet-out-warp-de" and rules["fleet-rhy2-de"] == "fleet-out-de"  # no checked Hysteria2 leg: Reality
     out = next(o for o in panel.template["outbounds"] if o["tag"] == "fleet-out-warp-de")
     assert out["settings"]["port"] == up["port"] and out["settings"]["id"] == "uuid-fleet-bridge"
     assert up["id"] in panel._clients["fleet-bridge"]["inboundIds"]  # the master can log in to the upstream
@@ -1628,7 +1633,7 @@ def test_last_warp_check_is_read_back_while_fresh(tmp_path, monkeypatch):
     h.add_health({"t": now - 700, "n": {"uk": 15}, "m": 1, "w": {"uk": 120, "de": 90}})
     h.add_health({"t": now - 300, "n": {"uk": 15}, "m": 1, "w": {"uk": None}})
     h.add_health({"t": now - 10, "n": {"uk": 15}, "m": 1})  # this round had no WARP check
-    assert h.last_warp() == {"at": now - 300, "nodes": {"uk": None}, "added": {}}
+    assert h.last_warp() == {"at": now - 300, "nodes": {"uk": None}, "added": {}, "reality": {}}
     assert h.last_warp(max_age=60) == {}  # too old: unknown, not "down"
 
 
@@ -1865,3 +1870,64 @@ def test_with_main_and_reserve_addresses_the_main_entries_come_first():
     doc["master"]["tls"]["address_mode"] = "main"
     Reconciler(panel, FleetConfig.model_validate(doc)).run(_stale(_access(["de"])))
     assert panel.settings()["subHostSortMode"] == "inbound-first"
+
+
+
+def test_via_ru_hysteria2_reaches_the_node_over_its_own_hysteria2_entry():
+    """The RU → node leg of «via RU · Hysteria2» must not depend on the node's Reality entry (whose borrowed site may
+    die): it dials the node's Hysteria2 entry with the bridge's own auth; the Reality-based ways stay on Reality."""
+    from xui_fleet import xrayconf as xc
+    panel = FakePanel()
+    access = _access(["de"])
+    a = access["de"]
+    a.busy_tcp, a.busy_udp = {443}, set()
+    a.cert_pem, a.key_pem, a.cert_pin_hex = "-----BEGIN CERTIFICATE-----\nAAEC\n-----END CERTIFICATE-----", "K", "ab" * 32
+    cfg = FleetConfig.model_validate({"master": {"name": "ru", "host": "9.9.9.9", "tls": {"mode": "domain", "domain": "v.example"}},
+                                      "users": [{"name": "alice"}], "nodes": [{"name": "de", "host": "de.example"}]})
+    leg = {"ok": False}
+    panel.test_outbound = lambda o: {"success": leg["ok"]}
+    Reconciler(panel, cfg).run(access)
+    tags = {i["tag"]: i for i in panel.inbounds()}
+    # the node's entry holds the bridge's password (the panel makes it when the bridge is attached)
+    hy = next(i for i in panel._inbounds if i["tag"] == xc.hy2_tag("de"))
+    hy["settings"]["clients"] = [{"email": cfg.clients.bridge_email, "auth": "BRIDGE-AUTH"}]
+    rules = lambda: {tuple(r.get("inboundTag") or []): r["outboundTag"] for r in panel.template["routing"]["rules"] if r.get("inboundTag")}
+    rep = Reconciler(panel, cfg).run(_stale(access))
+    assert rules()[(xc.rhy2_tag("de"),)] == xc.out_tag("de")  # the leg does not pass (e.g. UDP 443 cut): Reality stays
+    assert any("Hysteria2 от главного сервера до сервера не проходит" in w for w in rep.warnings)
+    leg["ok"] = True
+    Reconciler(panel, cfg).run(_stale(access))
+    assert rules()[(xc.rhy2_tag("de"),)] == xc.out_hy2_tag("de")
+    assert rules()[(xc.rxh_tag("de"),)] == xc.out_tag("de")  # XHTTP via RU keeps the Reality leg
+    out = next(o for o in panel.template["outbounds"] if o["tag"] == xc.out_hy2_tag("de"))
+    bridge = panel._clients[cfg.clients.bridge_email]
+    assert out["protocol"] == "hysteria" and out["streamSettings"]["hysteriaSettings"]["auth"] == "BRIDGE-AUTH"
+    assert out["streamSettings"]["tlsSettings"]["pinnedPeerCertSha256"] == "ab" * 32
+    assert tags[xc.hy2_tag("de")]["id"] in bridge["inboundIds"]
+    assert int(out["settings"]["port"]) == int(tags[xc.hy2_tag("de")]["port"]) and out["settings"]["address"] == "de.example"
+    assert Reconciler(panel, cfg).run(_stale(access)).changes == []  # and it stays put
+
+
+def test_reality_failing_twice_in_a_row_asks_for_a_new_masking_site(tmp_path, monkeypatch):
+    """The 5-minute check: one failed Reality check is noise; two in a row on the same server is a dead masking site
+    (or a block) — the app then switches the site (heal_reality), at most once an hour."""
+    import time as _t
+    from xui_fleet import history as hs
+    from xui_fleet import service
+    monkeypatch.setattr(service, "APP_DIR", tmp_path)
+    h = hs.History(tmp_path / "fleet.yaml")
+
+    class F:
+        reality, warp_added = {}, {}
+
+        def probe_warp(self):
+            return {}
+    f = F()
+    now = _t.time()
+    h.add_health({"t": int(now + 400), "n": {}, "m": 1})  # health and traffic not due: only the WARP/Reality check runs
+    h.add_traffic({"t": int(now + 400), "u": {}, "r": {}})
+    f.reality = {"uk": None, "de": 40}
+    assert not [d for d in hs.record(f, h, now=now) if d.startswith("reality-dead")]  # first failure: wait
+    f.reality = {"uk": None, "de": None}
+    assert [d for d in hs.record(f, h, now=now + 300) if d.startswith("reality-dead")] == ["reality-dead:uk"]  # de failed once
+    assert h.last_warp()["reality"] == {"uk": None, "de": None}

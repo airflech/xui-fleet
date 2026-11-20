@@ -92,7 +92,13 @@ class Panel:
         return self.get("/server/getNewX25519Cert")
 
     def restart_xray(self) -> None:
-        self.post("/server/restartXrayService")
+        """Restart Xray. The panel may drop the very connection that asked for it (an EOF instead of an answer) —
+        the restart has happened then; it counts as done once the panel answers again."""
+        try:
+            self.post("/server/restartXrayService")
+        except PanelError:
+            time.sleep(3)
+            self.wait_ready(60)
 
     def scan_reality_target(self, target: str, sni: str) -> Any:
         return self.post("/server/scanRealityTarget", form={"target": target, "sni": sni})

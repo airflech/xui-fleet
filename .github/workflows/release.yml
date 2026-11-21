@@ -19,7 +19,7 @@ jobs:
         image: ["python:3.9-slim", "python:3.12-slim"]
     container: ${{ matrix.image }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: pip install --root-user-action=ignore -q -e ".[dev]"
       - run: python -m pytest -q
 
@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     container: python:3.12
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: pip install --root-user-action=ignore -q -e ".[dev]" playwright
       - run: python -m playwright install --with-deps chromium
       - run: python -m pytest -q tests/test_ui_smoke.py
@@ -41,7 +41,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: The tag must match the version in the code

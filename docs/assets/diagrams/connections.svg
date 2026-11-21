@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 470" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif" font-size="14">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#4d7c0f"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/></marker>
+    <marker id="o" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#ea580c"/></marker>
+  </defs>
+  <rect width="960" height="470" rx="14" fill="#ffffff"/>
+  <g font-weight="700" fill="#64748b" font-size="13" text-anchor="middle">
+    <text x="140" y="34">ЧТО В ПОДПИСКЕ</text><text x="365" y="34">ВАШЕ УСТРОЙСТВО</text><text x="530" y="34">ГЛАВНЫЙ</text><text x="700" y="34">ЗАРУБЕЖНЫЙ</text><text x="870" y="34">ВЫХОД</text>
+  </g>
+  <line x1="20" y1="46" x2="940" y2="46" stroke="#e2e8f0"/>
+
+  <!-- row template: y centers 90, 175, 260, 345 -->
+  <g>
+    <text x="30" y="84" font-weight="700" fill="#0f172a" font-size="15">UK · через RU (XHTTP)</text>
+    <text x="30" y="104" fill="#475569" font-size="13">основное, работает почти везде</text>
+    <rect x="320" y="72" width="90" height="36" rx="8" fill="#f8fafc" stroke="#94a3b8"/><text x="365" y="95" text-anchor="middle">телефон</text>
+    <rect x="480" y="72" width="100" height="36" rx="8" fill="#f7fee7" stroke="#4d7c0f" stroke-width="1.5"/><text x="530" y="95" text-anchor="middle">главный</text>
+    <rect x="645" y="72" width="110" height="36" rx="8" fill="#fff" stroke="#4d7c0f" stroke-width="1.5"/><text x="700" y="95" text-anchor="middle">UK</text>
+    <text x="870" y="95" text-anchor="middle" fill="#0f172a">адрес UK</text>
+    <path d="M412,90 H476 M582,90 H641 M757,90 H822" stroke="#4d7c0f" stroke-width="2.5" stroke-dasharray="8 5" marker-end="url(#a)" fill="none"/>
+  </g>
+  <g>
+    <text x="30" y="169" font-weight="700" fill="#0f172a" font-size="15">UK · через RU (Hysteria2)</text>
+    <text x="30" y="189" fill="#475569" font-size="13">быстрее, но нужен UDP</text>
+    <rect x="320" y="157" width="90" height="36" rx="8" fill="#f8fafc" stroke="#94a3b8"/><text x="365" y="180" text-anchor="middle">телефон</text>
+    <rect x="480" y="157" width="100" height="36" rx="8" fill="#f7fee7" stroke="#4d7c0f" stroke-width="1.5"/><text x="530" y="180" text-anchor="middle">главный</text>
+    <rect x="645" y="157" width="110" height="36" rx="8" fill="#fff" stroke="#4d7c0f" stroke-width="1.5"/><text x="700" y="180" text-anchor="middle">UK</text>
+    <text x="870" y="180" text-anchor="middle" fill="#0f172a">адрес UK</text>
+    <path d="M412,175 H476 M582,175 H641 M757,175 H822" stroke="#4d7c0f" stroke-width="2.5" stroke-dasharray="8 5" marker-end="url(#a)" fill="none"/>
+  </g>
+  <g>
+    <text x="30" y="254" font-weight="700" fill="#0f172a" font-size="15">UK, UK · XHTTP, UK · Hysteria2</text>
+    <text x="30" y="274" fill="#475569" font-size="13">напрямую — короче путь, если IP</text>
+    <text x="30" y="291" fill="#475569" font-size="13">зарубежного сервера не заблокирован</text>
+    <rect x="320" y="242" width="90" height="36" rx="8" fill="#f8fafc" stroke="#94a3b8"/><text x="365" y="265" text-anchor="middle">телефон</text>
+    <rect x="645" y="242" width="110" height="36" rx="8" fill="#fff" stroke="#2563eb" stroke-width="1.5"/><text x="700" y="265" text-anchor="middle">UK</text>
+    <text x="870" y="265" text-anchor="middle" fill="#0f172a">адрес UK</text>
+    <path d="M412,260 H641 M757,260 H822" stroke="#2563eb" stroke-width="2.5" stroke-dasharray="8 5" marker-end="url(#b)" fill="none"/>
+    <text x="530" y="252" text-anchor="middle" fill="#2563eb" font-size="12">мимо главного</text>
+  </g>
+  <g>
+    <text x="30" y="339" font-weight="700" fill="#0f172a" font-size="15">UK · через RU → WARP, UK · WARP</text>
+    <text x="30" y="359" fill="#475569" font-size="13">для сайтов, которые не пускают VPN:</text>
+    <text x="30" y="376" fill="#475569" font-size="13">выход с адреса Cloudflare</text>
+    <rect x="320" y="327" width="90" height="36" rx="8" fill="#f8fafc" stroke="#94a3b8"/><text x="365" y="350" text-anchor="middle">телефон</text>
+    <rect x="480" y="327" width="100" height="36" rx="8" fill="#f7fee7" stroke="#4d7c0f" stroke-width="1.5" stroke-dasharray="4 3"/><text x="530" y="350" text-anchor="middle">главный*</text>
+    <rect x="645" y="327" width="110" height="36" rx="8" fill="#fff" stroke="#4d7c0f" stroke-width="1.5"/><text x="700" y="350" text-anchor="middle">UK</text>
+    <rect x="822" y="327" width="100" height="36" rx="18" fill="#fff7ed" stroke="#ea580c" stroke-width="1.5"/><text x="872" y="350" text-anchor="middle" fill="#9a3412">Cloudflare</text>
+    <path d="M412,345 H476 M582,345 H641" stroke="#4d7c0f" stroke-width="2.5" stroke-dasharray="8 5" marker-end="url(#a)" fill="none"/>
+    <path d="M757,345 H818" stroke="#ea580c" stroke-width="2.5" stroke-dasharray="2 4" marker-end="url(#o)" fill="none"/>
+  </g>
+  <line x1="20" y1="400" x2="940" y2="400" stroke="#e2e8f0"/>
+  <text x="30" y="428" fill="#475569" font-size="13">* «UK · WARP» идёт напрямую на UK, без главного. Есть ещё «RU · WARP» — с главного сразу в Cloudflare, без зарубежных серверов.</text>
+  <text x="30" y="450" fill="#475569" font-size="13">«· резерв» в названии — то же подключение через резервный домен главного сервера.</text>
+</svg>

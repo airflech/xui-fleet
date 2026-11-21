@@ -1,0 +1,96 @@
+site_name: xui-fleet
+site_description: Своя VPN-сеть на 3x-ui — главный сервер, зарубежные серверы и одна подписка для всех
+site_url: https://airflech.github.io/xui-fleet/
+repo_url: https://github.com/airflech/xui-fleet
+repo_name: airflech/xui-fleet
+edit_uri: edit/main/docs/
+docs_dir: docs
+copyright: xui-fleet
+
+theme:
+  name: material
+  language: ru
+  font: false            # system fonts: nothing is loaded from Google, the PDF looks the same offline
+  icon:
+    logo: material/lan
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: green
+      accent: light green
+      toggle: {icon: material/weather-night, name: Тёмная тема}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: green
+      accent: light green
+      toggle: {icon: material/weather-sunny, name: Светлая тема}
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - navigation.indexes
+    - toc.follow
+    - search.highlight
+    - content.code.copy
+
+extra_css:
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: "#"
+      slugify: !!python/object/apply:pymdownx.slugs.slugify {kwds: {case: lower}}   # Russian headings keep their anchors
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.keys
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  - search:
+      lang: ru
+  - print-site:            # /print_page/ — the whole documentation on one page; the PDF is printed from it
+      add_to_navigation: false
+      add_cover_page: true
+      cover_page_template: docs_theme/pdf-cover.tpl
+      add_table_of_contents: true
+      toc_title: Содержание
+      toc_depth: 2
+      add_full_urls: false
+      enumerate_headings: true
+      enumerate_figures: false
+      print_page_title: xui-fleet — документация
+
+nav:
+  - Что такое xui-fleet: index.md
+  - Пользователям VPN:
+      - users/index.md
+      - Если что-то не работает: users/problems.md
+  - Администратору:
+      - Установка и первый запуск: admin/install.md
+      - Главный сервер: admin/master.md
+      - Зарубежные серверы: admin/servers.md
+      - Схема маршрутов и задержки: admin/map.md
+      - Пользователи: admin/users.md
+      - Подключения в подписке: admin/connections.md
+      - WARP: admin/warp.md
+      - Сайты напрямую, мимо VPN: admin/direct.md
+      - Домены и блокировки: admin/domains.md
+      - Бэкапы и перенос: admin/backups.md
+      - Несколько компьютеров и профили: admin/computers.md
+      - Обслуживание и неполадки: admin/maintenance.md
+      - Файл fleet.yaml и консоль: admin/cli.md
+  - Для разработчиков:
+      - Архитектура: ARCHITECTURE.md
+
+extra:
+  version_label: !ENV [DOCS_VERSION, "последняя версия"]

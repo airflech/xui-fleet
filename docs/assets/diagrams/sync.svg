@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 300" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif" font-size="14">
+  <defs>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4d7c0f"/></marker>
+  </defs>
+  <rect width="960" height="300" rx="14" fill="#ffffff"/>
+  <g>
+    <rect x="40" y="40" width="200" height="64" rx="12" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5"/>
+    <text x="140" y="68" text-anchor="middle" font-weight="700" fill="#0f172a" font-size="15">Ноутбук</text>
+    <text x="140" y="90" text-anchor="middle" fill="#475569" font-size="13">xui-fleet</text>
+    <rect x="40" y="196" width="200" height="64" rx="12" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5"/>
+    <text x="140" y="224" text-anchor="middle" font-weight="700" fill="#0f172a" font-size="15">Рабочий компьютер</text>
+    <text x="140" y="246" text-anchor="middle" fill="#475569" font-size="13">xui-fleet</text>
+  </g>
+  <rect x="400" y="96" width="260" height="108" rx="14" fill="#f7fee7" stroke="#4d7c0f" stroke-width="2"/>
+  <text x="530" y="126" text-anchor="middle" font-weight="700" fill="#0f172a" font-size="15">Сервер синхронизации</text>
+  <text x="530" y="148" text-anchor="middle" fill="#475569" font-size="13">любой ваш сервер, папка</text>
+  <text x="530" y="166" text-anchor="middle" fill="#475569" font-size="13">/root/.xui-fleet-sync</text>
+  <text x="530" y="190" text-anchor="middle" fill="#4d7c0f" font-size="13" font-weight="600">зашифровано вашим паролем</text>
+  <path d="M244,76 C320,80 340,120 396,132" stroke="#4d7c0f" stroke-width="2.5" fill="none" marker-start="url(#g)" marker-end="url(#g)"/>
+  <path d="M244,228 C320,224 340,184 396,170" stroke="#4d7c0f" stroke-width="2.5" fill="none" marker-start="url(#g)" marker-end="url(#g)"/>
+  <g font-size="13" fill="#334155">
+    <text x="700" y="80">• изменения уходят за несколько секунд</text>
+    <text x="700" y="104">• другие компьютеры забирают их</text>
+    <text x="712" y="122">при запуске и раз в минуту</text>
+    <text x="700" y="146">• хранятся 10 последних версий</text>
+    <text x="700" y="170">• новая версия приложения</text>
+    <text x="712" y="188">приходит на все компьютеры сама</text>
+    <text x="700" y="212">• без пароля данные не прочитать</text>
+  </g>
+</svg>

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 340" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif" font-size="14">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#4d7c0f"/></marker>
+    <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker>
+  </defs>
+  <rect width="960" height="340" rx="14" fill="#ffffff"/>
+  <rect x="30" y="120" width="150" height="80" rx="12" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="105" y="152" text-anchor="middle" font-weight="700" fill="#0f172a" font-size="15">Телефон</text>
+  <text x="105" y="174" text-anchor="middle" fill="#475569" font-size="13">Happ / INCY</text>
+  <text x="105" y="190" text-anchor="middle" fill="#475569" font-size="12">профиль «RU напрямую»</text>
+
+  <rect x="380" y="200" width="170" height="70" rx="12" fill="#f7fee7" stroke="#4d7c0f" stroke-width="2"/>
+  <text x="465" y="230" text-anchor="middle" font-weight="700" fill="#0f172a" font-size="15">Главный сервер</text>
+  <text x="465" y="252" text-anchor="middle" fill="#475569" font-size="13">в России</text>
+  <rect x="660" y="200" width="150" height="70" rx="12" fill="#fff" stroke="#4d7c0f" stroke-width="2"/>
+  <text x="735" y="230" text-anchor="middle" font-weight="700" fill="#0f172a" font-size="15">Зарубежный</text>
+  <text x="735" y="252" text-anchor="middle" fill="#475569" font-size="13">сервер</text>
+  <text x="900" y="240" text-anchor="middle" fill="#0f172a" font-weight="600">youtube.com</text>
+  <text x="900" y="258" text-anchor="middle" fill="#475569" font-size="12">и остальное</text>
+
+  <rect x="620" y="40" width="300" height="70" rx="12" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="770" y="70" text-anchor="middle" font-weight="700" fill="#4c1d95" font-size="15">Российские сайты</text>
+  <text x="770" y="92" text-anchor="middle" fill="#5b21b6" font-size="13">банки, Госуслуги, маркетплейсы, .ru .рф</text>
+
+  <path d="M182,176 C260,230 300,236 376,236" stroke="#4d7c0f" stroke-width="3" stroke-dasharray="9 6" fill="none" marker-end="url(#a)"/>
+  <path d="M552,236 H656 M812,236 H846" stroke="#4d7c0f" stroke-width="3" stroke-dasharray="9 6" fill="none" marker-end="url(#a)"/>
+  <path d="M182,140 C320,70 480,70 616,74" stroke="#7c3aed" stroke-width="2.5" fill="none" marker-end="url(#r)"/>
+  <text x="250" y="56" fill="#6d28d9" font-size="13" font-weight="600">1. мимо VPN совсем — решает телефон</text>
+  <path d="M500,198 C540,150 580,120 640,112" stroke="#7c3aed" stroke-width="2.5" stroke-dasharray="5 4" fill="none" marker-end="url(#r)"/>
+  <text x="548" y="168" fill="#6d28d9" font-size="13" font-weight="600">2. или с главного сервера,</text>
+  <text x="548" y="185" fill="#6d28d9" font-size="13" font-weight="600">не уходя за границу</text>
+  <text x="30" y="310" fill="#475569" font-size="13">Сайты видят российский адрес, зарубежные серверы не тратят канал. Свои исключения — «Сайты напрямую, мимо VPN».</text>
+</svg>

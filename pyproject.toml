@@ -19,6 +19,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# the documentation site and its PDF (scripts/build_docs_pdf.py); screenshots: scripts/doc_screens.py
+docs = ["mkdocs-material>=9.5,<10", "mkdocs-print-site-plugin>=2.6,<3", "playwright>=1.45"]
 
 [project.scripts]
 xui-fleet = "xui_fleet.cli:app"

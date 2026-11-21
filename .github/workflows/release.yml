@@ -66,6 +66,15 @@ jobs:
           find dist -name __pycache__ -prune -exec rm -rf {} +
           chmod +x "dist/xui-fleet/Запустить xui-fleet.command" "dist/xui-fleet/Запустить xui-fleet.sh" dist/xui-fleet/scripts/start-unix.sh
           (cd dist && zip -qr "xui-fleet-$v.zip" xui-fleet && sha256sum "xui-fleet-$v.zip" > "xui-fleet-$v.zip.sha256")
+      - name: Build the documentation PDF
+        # The same Markdown as the site, printed by Chromium: docs/ → xui-fleet-docs-<version>.pdf.
+        # Never holds the release back: the app updates from the zip, the PDF is a bonus.
+        continue-on-error: true
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          pip install -q -e ".[docs]"
+          python3 -m playwright install --with-deps chromium
+          python3 scripts/build_docs_pdf.py --out "dist/xui-fleet-docs-$v.pdf" --version "$v"
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -76,7 +85,9 @@ jobs:
           # The notes are the commit messages since the previous version: there are no pull requests here,
           # so --generate-notes would leave nothing but a "Full Changelog" link.
           python3 scripts/release_notes.py "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" > notes.md
-          gh release create "$GITHUB_REF_NAME" "dist/xui-fleet-$v.zip" "dist/xui-fleet-$v.zip.sha256" \
+          docs=""
+          [ -f "dist/xui-fleet-docs-$v.pdf" ] && docs="dist/xui-fleet-docs-$v.pdf"
+          gh release create "$GITHUB_REF_NAME" "dist/xui-fleet-$v.zip" "dist/xui-fleet-$v.zip.sha256" $docs \
             --title "xui-fleet $v" $pre --notes-file notes.md
       - name: Fill in the notes of earlier releases that have none
         env:
